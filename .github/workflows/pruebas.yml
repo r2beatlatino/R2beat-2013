@@ -1,0 +1,37 @@
+# Las pruebas del server en cada PR y en cada push a develop / master. Sin el juego: lo que se puede
+# probar en Linux (que compile, que arranque, que una cuenta entre como entra el juego, y que no se
+# cuele nada prohibido). Un PR con una prueba en rojo no se fusiona (ver CONTRIBUIR.md).
+name: pruebas
+
+on:
+  pull_request:
+    branches: [develop, master]
+  push:
+    branches: [develop, master]
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: compila (todo el server y las herramientas)
+        run: python -m compileall -q servidor herramientas pruebas correr_servidor.py jugar.py
+
+      - name: arranca y una cuenta entra por la red, como el juego (con sus reveses)
+        run: python pruebas/probar_login.py
+
+      - name: nada prohibido (bases, cuentas, paks, IPs, rutas personales)
+        run: python pruebas/probar_nada_prohibido.py
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: la imagen se arma (y adentro pasa la prueba del login)
+        run: docker build -f despliegue/Dockerfile -t r2b2013-server:ci .

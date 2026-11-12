@@ -1,0 +1,63 @@
+# ============================================================================
+#  Qué NO se sube a GitHub.
+#
+#  Hay dos motivos para que un archivo esté en esta lista:
+#    1. Es PRIVADO  (cuentas de jugadores, contraseñas, logs, quién es GM).
+#    2. NO ES NUESTRO (archivos que salen del juego original de Softnyx).
+#
+#  Si dudás de un archivo, no lo subas. Es más fácil agregarlo después que
+#  borrarlo del historial de Git una vez que se publicó.
+# ============================================================================
+
+# --- 1. PRIVADO: nunca, jamás, por ningún motivo -----------------------------
+datos/*
+!datos/LEEME.md
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.env
+!despliegue/ejemplo.env
+.env
+*.key
+*.pem
+
+# Quién manda en TU servidor: nombres de cuentas reales.
+servidor/gm.txt
+servidor/admin.txt
+servidor/streamers.txt
+
+# Rutas y usuario de cada uno.
+jugar.json
+herramientas/importador2013/config.json
+
+# --- 2. NO ES NUESTRO: archivos del juego original ---------------------------
+*.pak
+*.exe
+*.exe.original
+*.dll
+# ★ la única excepción: NUESTRA dll (el fuente está en herramientas/dll_d3d9/)
+!exe/d3d9.dll
+
+# Lo que extraer_datos.py saca de TU cliente.
+servidor/shop_lt.txt
+servidor/tablas-cliente/*.txt
+servidor/tablas-cliente/*.xml
+
+# Las notas de las canciones (las arma el importador desde tus fuentes).
+servidor/notes/*.bin
+servidor/notes_map_2013.json
+
+# --- 3. Basura de trabajo ----------------------------------------------------
+__pycache__/
+*.py[cod]
+*.log
+*.bak
+*.bak-*
+*.tmp
+.venv/
+venv/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

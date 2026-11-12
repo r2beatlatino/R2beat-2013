@@ -1,0 +1,7 @@
+{
+  "_doc": "Copiá este archivo a config.json y poné tus rutas. Lo relativo se resuelve contra la raíz del repositorio. Una fuente que no tengas, dejala vacía.",
+  "cliente_2013": "C:/Juegos/R2Beat",
+  "cbt_cliente": "C:/Juegos/R2Beat CBT",
+  "cbt_notes": "",
+  "respaldo_charts": ""
+}

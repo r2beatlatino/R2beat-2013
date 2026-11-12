@@ -1,0 +1,31 @@
+# El server de R2Beat 2013. UN archivo para los dos entornos: cada uno con su .env (ver despliegue/LEEME.md)
+#
+#   prod   (rama master)   → login 48004, canales 48005…48095
+#   prueba (rama develop)  → login 49004, canales 49005…49095   (R2_PUERTOS=1000)
+#
+#   docker compose -p r2b-prod   --env-file /opt/r2b2013/prod.env   -f despliegue/docker-compose.yml up -d --build
+#   docker compose -p r2b-prueba --env-file /opt/r2b2013/prueba.env -f despliegue/docker-compose.yml up -d --build
+services:
+  r2b:
+    build:
+      context: ..
+      dockerfile: despliegue/Dockerfile
+    image: r2b2013-server:${R2_ENTORNO:-local}
+    container_name: r2b-${R2_ENTORNO:-local}
+    # ★ la red del VPS tal cual: son 11 puertos (login + 10 canales) y el server anuncia la IP por la
+    #   que llegó cada cliente. Con la red de Docker habría que mapearlos todos y la IP saldría mal.
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      R2_PUERTOS: ${R2_PUERTOS:-0}
+      R2_PUBLIC_IP: ${R2_PUBLIC_IP:-}
+      R2_IP: ${R2_IP:-}
+    volumes:
+      # las cuentas de los jugadores (datos.db), el log, gm.txt/admin.txt: AFUERA del contenedor, para
+      #   que sobrevivan a cada actualización y se puedan llevar a otro VPS con la carpeta
+      - ${R2_DATOS_DIR:-./datos}:/r2b/datos
+      # las tablas y las notas que salen de TU cliente (extraer_datos.py + el importador): sólo lectura
+      - ${R2_JUEGO_DIR:-./juego}:/r2b/juego:ro
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
