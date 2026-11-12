@@ -8,6 +8,7 @@ on:
     branches: [develop, master]
   push:
     branches: [develop, master]
+  workflow_dispatch:          # el botón «Run workflow» en la pestaña Actions
 
 jobs:
   server:
