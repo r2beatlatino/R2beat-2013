@@ -233,7 +233,7 @@ def responder(cmd, payload, cmd_respuesta=None, cuenta_probada=None):
         usuario, resto, cuenta_ok = cuenta_probada, payload, True
     elif pase.modo_pase():
         pase_txt, resto = leer_pase(payload)
-        carga = pase.verificar_pase(pase_txt, "r2beat2013") if pase_txt else None
+        carga = pase.verificar_pase(pase_txt, pase.juego()) if pase_txt else None
         _u_pase, usuario = almacen.asegurar_cuenta_uid(carga["sub"]) if carga else (None, None)
         cuenta_ok = bool(_u_pase and usuario)
     elif leer_pase(payload)[0] is not None:

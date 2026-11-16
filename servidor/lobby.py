@@ -834,7 +834,7 @@ def handle_login(conn, addr):
                         log("LOGIN", "  ⛔ LAUNCHER: pase rechazado (R2_LOGIN no es 'pase')")
                         continue
                     _pase_txt = leer_login_pase(payload)
-                    _carga = pase.verificar_pase(_pase_txt, "r2beat2013")
+                    _carga = pase.verificar_pase(_pase_txt, pase.juego())
                     _usn_pase, _motivo_p = cuenta_asegurar_uid(_carga["sub"]) if _carga else (None, "pase inválido")
                     if _usn_pase is None:
                         conn.sendall(resp_login_launcher(0, 0, ok=False))

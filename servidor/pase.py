@@ -50,6 +50,12 @@ def modo_pase():
     return (os.environ.get("R2_LOGIN") or "").strip().lower() == "pase"
 
 
+def juego():
+    """★ 15-nov (dos servers por juego): el `aud` que acepta ESTE server. `R2_PASE_JUEGO` (vacío = `r2beat2013`).
+    El server de PRUEBA corre con `r2beat2013-prueba`: un pase de prod no le sirve y al revés."""
+    return (os.environ.get("R2_PASE_JUEGO") or "").strip() or "r2beat2013"
+
+
 def parsear_clave_publica(valor):
     """Convierte base64url, hex de 64 chars o JSON JWKS (`/clave-publica`) en 32 bytes de clave pública, o None."""
     if isinstance(valor, (bytes, bytearray)):

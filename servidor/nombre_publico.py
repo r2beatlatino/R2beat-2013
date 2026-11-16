@@ -43,6 +43,7 @@ VARIABLES (en `ajustes.py`)
 import hashlib
 import hmac
 import ipaddress
+import os
 import secrets
 import socket
 import threading
@@ -102,7 +103,10 @@ def responder_eco(payload, ficha=None):
 
 def llega_a_mi(direccion, puerto=None, tope=4.0, ficha=None):
     """¿Conectando a `direccion:puerto` contesta ESTE proceso? Una conexión, un paquete de ida y uno de vuelta."""
-    puerto = LOGIN_PORT if puerto is None else puerto
+    # ★ 15-nov: con la PUERTA del 48004 delante (dos servers en una máquina), el login escucha adentro en otro puerto
+    #   (47004) y desde afuera se llega por el 48004: `R2_NOMBRE_PUBLICO_PUERTO` dice por cuál probar (vacío = el login).
+    if puerto is None:
+        puerto = int(os.environ.get("R2_NOMBRE_PUBLICO_PUERTO") or LOGIN_PORT)
     ficha = _FICHA if ficha is None else ficha
     desafio = secrets.token_bytes(16)                    # uno nuevo cada vez: una respuesta vieja no sirve
     try:
