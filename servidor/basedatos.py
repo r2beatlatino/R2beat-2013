@@ -130,10 +130,16 @@ def cuenta_verificar(usuario, pass_hash):
       ⚠ El costo asumido: quien se equivoque de mayúscula no entra. Es como funciona hoy el CBT.
       Ver la nota larga de `almacen.leer_cuentas`.
     """
+    from . import pase
+    if pase.modo_pase():
+        return None
+    ph = str(pass_hash or "").upper()
+    if len(ph) != 64:
+        return None
     c = almacen.cuenta_de((usuario or "").strip())   # ★ 29-sep: UNA fila, no las 5.400 (`almacen.cuenta_de`)
     if not c:
         return None
-    return int(c["usn"]) if str(c.get("pass", "")).upper() == str(pass_hash).upper() else None
+    return int(c["usn"]) if str(c.get("pass", "")).upper() == ph else None
 
 
 def cuenta_crear(usuario, pass_hash, usn=None):
@@ -142,6 +148,9 @@ def cuenta_crear(usuario, pass_hash, usn=None):
     El `usn` se asigna solo: el siguiente libre mirando **las cuentas Y los personajes**, para no
     pisar un char que ya existe (los personajes viven en `chars_db.json`, indexados por usn).
     """
+    from . import pase
+    if pase.modo_pase():
+        return None, "el registro es en Cuenta Eñeños"
     # ⛔ Ya NO se baja a minúsculas: el login es sensible a mayúsculas (ver `cuenta_verificar`).
     #   Se guarda tal como lo escribió, y con eso mismo va a tener que entrar.
     u = (usuario or "").strip()
@@ -153,14 +162,22 @@ def cuenta_crear(usuario, pass_hash, usn=None):
     if u in d:
         return None, "ese usuario ya existe"
     if usn is None:
-        _usados = {int(v["usn"]) for v in d.values()}
+        _usados = {int(v["usn"]) for v in d.values() if int(v["usn"]) < 10_000_000}
         # ★ 2026-09-05: acá sí hacen falta TODOS los uid, pero no los personajes enteros.
         #   Era `db_load()`, que arma los 4806 con su inventario y su ropa para tirarlos.
-        _usados |= set(almacen.uids_usados())
+        _usados |= {u for u in almacen.uids_usados() if u < 10_000_000}
         usn = max(_usados) + 1 if _usados else 1
     d[u] = {"usn": int(usn), "pass": str(pass_hash).upper(), "creada": time.time()}
     cuentas_save(d)
     return int(usn), None
+
+
+def cuenta_asegurar_uid(enenos_id):
+    """Con `R2_LOGIN=pase`: busca o crea la fila de `users` para `enenos_id` (`sub` del pase). -> `(usn, usuario_local)`."""
+    return almacen.asegurar_cuenta_uid(enenos_id)
+
+
+cuenta_asegurar_enenos = cuenta_asegurar_uid
 
 
 def sesion_abrir(usn):

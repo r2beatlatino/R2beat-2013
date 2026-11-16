@@ -28,7 +28,9 @@ import threading
 import time                              # ⚠ lo usa el resumen por minuto del FF3D (handle_inner)
 from . import gacha
 from . import autoplay_gm
+from . import nombre_publico             # ★ 14-nov: la IP que se anuncia en los canales, sacada del DNS (si hay nombre)
 from . import notas
+from . import pase                       # ★ 15-nov: R2_LOGIN=pase (pases Ed25519 de Cuenta Eñeños)
 
 from .ajustes import (
     REGALO_ACTIVO,
@@ -98,6 +100,7 @@ from .cifrado import (
 from .basedatos import (
     db_get_char,
     db_get_nibbles,
+    cuenta_asegurar_uid,
     cuenta_crear,
     cuenta_verificar,
     sesion_abrir,
@@ -182,12 +185,12 @@ LOBBY_IP   = os.environ.get("R2_IP") or get_local_ip()
 #   producción pueda ser el mismo código contra los dos servidores.
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 def leer_login_launcher(payload):
-    """`{usuario, hash}` si esto es un login del LAUNCHER; `None` si es el del juego.
+    """`{usuario, hash}` si esto es un login del LAUNCHER con usuario+hash; `None` si es el del juego o un pase.
 
     La marca inequívoca es el hash: 64 caracteres hex. El `FF01` del juego mide 12 bytes justos y
-    no tiene forma de parecerse a esto.
+    no tiene forma de parecerse a esto; el `FF01` con pase lleva `0x50` ('P') en el byte 4.
     """
-    if len(payload) < 7:
+    if len(payload) < 7 or (payload[:4] == b"\x00\x00\x00\x00" and payload[4] == 0x50):
         return None
     try:
         ulen = payload[5]
@@ -199,6 +202,36 @@ def leer_login_launcher(payload):
     if not user or len(ph) != 64:
         return None
     return {"usuario": user, "hash": ph}
+
+
+# ═══ EL FF01 DEL LAUNCHER CON PASE (`R2_LOGIN=pase`) ═════════════════════════════════════════════
+#   Formato byte por byte del payload de `FF 01 <largo:u16>`:
+#       offset 0..3          (u32 <I): 0 (0x00000000; el .exe manda acá usn > 0 en 12 bytes exactos)
+#       offset 4             (u8)    : 0x50 ('P' = PASE; el launcher viejo manda flag 0x00 o 0x01)
+#       offset 5..6          (u16 <H): plen (largo del pase en bytes ASCII, little-endian; un JWT Ed25519 mide ~300 B)
+#       offset 7..7+plen-1   (bytes) : pase JWT compacto en ASCII ("eyJ...", con aud="r2beat2013")
+#   Sin ambigüedad con el .exe (12 bytes `[usn:u32][vcode:u64]`) ni con el launcher viejo
+#   (`[0:u32][flag:u8][ulen:u8][usuario][64:u8][sha256_hex]`).
+MARCA_LOGIN_PASE = 0x50
+
+
+def armar_login_pase(pase_txt):
+    """Arma la trama `FF01` del launcher con pase: `FF 01 <len:u16> [0:u32][0x50:u8][plen:u16][pase_ascii]`."""
+    b = pase_txt if isinstance(pase_txt, bytes) else str(pase_txt or "").encode("ascii")
+    return frame(0x01, b"\x00\x00\x00\x00" + bytes([MARCA_LOGIN_PASE]) + struct.pack("<H", len(b)) + b)
+
+
+def leer_login_pase(payload):
+    """El texto del pase si este `FF01` es la variante con pase; `None` si es del `.exe` o usuario+hash."""
+    if len(payload) < 7 or payload[:4] != b"\x00\x00\x00\x00" or payload[4] != MARCA_LOGIN_PASE:
+        return None
+    plen = struct.unpack_from("<H", payload, 5)[0]
+    if plen <= 0 or len(payload) != 7 + plen:
+        return None
+    try:
+        return payload[7:7 + plen].decode("ascii")
+    except UnicodeDecodeError:
+        return None
 
 
 def resp_login_launcher(usn, vcode, ok=True):
@@ -794,7 +827,24 @@ def handle_login(conn, addr):
             frames, buf = parse_frames(buf)
             for magic, cmd, payload in frames:
                 log("LOGIN", f"RX magic=0x{magic:02x} cmd=0x{cmd:02x} len={len(payload)} : {hx(payload)}")
-                if magic == 0xFF and cmd == 0x01 and leer_login_launcher(payload):
+                if magic == 0xFF and cmd == 0x01 and leer_login_pase(payload) is not None:
+                    # ═══ EL LAUNCHER, con PASE de Cuenta Eñeños (`R2_LOGIN=pase`) ═══════════════
+                    if not pase.modo_pase():
+                        conn.sendall(resp_login_launcher(0, 0, ok=False))
+                        log("LOGIN", "  ⛔ LAUNCHER: pase rechazado (R2_LOGIN no es 'pase')")
+                        continue
+                    _pase_txt = leer_login_pase(payload)
+                    _carga = pase.verificar_pase(_pase_txt, "r2beat2013")
+                    _usn_pase, _motivo_p = cuenta_asegurar_uid(_carga["sub"]) if _carga else (None, "pase inválido")
+                    if _usn_pase is None:
+                        conn.sendall(resp_login_launcher(0, 0, ok=False))
+                        log("LOGIN", f"  ⛔ LAUNCHER PASE rechazado ({_motivo_p})")
+                        continue
+                    _vc = sesion_abrir(_usn_pase)
+                    conn.sendall(resp_login_launcher(_usn_pase, _vc, ok=True))
+                    log("LOGIN", f"  ★★ LAUNCHER PASE OK -> usn={_usn_pase}, "
+                                 f"sesion abierta (vcode de {_vc.bit_length()} bits)")
+                elif magic == 0xFF and cmd == 0x01 and leer_login_launcher(payload):
                     # ═══ EL LAUNCHER, con usuario y contraseña ═══════════════════════════════
                     #   Mismo comando que el juego, pero se distingue por el CUERPO:
                     #       juego    -> 12 bytes  `[usn:u32][vcode:u64]`
@@ -802,6 +852,10 @@ def handle_login(conn, addr):
                     #   Es la forma del CBT (`parse_login`), a propósito: así el launcher de
                     #   producción puede ser el mismo código para los dos servidores.
                     #   ⚠ La contraseña NUNCA viaja en claro: va el SHA-256 en hex.
+                    if pase.modo_pase():
+                        conn.sendall(resp_login_launcher(0, 0, ok=False))
+                        log("LOGIN", "  ⛔ LAUNCHER: usuario+hash rechazado (R2_LOGIN=pase)")
+                        continue
                     _cred = leer_login_launcher(payload)
                     _usn_cred = cuenta_verificar(_cred["usuario"], _cred["hash"])
                     if _usn_cred is None:
@@ -817,6 +871,10 @@ def handle_login(conn, addr):
                     #   `[ulen:u8][user][hlen:u8][sha256_hex(64)]`. Comando propio launcher↔server
                     #   (el juego no lo manda nunca), heredado del CBT para que el launcher sea
                     #   compartible.
+                    if pase.modo_pase():
+                        conn.sendall(resp_registro(None, "el registro es en Cuenta Eñeños"))
+                        log("LOGIN", "  ⛔ registro rechazado (R2_LOGIN=pase)")
+                        continue
                     _u, _h = leer_registro(payload)
                     _nuevo, _err = cuenta_crear(_u, _h) if _u else (None, "pedido mal formado")
                     conn.sendall(resp_registro(_nuevo, _err))
@@ -835,6 +893,11 @@ def handle_login(conn, addr):
                     #   `cuenta_personajes.responder_sesion` y documentacion/SELECTOR_PERSONAJE.md.
                     from . import cuenta_personajes
                     conn.sendall(cuenta_personajes.responder_sesion(cmd, payload))
+                elif magic == 0xFF and cmd == nombre_publico.CMD_ECO:
+                    # ═══ ★ EL ECO (14-nov): el propio server, preguntándose «¿por esta IP llego a mí?» ═══
+                    #   `FFEC [desafío:16]` -> `FFEC [firma:16]`: sólo ESTE proceso puede firmarlo bien.
+                    #   Ver `nombre_publico.py`. No abre nada: ni sesión, ni cuenta.
+                    conn.sendall(nombre_publico.responder_eco(payload))
                 elif magic == 0xFF and cmd == 0xFB:
                     # ═══ ★ (142) LAS MONTURAS: subirse / bajarse / unirse con un clic (la dll, con la SESIÓN) ═══
                     #   FFFB [usn][vcode][accion] -> [resultado][byte]. El 0xF4 del 2019 (CmdGuildRoomAction), en
@@ -907,7 +970,9 @@ def handle_login(conn, addr):
                     #   `getsockname()` se corrige solo: cada cliente recibe la punta del host que le
                     #   corresponde, y encima deja de importar el DHCP. El bind ya es 0.0.0.0.
                     pidio_ff02 = True                  # ★ login normal: el cierre lo hace el handoff
-                    ip_anunciada = PUBLIC_IP or conn.getsockname()[0]
+                    # ★ 14-nov: si hay `R2_NOMBRE_PUBLICO` y el DNS dio una IP por la que se llega a este server,
+                    #   va ÉSA (`nombre_publico.ip()` lee una variable: acá no se resuelve nada). Si no, lo de siempre.
+                    ip_anunciada = nombre_publico.ip() or PUBLIC_IP or conn.getsockname()[0]
                     r = resp2_lobby_list(ip=ip_anunciada, usn=usn)
                     if puerta_paso(f"RESP-2 LobbyList -> {ip_anunciada}:{LOBBY_PORT}  {len(r)} B", hx(r[:32]), handshake=True):
                         conn.sendall(r)
@@ -1685,7 +1750,10 @@ def main():
     #     que no anuncia su configuración no se puede auditar. Por eso esta línea no tiene `if`.
     from . import gm as _gm
     log("MAIN", _gm.resumen())
+    if pase.modo_pase():
+        pase.inicializar()
     threading.Thread(target=listener, args=(LOGIN_PORT, handle_login, "LOGIN"), daemon=True).start()
+    nombre_publico.arrancar()            # ★ sin `R2_NOMBRE_PUBLICO` no hace nada (ver `nombre_publico.py`)
     if MULTICANAL:
         # ★ Un LISTENER POR CANAL, como el CBT. El cliente elige el puerto solo: `0x4A5F60` busca la
         #   entrada cuyo (tier1,tier2) matchea su código de licencia/nivel, y conecta a ESE puerto.

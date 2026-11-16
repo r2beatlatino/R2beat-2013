@@ -39,6 +39,14 @@ _lock = threading.Lock()
 _local = threading.local()
 
 
+def _migrar_esquema(c):
+    """Agrega columnas/índices nuevos a una `datos.db` existente sin fallar sobre bases viejas."""
+    cols = {r[1] for r in c.execute("PRAGMA table_info(users)").fetchall()}
+    if "enenos_id" not in cols:
+        c.execute("ALTER TABLE users ADD COLUMN enenos_id INTEGER")
+    c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_enenos_id ON users(enenos_id) WHERE enenos_id IS NOT NULL")
+
+
 def conectar():
     """Una conexión POR HILO. `sqlite3` no deja compartirlas entre hilos, y el server usa uno por
     conexión de jugador."""
@@ -49,6 +57,7 @@ def conectar():
         c.execute("PRAGMA journal_mode=WAL")
         c.execute("PRAGMA synchronous=NORMAL")
         c.executescript(ESQUEMA)
+        _migrar_esquema(c)
         _local.con = c
     return c
 
@@ -277,7 +286,7 @@ def _ubicacion(c, uid):
 
 
 def _cuenta_fila(c, usuario):
-    return c.execute("SELECT uid, username, pass_hash FROM users WHERE username = ? COLLATE BINARY "
+    return c.execute("SELECT uid, username, pass_hash, enenos_id FROM users WHERE username = ? COLLATE BINARY "
                      "ORDER BY rowid DESC LIMIT 1", (usuario,)).fetchone()
 
 
@@ -321,13 +330,15 @@ def _transaccion(hacer):
 
 
 def cuenta_estado(usuario):
-    """La cuenta para el panel: {usuario, usn, fusionada, baneada, ranuras {r: uid}} o None."""
+    """La cuenta para el panel: {usuario, usn, enenos_id, fusionada, baneada, ranuras {r: uid}} o None."""
     with _lock:
         c = conectar()
         u = _cuenta_fila(c, usuario)
         if not u:
             return None
-        return {"usuario": u["username"], "usn": int(u["uid"]), "fusionada": es_fusionada(u["pass_hash"]),
+        eid = int(u["enenos_id"]) if u["enenos_id"] is not None else None
+        return {"usuario": u["username"], "usn": int(u["uid"]), "enenos_id": eid,
+                "fusionada": es_fusionada(u["pass_hash"]),
                 "baneada": str(u["pass_hash"] or "").startswith("BANNED:"), "ranuras": _ranuras(c, usuario)}
 
 
@@ -485,10 +496,11 @@ def pasar_a_casillero_1(uid, actor=0):
     return _transaccion(hacer)
 
 
-def separar_a_cuenta_nueva(uid, usuario, pass_hash, actor=0):
-    """Un personaje de un casillero 2-4 pasa a ser el casillero 1 de una cuenta NUEVA (usuario + clave propios).
-    -> (True, usuario) · (False, motivo)"""
+def separar_a_cuenta_nueva(uid, usuario, pass_hash, actor=0, enenos_id=None):
+    """Un personaje de un casillero 2-4 pasa a ser el casillero 1 de una cuenta NUEVA (usuario + clave propios,
+    y su `enenos_id` si vino de Cuenta Eñeños). -> (True, usuario) · (False, motivo)"""
     uid, usuario = int(uid), (usuario or "").strip()
+    eid = int(enenos_id) if enenos_id is not None else None
 
     def hacer(c):
         if not (3 <= len(usuario) <= 16) or not usuario.replace("_", "").isalnum():
@@ -501,8 +513,8 @@ def separar_a_cuenta_nueva(uid, usuario, pass_hash, actor=0):
         if c.execute("SELECT 1 FROM users WHERE uid = ?", (uid,)).fetchone():
             raise ValueError(f"{uid} ya es el casillero 1 de una cuenta (fusionada): usá SEPARAR esa cuenta")
         c.execute("DELETE FROM cuenta_personajes WHERE uid = ?", (uid,))
-        c.execute("INSERT INTO users (uid, username, pass_hash, reg_time) VALUES (?, ?, ?, ?)",
-                  (uid, usuario, str(pass_hash).upper(), time.time()))
+        c.execute("INSERT INTO users (uid, username, pass_hash, reg_time, enenos_id) VALUES (?, ?, ?, ?, ?)",
+                  (uid, usuario, str(pass_hash).upper(), time.time(), eid))
         _anotar(c, uid, de, (usuario, 1), "separar_nueva", actor)
         return usuario
     return _transaccion(hacer)
@@ -581,8 +593,11 @@ def reservar_ranura(usuario, ranura):
                       (usuario, ranura)).fetchone()
         if r:
             return int(r["uid"])
-        tope = c.execute("SELECT MAX(m) FROM (SELECT MAX(uid) AS m FROM users UNION ALL SELECT MAX(uid) FROM chars "
-                         "UNION ALL SELECT MAX(uid) FROM cuenta_personajes)").fetchone()[0] or 0
+        # ★ < 10_000_000: las cuentas nuevas de Cuenta Eñeños (`portero.UID_NUEVAS_DESDE`: 10.000.000 en adelante) viven de ahí
+        #   para arriba; los personajes de los casilleros 2-4 de R2Beat siguen numerándose abajo para no chocar.
+        tope = c.execute("SELECT MAX(m) FROM (SELECT MAX(uid) AS m FROM users WHERE uid < 10000000 "
+                         "UNION ALL SELECT MAX(uid) FROM chars WHERE uid < 10000000 "
+                         "UNION ALL SELECT MAX(uid) FROM cuenta_personajes WHERE uid < 10000000)").fetchone()[0] or 0
         uid = int(tope) + 1
         c.execute("INSERT INTO cuenta_personajes (username, ranura, uid) VALUES (?, ?, ?)", (usuario, ranura, uid))
         c.commit()
@@ -1733,11 +1748,17 @@ def guardar_cuentas(d):
             for usuario, v in d.items():
                 # ★ el nombre REAL (con mayúsculas) si viene en el valor; si no, la clave. Así una
                 #   cuenta importada no pierde su forma al reescribirse, y una creada acá —que ya
-                #   nace en minúsculas— sigue igual.
-                c.execute("INSERT OR REPLACE INTO users (uid,username,pass_hash,reg_time) "
-                          "VALUES (?,?,?,?)",
+                #   nace en minúsculas— sigue igual. Y preservamos `enenos_id` si ya estaba enlazada.
+                eid = v.get("enenos_id")
+                if eid is None:
+                    r = c.execute("SELECT enenos_id FROM users WHERE uid = ?", (int(v["usn"]),)).fetchone()
+                    if r is not None:
+                        eid = r["enenos_id"]
+                c.execute("INSERT OR REPLACE INTO users (uid,username,pass_hash,reg_time,enenos_id) "
+                          "VALUES (?,?,?,?,?)",
                           (int(v["usn"]), str(v.get("username") or usuario),
-                           str(v.get("pass", "")), str(v.get("creada", ""))))
+                           str(v.get("pass", "")), str(v.get("creada", "")),
+                           int(eid) if eid is not None else None))
 
 
 def sembrar_desde_json():
@@ -1760,3 +1781,105 @@ def sembrar_desde_json():
     guardar_todos({k: v for k, v in ch.items() if str(k).isdigit() and isinstance(v, dict)})
     log("DB", f"★ base vacía: migrados {len(cu)} cuentas y {len(ch)} personajes desde los JSON")
     return True
+
+
+def _siguiente_usn_local(c):
+    """Próximo `usn` (< 10.000.000, > 0) libre mirando las cuentas y los personajes locales del juego."""
+    usados = set()
+    for sql in (
+        "SELECT uid FROM users WHERE uid > 0 AND uid < 10000000",
+        "SELECT uid FROM chars WHERE uid > 0 AND uid < 10000000",
+        "SELECT uid FROM cuenta_personajes WHERE uid > 0 AND uid < 10000000",
+        "SELECT uid FROM personajes_borrados WHERE uid > 0 AND uid < 10000000",
+    ):
+        try:
+            usados.update(int(r[0]) for r in c.execute(sql))
+        except sqlite3.OperationalError:
+            pass
+    usn = (max(usados) + 1) if usados else 1
+    if usn >= 10_000_000:
+        raise ValueError("sin usn libre en el rango local < 10.000.000")
+    return usn
+
+
+def enenos_id_de_uid(uid):
+    """El Eñeños ID de la fila `users` cuyo `uid` (casillero 1) es `uid`, o `None`."""
+    try:
+        u_int = int(uid)
+    except (TypeError, ValueError):
+        return None
+    with _lock:
+        r = conectar().execute("SELECT enenos_id FROM users WHERE uid = ? ORDER BY rowid DESC LIMIT 1",
+                               (u_int,)).fetchone()
+    return int(r[0]) if r and r[0] is not None else None
+
+
+def enenos_id_de_cuenta(usuario):
+    """El Eñeños ID de `username`, o `None`."""
+    with _lock:
+        r = _cuenta_fila(conectar(), str(usuario or ""))
+    return int(r["enenos_id"]) if r and r["enenos_id"] is not None else None
+
+
+def cuenta_por_enenos_id(enenos_id):
+    """`{uid, username, pass_hash, enenos_id}` de la cuenta del juego enlazada a `enenos_id`, o `None`."""
+    try:
+        eid = int(enenos_id)
+    except (TypeError, ValueError):
+        return None
+    with _lock:
+        r = conectar().execute("SELECT uid, username, pass_hash, enenos_id FROM users WHERE enenos_id = ?",
+                               (eid,)).fetchone()
+    if not r:
+        return None
+    return {"uid": int(r["uid"]), "username": r["username"], "pass_hash": r["pass_hash"],
+            "enenos_id": int(r["enenos_id"])}
+
+
+def uid_de_enenos_id(enenos_id):
+    """El `users.uid` (casillero 1 del juego) para un `enenos_id`, o `None`."""
+    c = cuenta_por_enenos_id(enenos_id)
+    return c["uid"] if c else None
+
+
+def asegurar_cuenta_uid(enenos_id):
+    """Para `R2_LOGIN=pase`: busca por `enenos_id` (`sub` del pase) en `users`. Si existe y está activa devuelve
+    su `(users.uid, username)` (el personaje/casillero 1, `< 10.000.000`). Si no existe, crea una fila nueva
+    sin contraseña (`pass_hash = ""`) con `enenos_id = sub` y un `usn` local `< 10.000.000`.
+    -> `(usn, username_local)` o `(None, "baneada" | "fusionada" | "invalida")`."""
+    if isinstance(enenos_id, bool):
+        return None, "invalida"
+    try:
+        eid = int(enenos_id)
+    except (TypeError, ValueError):
+        return None, "invalida"
+    if eid <= 0:
+        return None, "invalida"
+    with _lock:
+        c = conectar()
+        u = c.execute("SELECT uid, username, pass_hash FROM users WHERE enenos_id = ?", (eid,)).fetchone()
+        if u:
+            ph = str(u["pass_hash"] or "")
+            if ph.startswith("BANNED:"):
+                return None, "baneada"
+            if es_fusionada(ph):
+                return None, "fusionada"
+            return int(u["uid"]), str(u["username"])
+        usn = _siguiente_usn_local(c)
+        nombre_local = f"uid_{eid}"
+        suf = 1
+        while c.execute("SELECT 1 FROM users WHERE username = ? COLLATE BINARY", (nombre_local,)).fetchone():
+            suf += 1
+            nombre_local = f"uid_{eid}_{suf}"
+        with c:
+            try:
+                c.execute("INSERT INTO users (uid, username, pass_hash, reg_time, enenos_id) VALUES (?, ?, '', ?, ?)",
+                          (usn, nombre_local, int(time.time()), eid))
+            except sqlite3.OperationalError:
+                c.execute("INSERT INTO users (uid, username, pass_hash, enenos_id) VALUES (?, ?, '', ?)",
+                          (usn, nombre_local, eid))
+        return usn, nombre_local
+
+
+asegurar_cuenta_enenos = asegurar_cuenta_uid
+

@@ -103,6 +103,22 @@ LOG        = os.environ.get("R2_LOG") or os.path.join(
 #   sigue como estaba (cada cliente recibe la punta del host por la que llego).
 PUBLIC_IP  = os.environ.get("R2_PUBLIC_IP") or ""
 
+# ★★ 14-nov-2026 — `R2_NOMBRE_PUBLICO`: EL SERVER SACA SU IP PÚBLICA DEL DNS, para anunciarla en los canales.
+#   El campo de la dirección de cada canal mide 16 bytes en el cliente (15 letras): ahí no entra un nombre, tiene que
+#   ir la IP. Con esta variable el server la averigua resolviendo SU nombre (el mismo por el que entra el launcher),
+#   así que mudar el juego de máquina es cambiar el registro del DNS y no escribir la IP en ningún lado.
+#   ★ Sólo adopta la IP si por ella se llega a ESTE proceso (se manda un eco a sí mismo): durante una mudanza, el
+#     server viejo NO empieza a mandar a sus jugadores al nuevo. Todo el porqué: `servidor/nombre_publico.py`.
+#   ★ Sin la variable no pasa NADA de esto: `R2_PUBLIC_IP`, o la IP por la que llegó el cliente, como siempre.
+#     Con ella, `R2_PUBLIC_IP` queda de red de seguridad (es lo que se anuncia mientras el DNS no contesta bien).
+#   ★ Costo: una consulta de DNS y una conexión a sí mismo cada 300 s (el TTL del registro), en un hilo aparte.
+#     En el login no se resuelve nada.
+NOMBRE_PUBLICO = (os.environ.get("R2_NOMBRE_PUBLICO") or "").strip()
+NOMBRE_PUBLICO_CADA_S = 300          # cada cuánto vuelve a mirar el DNS, una vez que ya adoptó una IP
+NOMBRE_PUBLICO_REINTENTO_S = 30      # y cada cuánto, mientras todavía no adoptó ninguna
+NOMBRE_PUBLICO_PRIVADAS = os.environ.get("R2_NOMBRE_PUBLICO_PRIVADAS") == "1"            # LAN y pruebas. En prod, no
+NOMBRE_PUBLICO_SIN_COMPROBAR = os.environ.get("R2_NOMBRE_PUBLICO_SIN_COMPROBAR") == "1"  # creerle al DNS sin el eco
+
 # ★★ 2026-08-06 — SESIONES (solo en el server publico; en local queda apagado).
 #   El cliente 2013 manda `[usn:u32][vcode:u64]` en el FF01, y los dos salen de SU LINEA DE COMANDOS
 #   (argv[1] y argv[2]). O sea que el launcher puede loguear por HTTPS, recibir el par y pasarselo:
@@ -3087,6 +3103,21 @@ COOP_DESTINO_GORILA = 252
 #   ⏳ LO ÚNICO QUE FALTA para poder elegir de verdad: **"obtenidos" no se puede contar todavía**
 #     (agarrar un ítem no genera aviso). Hasta que aparezca ese evento, los pares salen "N/N".
 FF10F_ESPERA = 6.0                     # segundos a esperar a los que no reportaron antes de resolver
+
+# ★★★★★ EL REPORTE TARDÍO DEL MINIJUEGO NO ARMA UNA RONDA FANTASMA — 12-nov-2026 (175).
+#   Cazado en PROD con una captura de anonimo03 (sala 10, 12-nov 00:02:41–00:03:01, Best-KevPlay/Josesh/…):
+#     00:02:41-43  cinco mandan su puntaje de la ronda 0; jugadorX no.
+#     00:02:47     vence FF10F_ESPERA: la ronda 0 se resuelve con su RELLENO 0 -> 1/6, se escapa (bien).
+#     00:02:47     ★ llega el 0 de jugadorX: era SU reporte de la ronda 0 (el timeout de SU cliente), pero ya
+#                  no había ronda abierta y se tomó como el PRIMER reporte de la ronda 1 -> arma el reloj.
+#     00:02:53     vence ese reloj: ronda 1 «fantasma» con todo relleno 0 -> «se escapó» y [06][00] a los 6
+#                  clientes, que NO tenían minijuego abierto -> map vacío -> `0*2 >= 0` = CAPTURA REGALADA en
+#                  pantalla (poses de victoria, la carrera termina) mientras el server contaba DERROTA
+#                  (medallón F, cofres en modo derrota, dibujados corridos).
+#   ⇒ Al que se le resolvió la ronda SIN su reporte, el primer FF10F que mande dentro de CHASE_TARDE_S es
+#     el de esa ronda vieja: se DESCARTA (no se difunde ni arma reloj). Las rondas de verdad están separadas
+#     por una canción entera, así que no hay forma de confundirlo con el de la siguiente.
+CHASE_TARDE_S = 15.0
 
 # ★★★★★ EL RELLENO DEL MINIJUEGO — 2026-09-08.
 #

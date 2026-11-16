@@ -9,6 +9,7 @@ import random
 import re
 import struct
 import threading
+import time
 from . import notas
 
 from .ajustes import (
@@ -66,6 +67,7 @@ from .ajustes import (
     DEFAULT_ROOM_MAP,
     DEFAULT_ROOM_SONG,
     FF10F_ESPERA,
+    CHASE_TARDE_S,
     FF139_SENTINEL,
     FF23_SLOT_AL_FRENTE,
     FF25_SENTINEL,
@@ -2583,6 +2585,7 @@ def h_30_ff24(st, cmd, data):
         _c.ready = False
         _c.chase_token = 0
         _c.chase_ronda = 0
+        _c.chase_tarde_hasta = 0           # (175) la marca del reporte tardío no cruza de una corrida a otra
         _c.chase_puntos = 0
         _c.chase_premios = None
         _c.chase_abiertas = set()
@@ -2936,6 +2939,16 @@ def h_38_ff10f(st, cmd, data):
     #      tal cual — o sea que el código estaba bien y la nota estaba mal.
     #   ⚠ Con UN solo jugador SÍ hay que mandarle el suyo: si no, el map queda vacío y
     #     `0>=0` le regala la victoria (ver la nota de arriba).
+    # ★★★★★ (175) EL REPORTE TARDÍO — ver `CHASE_TARDE_S` en `ajustes.py`. Si su ronda ya se resolvió SIN
+    #   él (relleno), este FF10F es el de ESA ronda: se descarta. Sin esto arma una ronda fantasma cuyo
+    #   [06][00] le regala la captura a todos los clientes mientras el server cuenta derrota.
+    _tarde = getattr(st, "chase_tarde_hasta", 0) or 0
+    if _tarde:
+        st.chase_tarde_hasta = 0
+        if time.time() < _tarde:
+            log("LOBBY", f"  · GORILA: el FF10F de usn={getattr(st, 'usn', '?')} ({_score}/100) llegó TARDE: su "
+                         f"ronda ya se resolvió con su relleno -> se DESCARTA (no arma una ronda fantasma)")
+            return
     st.chase_score = _score
     _rid10f = getattr(st, "room_id", None)
     _dest10f = [CONEXIONES.get(u) for u in mesa_de(_rid10f).values()] if _rid10f is not None else []
@@ -2996,6 +3009,8 @@ def h_38_ff10f(st, cmd, data):
         #   ⚠ Va ANTES del `[06][00]`, si no llega tarde: el `[06]` arma el deadline de
         #     resolución y lo que entre después ya no cuenta.
         _reportados_npc = []               # los puntajes inventados de los asientos de NPC
+        # (175) los que NO reportaron esta ronda: si su FF10F llega después, es de ESTA ronda (ver abajo)
+        _sin_reporte = [c for c in vivos if getattr(c, "chase_score", None) is None]
         if CHASE_RELLENO:
             # (1) QUIÉNES hay que completar. Dos familias, y la segunda es fácil de olvidar:
             #   (a) conexiones de verdad que no reportaron;
@@ -3118,6 +3133,8 @@ def h_38_ff10f(st, cmd, data):
             else:
                 log("LOBBY", "  ⚠ GORILA: nadie mandó avance en esta ronda -> no hay activador, "
                              "el orden lo decide el esfuerzo (ver CHASE_PRIMERO_EL_QUE_ACTIVA)")
+        for c in _sin_reporte:
+            c.chase_tarde_hasta = time.time() + CHASE_TARDE_S   # (175) su reporte tardío se descarta
         for c in vivos:
             c.chase_token = token + 1              # cierra la ronda: los timers viejos mueren
             c.chase_gano = _gano

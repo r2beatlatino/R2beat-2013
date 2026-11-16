@@ -20,6 +20,11 @@ services:
       R2_PUERTOS: ${R2_PUERTOS:-0}
       R2_PUBLIC_IP: ${R2_PUBLIC_IP:-}
       R2_IP: ${R2_IP:-}
+      # Cuenta Eñeños (opcional): con R2_LOGIN=pase sólo se entra con un pase firmado (ver ejemplo.env)
+      R2_LOGIN: ${R2_LOGIN:-}
+      R2_CUENTAS_CLAVE_PUBLICA: ${R2_CUENTAS_CLAVE_PUBLICA:-}
+      R2_CUENTAS_URL: ${R2_CUENTAS_URL:-}
+      R2_CUENTAS_FICHA_INTERNA: ${R2_CUENTAS_FICHA_INTERNA:-}
     volumes:
       # las cuentas de los jugadores (datos.db), el log, gm.txt/admin.txt: AFUERA del contenedor, para
       #   que sobrevivan a cada actualización y se puedan llevar a otro VPS con la carpeta

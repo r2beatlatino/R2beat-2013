@@ -1752,10 +1752,16 @@ def armar_ocupantes(st):
     # ★ NPC/FANTASMA (2026-07-11): identity=slot (≠ host) -> el me-detect falla -> avatar REMOTO.
     #   Les damos la exp del host para que se vean como pares (ya reusan su char y su ropa).
     #   ★★ 2026-08-05: SALTEAR los slots donde hay un JUGADOR DE VERDAD — si no, el NPC lo pisa.
+    # ⛔ (181) 13-nov, anonimo03: «el juego se congeló al invocar 1 npc» con el traje Rice Shower (10120091) puesto.
+    #   El NPC copiaba `char["parts"]` CRUDO: el cuerpo entero del traje + las 9 prendas de abajo — una combinación que
+    #   un jugador real nunca manda (`gacha.apariencia` tapa la ropa mientras hay un personaje). Ahora pasa por
+    #   `parts_visibles`, lo mismo que `_ocupante_de` le manda a los demás de un jugador de verdad. Ver la memoria
+    #   «el NPC manda lo que un jugador no» (25-sep: el mismo error en la sala de charla tumbó 6 clientes).
+    _parts_npc = parts_visibles(char)
     for i, sl in enumerate(slots_npc(st)):
         if sl in mesa:
             continue
-        ocupantes.append({"char_id": _cid, "parts": char.get("parts", []), "nick": f"NPC{i+1}",
+        ocupantes.append({"char_id": _cid, "parts": list(_parts_npc), "nick": f"NPC{i+1}",
                           # ★ los NPC reusan el char del anfitrión, así que también les toca
                           #   `gacha.sexo` y no el último dígito (2026-09-09). Sexto sitio.
                           "identity": sl, "slot": sl, "exp": _exp, "gender": sexo(_cid),

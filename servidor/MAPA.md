@@ -28,6 +28,7 @@ Buscá tu tarea en la primera tabla y abrí sólo lo que dice.
 | la API de la WEB nueva (rankings, círculos, estado) | `api_web.py` + `documentacion/WEB_Y_PANEL_PLAN.md` | `http://127.0.0.1:48190/api/…` (`R2_API_PUERTO`; 0 = apagada) |
 | el PANEL DE ADMINISTRACIÓN (salas, chat, conectados/IP, ban, EXP, Rcoin, apodo, clave, inventario) | `panel_admin.py` + `documentacion/PANEL_ADMIN_TRASPASO.md` | `/api/admin/…`; GM = `gm.txt`, ADMIN = `admin.txt`; su base, `panel.db` |
 | ★ el PORTERO: las cuentas de R2Beat para OTROS juegos (EDA) — login, aprobados, pase firmado Ed25519, manifest sólo a aprobados | `portero.py` + `firma_ed25519.py` + `documentacion/PORTERO_CUENTAS.md` | PROCESO APARTE: `python -m servidor.portero` en `127.0.0.1:48195`; ⛔ `datos.db` sólo lectura; su base `portero.db` |
+| ★ entrar con el PASE de Cuenta Eñeños (`R2_LOGIN=pase`): el juego, la API y parches comprueban la firma solos, sin contraseña | `pase.py` + `documentacion/TOPOLOGIA_CONTENEDORES.md` (parte 2) | `R2_LOGIN`, `R2_CUENTAS_CLAVE_PUBLICA` o `R2_CUENTAS_URL`; sin la variable, todo como siempre |
 | el RESPALDO DIARIO de la base | `respaldo.py` + `documentacion/PENDIENTE_RESPALDO_Y_HISTORIAL.md` | `R2_RESPALDOS`, `R2_RESPALDO_HORA`, `R2_RESPALDO_DIAS`; `R2_RESPALDO=0` lo apaga |
 | la PRUEBA DE CARGA de la sala de conversación (NPCs de la base local) | `npc_charla.py` | `.carga charla 30` en el chat (desarrollo, ⛔ sólo local) |
 | nivel, exp, licencia, a qué canal entra | `progresion.py` + `documentacion/canales_matcher_findings.md` | |
@@ -54,6 +55,7 @@ Buscá tu tarea en la primera tabla y abrí sólo lo que dice.
 | guardar/leer personajes | `basedatos.py` | `chars_db.json` |
 | el cifrado, los sobres `FF55`/`FF4E` | `cifrado.py` | |
 | prender el server, puertos, listeners | `lobby.py` (`main`) y `../startserver.py` | |
+| ★ la IP que se le ANUNCIA al cliente para los canales (`R2_PUBLIC_IP`, o sacada del DNS con `R2_NOMBRE_PUBLICO`) | `nombre_publico.py` + `lobby.handle_login` (rama `FF02`) | `documentacion/TOPOLOGIA_CONTENEDORES.md` §11 y §17 · en ese campo entran 15 letras |
 | cambiar un número o una bandera | `ajustes.py` | ningún otro archivo tiene constantes |
 
 ## El orden de la cadena
@@ -65,6 +67,7 @@ más abajo, la función está en el lugar equivocado.
 ajustes        los números y las banderas. No importa nada del server.
 registro       el log y el modo paso a paso
 cifrado        el framing FFxx y los sobres FF55 / FF4E
+nombre_publico ★ la IP pública sacada del DNS (`R2_NOMBRE_PUBLICO`) para anunciarla en los canales; su hilo y el eco `FFEC`
 basedatos      chars_db.json: personajes, inventario, equipo
 catalogo       tienda y cosméticos: shop_lt, wing.txt, face.txt
 progresion     exp, nivel, licencia, banda de canal
@@ -79,6 +82,8 @@ panel_admin    el PANEL: todo /api/admin/*; escucha el chat público y la IP (`o
 launcher_api   ★ /api/launcher/* (dentro de api_web, con `Authorization: Bearer`): la cuenta, sus personajes, la ruleta
 portero        ★ PROCESO APARTE (no lo importa lobby): cuentas de R2Beat → pases firmados para EDA; datos.db sólo lectura
 firma_ed25519  la firma Ed25519 (RFC 8032) en Python puro, para el portero
+pase           ★ comprueba el pase de Cuenta Eñeños (firma, `aud`, vencimiento, un solo uso); lo usan lobby, api_web y cuenta_personajes con `R2_LOGIN=pase`
+enlazar_cuentas  ★ PASO ÚNICO del día del reemplazo (`python -m servidor.enlazar_cuentas`): le pide a Cuenta Eñeños el Eñeños ID de cada cuenta y lo anota en `users.enenos_id`
 ruleta         la RULETA del launcher: monedas gorila → Rcoin o ropa (ruleta_ropa.json); `ruleta_giros` en datos.db
 launcher_contenido  lo que muestra el launcher (noticias, torneo, supporters, la tabla de la ruleta): tabla `launcher_contenido`
 respaldo       el RESPALDO DIARIO de datos.db + panel.db (copia de SQLite, se abre y se cuenta, gzip, rota); lo arranca api_web

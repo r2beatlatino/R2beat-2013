@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS users (
     uid INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     pass_hash TEXT NOT NULL,
-    reg_time TEXT, last_ip TEXT, last_time TEXT);
+    reg_time TEXT, last_ip TEXT, last_time TEXT,
+    enenos_id INTEGER);
 
 CREATE TABLE IF NOT EXISTS chars (
     uid INTEGER PRIMARY KEY,

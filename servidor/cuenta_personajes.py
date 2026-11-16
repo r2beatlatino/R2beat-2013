@@ -41,7 +41,7 @@ CÓMO
 """
 import struct
 
-from . import almacen
+from . import almacen, pase
 from .basedatos import cuenta_verificar, db_get_char, db_uids_por_nick, sesion_abrir, sesion_valida
 from .cifrado import frame
 from .misiones import db_create_char
@@ -74,6 +74,49 @@ def leer_cuenta(p):
         return u, h, p[2 + ul + hl:]
     except (IndexError, UnicodeDecodeError):
         return None, None, b""
+
+
+# ═══ EL PASE EN FFF1 / FFF2 / FFF3 / FFF5 (`R2_LOGIN=pase`) ═══════════════════════════════════════════
+#   En vez de `[ulen:u8][usuario][64:u8][sha256_hex]`, el prefijo `[cuenta]` lleva el pase JWT (`aud="r2beat2013"`):
+#       `[0x50 ('P'):u8][plen:u16 (<H)][pase_ascii:plen]` + resto de la orden (o el encabezado del FF01 con pase).
+def cuenta_pase(pase_txt):
+    """Prefijo `[cuenta]` con pase para FFF1 / FFF2 / FFF3 / FFF5: `[0x50:u8][plen:u16 (<H)][pase_ascii]`."""
+    b = pase_txt if isinstance(pase_txt, bytes) else str(pase_txt or "").encode("ascii")
+    return b"\x50" + struct.pack("<H", len(b)) + b
+
+
+def leer_pase(p):
+    """Extrae `(pase_txt, resto)` del principio de `p` si trae un pase, o `(None, b"")` si no."""
+    if not p:
+        return None, b""
+    try:
+        if len(p) >= 7 and p[:4] == b"\x00\x00\x00\x00" and p[4] == 0x50:
+            n = struct.unpack_from("<H", p, 5)[0]
+            if 0 < n <= len(p) - 7:
+                return p[7:7 + n].decode("ascii"), p[7 + n:]
+        if len(p) >= 3 and p[0] == 0x50 and p[1:4] != b"eyJ":
+            n = struct.unpack_from("<H", p, 1)[0]
+            if 0 < n <= len(p) - 3:
+                return p[3:3 + n].decode("ascii"), p[3 + n:]
+        if len(p) >= 5 and p[2:5] == b"eyJ":
+            n = struct.unpack_from("<H", p, 0)[0]
+            if 0 < n <= len(p) - 2:
+                r = p[2 + n:]
+                return p[2:2 + n].decode("ascii"), (r[1:] if r[:1] == b"\x00" else r)
+        if len(p) >= 4 and p[1:4] == b"eyJ":
+            n = p[0]
+            if 0 < n <= len(p) - 1:
+                r = p[1 + n:]
+                return p[1:1 + n].decode("ascii"), (r[1:] if r[:1] == b"\x00" else r)
+        if p.startswith(b"eyJ"):
+            i = 0
+            while i < len(p) and (0x30 <= p[i] <= 0x39 or 0x41 <= p[i] <= 0x5A or 0x61 <= p[i] <= 0x7A or p[i] in (0x2D, 0x2E, 0x5F)):
+                i += 1
+            r = p[i:]
+            return p[:i].decode("ascii"), (r[1:] if r[:1] == b"\x00" else r)
+    except (IndexError, UnicodeDecodeError, struct.error):
+        return None, b""
+    return None, b""
 
 
 def ranuras_de(usuario):
@@ -159,9 +202,26 @@ def borrar(usuario, ranura):
     return 0, "personaje borrado"
 
 
-def responder(cmd, payload, cmd_respuesta=None):
+def _armar_lista(usuario, cmd_respuesta=None):
+    filas = lista(usuario)
+    p = bytearray([0, len(filas)])
+    for r, usn, sexo, apodo, nivel, prendas in filas:
+        a = apodo.encode("cp1252", "replace")[:32]
+        p += bytes([r]) + struct.pack("<I", usn) + bytes([sexo, len(a)]) + a + bytes([min(nivel, 255), len(prendas[:32])])
+        p += b"".join(struct.pack("<I", x) for x in prendas[:32])
+        if cmd_respuesta == 0xF7:
+            # ★ 25-oct: el selector del JUEGO dibuja el muñeco de cada tarjeta (selector.c) y necesita el CUERPO:
+            #   los del gacha (130029…) no son el 130900/130901 del sexo. Va al FINAL de cada personaje, así el
+            #   FFF1 de la web (el mismo armado) no cambia.
+            p += struct.pack("<I", int((db_get_char(usn) or {}).get("char_id") or 0))
+    return frame(cmd_respuesta or 0xF1, bytes(p))
+
+
+def responder(cmd, payload, cmd_respuesta=None, cuenta_probada=None):
     """El paquete de respuesta (con su marco) a FFF1 / FFF2 / FFF3 / FFF4 / FFF5. (`cmd_respuesta`: con otro número
-    de orden, para que FFF7/FFF9 del selector del juego reusen la lista y el borrado.)"""
+    de orden, para que FFF7/FFF9 del selector del juego reusen la lista y el borrado.)
+    `cuenta_probada`: la cuenta YA está comprobada por quien llama (el FFF9 con pases, que le preguntó la contraseña
+    a Cuenta Eñeños): el `payload` no trae credenciales, es sólo lo que sigue."""
     if cmd == 0xF4:                    # las opciones de la creación: públicas (el catálogo), sin cuenta
         p = bytearray()
         for sexo in (1, 2):
@@ -169,23 +229,22 @@ def responder(cmd, payload, cmd_respuesta=None):
             for fila in opciones(sexo):
                 p += bytes([len(fila)]) + b"".join(struct.pack("<I", x) for x in fila)
         return frame(0xF4, bytes(p))
-    usuario, h, resto = leer_cuenta(payload)
-    cuenta_ok = usuario and cuenta_verificar(usuario, h) is not None
+    if cuenta_probada is not None:
+        usuario, resto, cuenta_ok = cuenta_probada, payload, True
+    elif pase.modo_pase():
+        pase_txt, resto = leer_pase(payload)
+        carga = pase.verificar_pase(pase_txt, "r2beat2013") if pase_txt else None
+        _u_pase, usuario = almacen.asegurar_cuenta_uid(carga["sub"]) if carga else (None, None)
+        cuenta_ok = bool(_u_pase and usuario)
+    elif leer_pase(payload)[0] is not None:
+        usuario, resto, cuenta_ok = None, b"", False
+    else:
+        usuario, h, resto = leer_cuenta(payload)
+        cuenta_ok = bool(usuario and cuenta_verificar(usuario, h) is not None)
     if cmd == 0xF1:
         if not cuenta_ok:
             return frame(cmd_respuesta or 0xF1, b"\x02\x00")
-        filas = lista(usuario)
-        p = bytearray([0, len(filas)])
-        for r, usn, sexo, apodo, nivel, prendas in filas:
-            a = apodo.encode("cp1252", "replace")[:32]
-            p += bytes([r]) + struct.pack("<I", usn) + bytes([sexo, len(a)]) + a + bytes([min(nivel, 255), len(prendas[:32])])
-            p += b"".join(struct.pack("<I", x) for x in prendas[:32])
-            if cmd_respuesta == 0xF7:
-                # ★ 25-oct: el selector del JUEGO dibuja el muñeco de cada tarjeta (selector.c) y necesita el CUERPO:
-                #   los del gacha (130029…) no son el 130900/130901 del sexo. Va al FINAL de cada personaje, así el
-                #   FFF1 de la web (el mismo armado) no cambia.
-                p += struct.pack("<I", int((db_get_char(usn) or {}).get("char_id") or 0))
-        return frame(cmd_respuesta or 0xF1, bytes(p))
+        return _armar_lista(usuario, cmd_respuesta)
     if cmd == 0xF2:
         if not cuenta_ok:
             st, usn, msg = 2, 0, "usuario o contraseña incorrectos"
@@ -295,7 +354,7 @@ def responder_sesion(cmd, payload):
         log("LOGIN", f"  ★★ SELECTOR: el juego de {cuenta!r} (usn={usn}) tiene selector -> su ficha sale vacía")
         return frame(0xF6, b"\x00")
     if cmd == 0xF7:                                          # LISTA
-        return responder(0xF1, _cuenta_de_confianza(cuenta), 0xF7) if usn else frame(0xF7, b"\x02\x00")
+        return _armar_lista(cuenta, 0xF7) if usn else frame(0xF7, b"\x02\x00")
     if cmd == 0xFA:                                          # VOLVER (cambiar de personaje)
         if not usn:
             return _sin_sesion(0xFA)
@@ -320,5 +379,21 @@ def responder_sesion(cmd, payload):
             return frame(0xF9, bytes([2, 0]))
         r, hl = resto[0], resto[1]
         h = resto[2:2 + hl].decode("ascii", "replace")
+        if pase.modo_pase():
+            # ★ 15-nov: con pases el juego no guarda contraseñas. La que tipeó el jugador la comprueba Cuenta Eñeños
+            #   (un pedido interno, con su freno); si no contesta, NO se borra: «no sé» no es «sí».
+            eid = (almacen.cuenta_estado(cuenta) or {}).get("enenos_id")
+            res = pase.comprobar_clave_interna(eid, h) if eid else {"estado": "rechazado"}
+            if res.get("estado") == "ok":
+                return responder(0xF5, bytes([r]), 0xF9, cuenta_probada=cuenta)
+            if res.get("estado") == "sin_respuesta":
+                msg = "no se pudo comprobar la contraseña: probá de nuevo en un rato"
+            elif res.get("codigo") == 429:
+                msg = "demasiados intentos: esperá unos minutos"
+            else:
+                msg = "contraseña incorrecta"
+            log("LOGIN", f"  ⛔ BORRAR desde el selector: {cuenta!r} casillero {r} -> {msg}")
+            m = msg.encode("utf-8")[:200]
+            return frame(0xF9, bytes([2, len(m)]) + m)
         return responder(0xF5, _cuenta_de_confianza(cuenta, h) + bytes([r]), 0xF9)
     return frame(cmd, b"\x02")
