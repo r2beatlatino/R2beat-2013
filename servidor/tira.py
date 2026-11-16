@@ -26,6 +26,7 @@ LO MEDIDO EN EL EXE (`documentacion/TIRA_DE_ANUNCIOS.md`)
   · `time_t` de 32 bits (VC 7.1): 2038 no existe. 2037-12-31 es el «para siempre».
   · el buffer de la tira es uno solo: el TOTAL (textos + separadores) se acota a `TIRA_TOTAL_MAX`.
 """
+import os
 import struct
 import time
 
@@ -88,6 +89,23 @@ def _anuncios():
     return db_tira_anuncios()
 
 
+# ★ 16-nov (dos servers por juego): un AVISO FIJO que no vive en la base, dado por el entorno. El server de PRUEBA lo
+#   usa para que se note dónde está uno («SERVIDOR DE PRUEBA…»). Va primero, para siempre, y el panel no lo ve ni lo
+#   puede borrar (no es una fila). Vacío = nada, como siempre.
+AVISO_ID = 0x7FFF0001
+
+
+def aviso_fijo():
+    return " ".join((os.environ.get("R2_AVISO_TIRA") or "").split())
+
+
+def _anuncios_para_la_tira():
+    """Lo que se le MANDA al cliente: el aviso fijo (si hay) + los anuncios de la base."""
+    aviso = aviso_fijo()
+    fijo = [{"id": AVISO_ID, "texto": aviso, "hasta": 0, "activo": 1}] if aviso else []
+    return fijo + list(_anuncios() or [])
+
+
 def enviar_tira(st, motivo="al entrar"):
     """La tira al que entra al lobby (o cambia de canal). Con la tabla vacía no se manda nada.
 
@@ -96,7 +114,7 @@ def enviar_tira(st, motivo="al entrar"):
     if not TIRA_ACTIVA or getattr(st, "tira_enviada", False):
         return
     try:
-        anuncios = _anuncios()
+        anuncios = _anuncios_para_la_tira()
         if not anuncios:
             return
         body = armar_ffbf(anuncios)
@@ -114,7 +132,7 @@ def difundir_tira():
     if not TIRA_ACTIVA:
         return 0
     from .salas import CONEXIONES
-    body = armar_ffbf(_anuncios())
+    body = armar_ffbf(_anuncios_para_la_tira())
     n = 0
     for c in list(CONEXIONES.values()):
         if getattr(c, "cerrado", False):
@@ -136,7 +154,7 @@ def _programar_vencimiento(anuncios=None):
     """Un temporizador para el PRÓXIMO vencimiento: ahí se vuelve a difundir la tira (sin el vencido)."""
     import threading
     try:
-        anuncios = _anuncios() if anuncios is None else anuncios
+        anuncios = _anuncios_para_la_tira() if anuncios is None else anuncios
     except Exception:                                                  # noqa: BLE001
         return
     ahora = time.time()
