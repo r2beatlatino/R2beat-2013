@@ -1786,6 +1786,12 @@ def main():
         log("MAIN", f"barrido de salas fantasma: cada {BARRIDO_MESAS_SEG}s")
     else:
         log("MAIN", "⚠ barrido de salas fantasma APAGADO (BARRIDO_MESAS_SEG=0)")
+    # ★ 16-nov: la PRESENCIA para los amigos del launcher (Cuenta Eñeños): sólo con R2_PRESENCIA_PUERTO. Ver `presencia.py`.
+    try:
+        from . import presencia as _presencia
+        _presencia.arrancar()
+    except Exception as _e_pr:                                       # noqa: BLE001 — sin presencia, el juego sigue
+        log("MAIN", f"⚠ presencia no arrancó: {_e_pr!r}")
     # ★ 15-oct: la MISIÓN DE HOY (el tiempo conectado y lo pendiente, cada pocos segundos). Ver `mision_hoy.py`.
     try:
         from . import mision_hoy

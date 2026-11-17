@@ -1007,6 +1007,9 @@ CONSOLA_GM_USNS = {int(_x) for _x in re.split(r"[,\s]+", _CONSOLA_GM_CFG) if _x.
 #   `.oscuro`: si el que escribe no es el anfitrión, contesta "solo el anfitrion" y no hace nada.
 #   ⚠ La perilla de GM que ANTES vivía en `.pd` (inventar milésimas para probar el cartel) sigue
 #     existiendo en `.milesimas` / `.decimales`, y ésa sí pide ser GM.
+# ★ 16-nov (en el servidor de prueba, cualquiera puede usar el .npc): comandos de DESARROLLO abiertos a
+#   TODOS, uno por uno (`R2_COMANDOS_TODOS=npc,npcs`). Más angosto que `R2_CONSOLA_GM=1`, que abre la consola entera.
+COMANDOS_TODOS = tuple(x for x in re.split(r"[,\s]+", (os.environ.get("R2_COMANDOS_TODOS") or "").strip().lower()) if x)
 CONSOLA_SIN_GM = ("oscuro", "abismo", "pd", "score", "marcador", "reset",
                   # ★ `.obstaculos` (08-oct): cada jugador elige los SUYOS (ver salas.ELECCION_JUGADOR)
                   "obstaculos", "obstaculo",

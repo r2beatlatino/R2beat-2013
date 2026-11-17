@@ -19,6 +19,7 @@ from .ajustes import (
     CONSOLA_GM_TODOS,
     CONSOLA_GM_USNS,
     CONSOLA_SIN_GM,
+    COMANDOS_TODOS,
     RATE_MAX,
     RATE_MIN,
     RATE_NOMBRES,
@@ -116,7 +117,7 @@ def puede_usar_consola(st, comando):
       comando de desarrollo no tiene que existir en producción, ni siquiera para un GM.
     """
     c = str(comando).lower()
-    if c in CONSOLA_SIN_GM:
+    if c in CONSOLA_SIN_GM or c in COMANDOS_TODOS:          # ★ 16-nov: COMANDOS_TODOS (R2_COMANDOS_TODOS)
         return True
     if c in COMANDOS_GM:
         return gm.es_gm(st) or (c in COMANDOS_STREAMER and es_streamer(st))
