@@ -33,6 +33,11 @@ import time
 from .esquema import ESQUEMA
 from .registro import log
 
+# Una licencia MÍNIMA para todos los personajes (servidores de práctica o de prueba): `R2_LICENCIA_MINIMA=7` da
+# Estrella|Luna|Sol. Se suma a la de la base al LEER el personaje: vale para los que ya existían y para los nuevos.
+# Sin la variable es 0 y no cambia nada.
+LICENCIA_MINIMA = int(os.environ.get("R2_LICENCIA_MINIMA", "0") or 0) & 7
+
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASE = os.environ.get("R2_BASE") or os.path.join(RAIZ, "datos.db")
 _lock = threading.Lock()
@@ -180,7 +185,7 @@ def filas_a_char(c, uid):
          "parts": [r["item_id"] for r in
                    c.execute("SELECT item_id FROM wear WHERE uid=? ORDER BY role_id", (uid,))],
          "exp": f["exp"], "rcoin": f["coin"], "mission": f["mission"],
-         "licencia": f["licencia"]}
+         "licencia": int(f["licencia"] or 0) | LICENCIA_MINIMA}
     for col in ("rpoint", "monedas_gorila", "leccion_max", "age"):
         if f[col]:
             p[col] = f[col]

@@ -1779,7 +1779,7 @@ FF49_RANURAS = 11          # el registro del cliente mide 0x30 = key(4) + 11 dwo
 CUENTA_NUEVA = {
     "exp":             16240,            # ★ el umbral exacto del NIVEL 5 (antes 1899989 = nivel 50)
     "rcoin":           65000,            # ★ para que pueda comprar y probar que el server descuenta
-    "licencia":        0,                # ★ 29-sep: sin licencia (era 3 = Estrella|Luna -> 'moon')
+    "licencia":        int(os.environ.get("R2_LICENCIA_MINIMA", "0") or 0) & 7,   # ★ 29-sep: sin licencia · R2_LICENCIA_MINIMA=7 = nace con SOL
     "mission":         0,
     "mision_nibbles":  [0, 0, 0],
     "misiones_hechas": [[], [], []],
