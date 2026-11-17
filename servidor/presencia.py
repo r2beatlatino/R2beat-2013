@@ -14,6 +14,7 @@ devuelve 404 a /api/interno/*). Lo de la SALA se lee de la sala (`SALAS_VIVAS`, 
 import hmac
 import json
 import os
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -61,22 +62,54 @@ def _personaje(usn, ahora):
     return nick
 
 
+_ARTISTAS = {}
+
+
+def artista_de(song):
+    """El artista del catálogo del cliente (`music_lt.txt`, el mismo que lee `notas.cargar_niveles`)."""
+    if not _ARTISTAS:
+        ruta = notas._buscar_music_lt()
+        try:
+            crudo = open(ruta, "rb").read() if ruta else b""
+        except OSError:
+            crudo = b""
+        try:
+            txt = crudo.decode("utf-8")
+        except UnicodeDecodeError:
+            txt = crudo.decode("cp949", "replace")
+        for bloque in re.findall(r"<Music(.*?)</Music>", txt, re.S):
+            i = re.search(r'Index="(\d+)"', bloque)
+            a = re.search(r'Artist="([^"]*)"', bloque)
+            if i and a:
+                _ARTISTAS[int(i.group(1))] = a.group(1).strip()
+        _ARTISTAS.setdefault(-1, "")                 # (no volver a leer si el catálogo no está)
+    return _ARTISTAS.get(int(song or 0), "")
+
+
 def _sala(rid):
     s = salas.SALAS_VIVAS.get(rid) if rid is not None else None
     if not s:
         return None
-    cancion = s.get("cancion")
+    # ★ la canción ELEGIDA vive en la selección de la sala (`seleccion_de`), no en `SALAS_VIVAS`; con «Aleatoria» (0),
+    #   la que de verdad salió al arrancar está en los que corren (`room_song`, que pone el arranque de la carrera)
     try:
-        dif = salas.dificultad_de(rid)
+        cancion = int(salas.seleccion_de(rid).get("cancion") or 0)
     except Exception:                                                  # noqa: BLE001
-        dif = None
+        cancion = 0
     try:
-        ocupantes = len(salas.mesa_de(rid))
+        mesa = list(salas.mesa_de(rid).values())
     except Exception:                                                  # noqa: BLE001
-        ocupantes = int(s.get("E") or 0)
+        mesa = []
+    jugando = bool(int(s.get("B") or 0) & 0x02)
+    if not cancion and jugando:
+        cancion = next((int(getattr(salas.CONEXIONES.get(u), "room_song", 0) or 0) for u in mesa
+                        if getattr(salas.CONEXIONES.get(u), "room_song", 0)), 0)
+    nivel = notas.nivel_de(cancion) if cancion else None
     return {"n": int(rid) & 0x7FF, "nombre": str(s.get("nombre") or "")[:40],
-            "cancion": notas.titulo_de(cancion) if cancion else "", "dificultad": dif,
-            "jugando": bool(int(s.get("B") or 0) & 0x02), "ocupantes": ocupantes,
+            "cancion": notas.titulo_de(cancion) if cancion else "", "artista": artista_de(cancion) if cancion else "",
+            # ★ las ESTRELLAS del picker = Level × 0,5 (memoria «las estrellas de más de 10»)
+            "estrellas": (nivel / 2) if nivel else None,
+            "jugando": jugando, "ocupantes": len(mesa) if mesa else int(s.get("E") or 0),
             "capacidad": max(0, int(s.get("G") or 6) - 6)}
 
 
