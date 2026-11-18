@@ -49,6 +49,7 @@
 
 #include <windows.h>
 #include <stdarg.h>
+#include "antitrampa_envoltura.h"   /* ★ 18-nov: ANTES que todo módulo: lo que escribimos en el exe queda anotado */
 
 /* ── el layout de D3DPRESENT_PARAMETERS, a mano ───────────────────────────
  * Se escribe aca en vez de incluir <d3d9.h> para no arrastrar el SDK entero.
@@ -2580,6 +2581,7 @@ static int escribir_bytes(DWORD va, const BYTE *espera, const BYTE *nuevo, int n
 #include "invitar.c"
 /* ★ La caja negra (12-oct-2026): anota desde dónde se cierra el juego por un índice fuera de rango. Ver cajanegra.c. */
 #include "chart_grande.c"         /* ★ 06-nov: (161) el chart del FF57 sin el techo de 4096 de la pila (CHART_TECHO_4096.md §7) — ANTES de cajanegra.c, que lo avisa */
+#include "antitrampa.c"           /* ★ 18-nov: el exe tocado, módulos de trampas y memoria ajena, al server — ANTES de cajanegra.c */
 #include "cajanegra.c"
 /* ★ El modo transmisión del espectador (12-oct-2026): ver transmision.c y documentacion/MODO_ESPECTADOR.md §10. */
 #include "transmision.c"
@@ -2778,6 +2780,8 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD razon, LPVOID reservado)
      *   ⚠ Y acá ya se puede: cuando el cargador de Windows llama a este `DllMain`, las
      *     importaciones del exe **ya están resueltas** (por eso nos cargó a nosotros).
      *   ⚠ Si por lo que fuera fallara, `Direct3DCreate9` lo reintenta. */
+    /* ★ 18-nov: el antitrampa copia el exe ANTES del primer parche (el de abajo es el primero). [antitrampa] activo=0 */
+    antitrampa_iniciar();
     g_cambiar_real = (CAMBIARMODO)parchear_iat("USER32.dll",
                                                "ChangeDisplaySettingsA",
                                                (void *)mi_cambiar_modo);

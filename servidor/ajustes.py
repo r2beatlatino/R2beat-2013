@@ -5418,3 +5418,53 @@ DOCE_CUATRO = True
 #   llegue primero sin tomar en cuenta el esfuerzo de los demás». Antes ganaba el equipo del 1.º. Sólo en la sala de
 #   12 y en equipo (no relevo, no jefe: el jefe tiene su regla). En 0 vuelve a «gana el equipo del 1.º».
 DOCE_GANA_CON = 3
+
+# ── ★ ANTITRAMPA DEL CARTEL (`antitrampa.py`) ─────────────────────────────────────────────────────────
+#   Lo que el server puede comprobar solo, sin creerle al cliente: el combo contra el chart que mandamos,
+#   los porcentajes y el reloj del juego (`frame`, 60 por segundo) contra el reloj del server desde el GO.
+#   Qué se hace con cada regla:
+#     "retener"   -> log + archivo + aviso a los GM conectados + NO se paga ni se anota la carrera
+#     "avisar"    -> log + archivo + aviso a los GM conectados
+#     "registrar" -> log + archivo
+#     "apagado"   -> nada
+ANTITRAMPA = True
+ANTITRAMPA_REGLAS = {
+    "combo_imposible":      "retener",    # combo > total de notas del chart servido
+    "porcentaje_imposible": "retener",    # pd o star > 100 en el paquete crudo
+    # ⏳ "avisar" hasta medirlo en prod: no está comprobado que el frame arranque en el GO y no en la
+    #   carga. Si las marcas de `antitrampa.jsonl` sólo caen en tramposos, pasarlo a "retener".
+    "reloj_rapido":         "avisar",     # el juego contó más tiempo del que pasó desde el GO
+    "reloj_lento":          "avisar",     # el juego contó mucho menos (velocidad de práctica en línea)
+    "animaciones_tocadas":  "avisar",     # FF3D(0) repetido: la comprobación de las 112 animaciones falló
+}
+#   Reloj rápido: se marca si frame/60 > transcurrido × (1 + TOLERANCIA) + MARGEN_S. El transcurrido
+#   se mide desde que el server manda el GO, que ya llega tarde al cliente, así que sólo juega a favor.
+ANTITRAMPA_RELOJ_TOLERANCIA = 0.05
+ANTITRAMPA_RELOJ_MARGEN_S = 3.0
+#   Reloj lento: frame/60 < transcurrido × FACTOR − MARGEN_S. Sólo carreras sueltas (no relevo ni
+#   cooperativo, donde el frame no cubre la carrera entera). El margen absorbe el FF27 (4 s) y la red.
+ANTITRAMPA_LENTO_FACTOR = 0.85
+ANTITRAMPA_LENTO_MARGEN_S = 8.0
+#   Cuántos FF3D(0) en una sesión hacen falta para marcar. Un cambio de canal manda uno solo.
+ANTITRAMPA_FF3D0_MIN = 3
+#   Dónde se anotan las marcas (una línea JSON por marca). En `datos/`, que no se sube.
+ANTITRAMPA_ARCHIVO = os.environ.get("R2_ANTITRAMPA") or os.path.join(
+    os.path.dirname(_DIR_SERVIDOR), "datos", "antitrampa.jsonl")
+
+# ── ★ ANTITRAMPA DEL CLIENTE (`herramientas/dll_d3d9/fuente/antitrampa.c`) ──────────────────────────────
+#   La dll manda por FF59 renglones «R2AT …»: un «hola» al llegar al lobby (con el md5 del R2Beat.exe del disco y si
+#   el exe ya venía tocado al cargarse) y uno por hallazgo. ⚠ Es lo que el cliente DICE: una dll recompilada puede
+#   callar. Por eso casi todo sólo avisa; lo que no se puede falsear lo mira `ANTITRAMPA_REGLAS` de arriba.
+#   "retener" acá = se retiene el premio de TODAS las carreras de esa cuenta hasta que vuelva a abrir el juego.
+ANTITRAMPA_REGLAS.update({
+    "modulo_prohibido":  "retener",       # ToolBit, R2Mods, Cheat Engine… cargado en el juego
+    "codigo_modificado": "avisar",        # una página del exe cambió sin pasar por nuestra dll
+    "codigo_previo":     "avisar",        # el exe ya estaba tocado cuando se cargó nuestra dll
+    "exe_desconocido":   "registrar",     # el md5 del R2Beat.exe no es ninguno de ANTITRAMPA_EXE_MD5
+    "memoria_ajena":     "registrar",     # memoria ejecutable que no es nuestra (superposiciones dan falsos)
+    "depurador":         "registrar",
+    "sin_antitrampa":    "registrar",     # terminó una carrera sin haber mandado nunca el «hola» (dll vieja o apagada)
+})
+#   Los R2Beat.exe aceptados: el que deja `herramientas/receta_exe.py` (MD5_ESPERADO). Al cambiar la receta, sumá el
+#   nuevo acá y dejá el anterior mientras haya jugadores con él.
+ANTITRAMPA_EXE_MD5 = {"7b8626647231e715d3f2fe33eebe2c46"}

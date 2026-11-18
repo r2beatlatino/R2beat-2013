@@ -36,6 +36,7 @@ Buscá tu tarea en la primera tabla y abrí sólo lo que dice.
 | crear/entrar/listar salas, el lobby | `lobby_salas.py` + `salas.py` | `salas.py` es el estado vivo |
 | ⚔️ la CARRERA EN GRUPO / el 6vs6 (`.grupo`, `.grande`): la sala de 12 que arma el server | `grupo.py` + `salas.py` (`GRANDE_SALA`) + `documentacion/MODO_6VS6.md` | la dll: `grande.c` |
 | la carrera, el chase, el cartel de resultado | `lobby_carrera.py` + `documentacion/HALLAZGOS_COOP.md` | |
+| 🚩 el ANTITRAMPA: combo imposible, porcentajes, reloj del juego contra el del server, FF3D(0) repetido, y lo que informa la dll (`FF59` «R2AT …»: exe tocado, módulos de trampas) | `antitrampa.py` · la dll: `herramientas/dll_d3d9/fuente/antitrampa.c` | `ANTITRAMPA_*` en `ajustes.py` · marcas en `datos/antitrampa.jsonl` · `pruebas/probar_antitrampa.py` |
 | ⛔ LOCAL: los NPC que JUEGAN la carrera (su avance `FF4E 0x05` inventado, sus filas en el cartel y, en la carrera ítem, sus cajas e ítems `FF4E 0x01`) | `npc_carrera.py` | MODO_6VS6.md §16 |
 | el cartel de resultado de la carrera de 12: la cola «C2» pegada al `FF28` (el contrato con `cartel12.c`) | `cartel12.py` | MODO_6VS6.md §17 |
 | la tabla del sorteo de la caja «?» (la del CBT, R-coin apagado; GENERADA por `items_sorteo.py --datos`), con la que sortean los NPC que juegan | `items_tabla.py` | ITEMS_SORTEO.md |
@@ -72,6 +73,7 @@ basedatos      chars_db.json: personajes, inventario, equipo
 catalogo       tienda y cosméticos: shop_lt, wing.txt, face.txt
 progresion     exp, nivel, licencia, banda de canal
 notas          los charts del FF57                        ← autónomo, no depende del lobby
+antitrampa     lo que el server comprueba del FF28 sin creerle al cliente (usa notas; gm y salas sólo para avisar)
 misiones       las 19 misiones, premios y grados
 medallas       el récord (ganadas, perdidas, 97%, allcombo) y las 24 medallas — se cuenta al cobrar
 circulos       el círculo (clan): crear/unirse/echar por `.circulo` (la web del original), el GuildInfo (FF40 0x21)
