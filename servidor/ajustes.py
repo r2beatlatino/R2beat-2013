@@ -5468,3 +5468,38 @@ ANTITRAMPA_REGLAS.update({
 #   Los R2Beat.exe aceptados: el que deja `herramientas/receta_exe.py` (MD5_ESPERADO). Al cambiar la receta, sumá el
 #   nuevo acá y dejá el anterior mientras haya jugadores con él.
 ANTITRAMPA_EXE_MD5 = {"7b8626647231e715d3f2fe33eebe2c46"}
+
+# ── ★ ANTITRAMPA DEL FARMEO (`antitrampa.py`, «señales de farmeo») ─────────────────────────────────────
+#   El farmeo (juego automático, auto listo/inicio, misma canción, campanas solas, fallar a un combo fijo…) se ve
+#   en el COMPORTAMIENTO, haga lo que haga el programa por dentro. Cada señal sola sólo avisa: una persona puede
+#   repetir canción o no hablar. Dos señales distintas en la misma sesión = «farmeo».
+#   "expulsar" = mensaje al jugador, anuncio público (si ANTITRAMPA_ANUNCIO_PUBLICO), se cierra la conexión, no cobra
+#   esa carrera y no puede volver a entrar hasta que pasen ANTITRAMPA_BLOQUEO_S.
+ANTITRAMPA_REGLAS.update({
+    "listo_automatico":      "avisar",    # «listo»/«iniciar» siempre al mismo instante tras la carrera
+    "carreras_sin_hablar":   "avisar",    # muchas carreras seguidas sin una sola línea de chat
+    "misma_cancion":         "avisar",    # la misma canción muchas veces seguidas
+    "campanas_automaticas":  "avisar",    # tocó campana en cada ronda, muchas rondas seguidas
+    "combo_repetido":        "avisar",    # el mismo combo en canciones distintas (fallar al llegar a N)
+    "precision_constante":   "avisar",    # la misma precisión en canciones de niveles muy distintos
+    "expulsa_espectadores":  "registrar", # el anfitrión echa espectadores en serie
+    "farmeo":                "expulsar",  # dos señales distintas o más en la misma sesión
+    "modulo_prohibido":      "expulsar",  # ToolBit, R2Mods, Cheat Engine…: son herramientas de farmeo
+})
+ANTITRAMPA_FARMEO_SENALES = 2
+ANTITRAMPA_BLOQUEO_S = 600
+ANTITRAMPA_ANUNCIO_PUBLICO = True        # False = el anuncio de la expulsión va sólo a los GM
+ANTITRAMPA_ANUNCIO = "{nick} ha sido detectado por usar trampas en el cliente."
+#   Los umbrales de cada señal.
+ANTITRAMPA_LISTO_MUESTRAS = 8            # reacciones medidas (de la llegada al «listo»/«iniciar»)
+ANTITRAMPA_LISTO_DESVIO_S = 0.25         # una persona varía más que esto entre carrera y carrera
+ANTITRAMPA_SIN_HABLAR = 40               # carreras seguidas sin chat
+ANTITRAMPA_MISMA_CANCION = 15            # carreras seguidas con la misma canción
+ANTITRAMPA_CAMPANAS_SEGUIDAS = 6         # rondas seguidas con campana
+ANTITRAMPA_COMBO_VECES = 4               # el mismo combo (≥ ANTITRAMPA_COMBO_MINIMO) en ≥ 3 canciones distintas
+ANTITRAMPA_COMBO_MINIMO = 50
+ANTITRAMPA_PRECISION_CARRERAS = 10       # carreras miradas para la precisión constante
+ANTITRAMPA_PRECISION_NIVELES = 6         # entre la canción más fácil y la más difícil, al menos estos niveles
+ANTITRAMPA_PRECISION_RANGO = 1           # y la precisión no se movió más que esto (en puntos)
+ANTITRAMPA_EXPULSIONES = 5               # espectadores echados…
+ANTITRAMPA_EXPULSIONES_S = 600           # …en este tiempo

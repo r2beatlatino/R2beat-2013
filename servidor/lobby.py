@@ -1009,6 +1009,11 @@ def handle_login(conn, addr):
         conn.close()
 def handle_inner(st, cmd, data):
     """Despacha un comando INTERNO (ya descifrado del FF55). Responde lo que el loading espera."""
+    # ★ 18-nov · ANTITRAMPA: la cuenta expulsada no juega hasta que pase su bloqueo (también tras re-loguear).
+    if antitrampa.esta_bloqueado(st):
+        if not getattr(st, "cerrado", False):
+            antitrampa.cerrar_conexion(st, "sigue bloqueada por el antitrampa")
+        return
     # ★★★★ 2026-08-05 — EL SEGUNDO FF4B QUE ACOMODA LOS SLOTS DE EQUIPO.
     #   Síntoma: al CREAR una sala en equipo el título salía bien pero los asientos quedaban
     #   dibujados como SOLO; cambiando a solo y volviendo a equipo se acomodaban.

@@ -1953,6 +1953,9 @@ def h_22_ff17(st, cmd, data):
     #   OTROS** de la sala, que son los que tienen que ver el cartel "LISTO".
     ready = (data[0] & 1) if data else 1
     st.ready = bool(ready)
+    if ready:
+        from . import antitrampa              # ★ 18-nov: cuánto tardó en ponerse listo (auto listo = siempre igual)
+        antitrampa.al_listo(st)
     _mi_slot = getattr(st, "room_slot", None)
     if _mi_slot is None:
         _mi_slot = HOST_SLOT
@@ -2678,6 +2681,8 @@ def h_ff20_expulsar(st, cmd, data):
         if _ce is None:
             log("LOBBY", f"  ⚠ FF20: no hay espectador en el slot {_slot} de la sala {_rid}")
             return
+        from . import antitrampa              # ★ 18-nov: echar espectadores en serie (el «Expulsar espectadores» del farmeo)
+        antitrampa.al_expulsar_espectador(st)
         _ce.send_ff55(0x20, bytes([_slot]), name=f"FF20 ESPECTADOR EXPULSADO (slot {_slot})")
         _ce.slot_espectador = None
         _ce.room_id = None

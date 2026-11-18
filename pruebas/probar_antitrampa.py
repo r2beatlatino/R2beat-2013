@@ -150,7 +150,126 @@ def probar_cliente():
     ok(antitrampa.juzgar_cartel(c, 240, 13, 90, 50, 77) is True, "…y retiene la carrera siguiente aunque esté limpia")
     ok(antitrampa.juzgar_cartel(Conn(), 240, 13, 90, 50, 77) is False, "revés: a otra cuenta no la toca")
     antitrampa.al_ff59(c, f"USN:5151\nR2AT v=1 exe={EXE_BUENO} previo=0")
-    ok(antitrampa.juzgar_cartel(c, 300, 14, 90, 50, 77) is False, "un «hola» nuevo (juego reabierto) la libera")
+    ok(antitrampa.juzgar_cartel(c, 300, 14, 90, 50, 77) is True, "reabrir el juego no salta el bloqueo de la expulsión")
+    antitrampa._BLOQUEADOS[5151] = 0
+    ok(antitrampa.juzgar_cartel(c, 360, 15, 90, 50, 77) is False, "pasado el bloqueo, y con el juego limpio, cobra")
+
+
+class Socket:
+    def __init__(self):
+        self.cerrado = False
+
+    def shutdown(self, como):
+        self.cerrado = True
+
+
+def jugador(usn):
+    c = Conn()
+    c.usn = usn
+    c.conn = Socket()
+    antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+    return c
+
+
+def correr_carreras(c, n, cancion=lambda i: 77 + i, combo=lambda i: 300 + i, pd=lambda i: 90,
+                    reaccion=lambda i: 3.0 + (i * 7919 % 13), antes=lambda i: None, t0=10_000.0):
+    """n carreras con su «listo» antes de cada una (salvo la primera). Devuelve lo que dijo juzgar_cartel."""
+    t, retenidas = t0, []
+    for i in range(n):
+        antes(i)
+        if i:
+            t += reaccion(i)
+            antitrampa.al_listo(c, ahora=t)
+        t += 120
+        retenidas.append(antitrampa.juzgar_cartel(c, 7000 + i, combo(i), pd(i), 50, cancion(i), ahora=t))
+    return retenidas
+
+
+def reglas_de(usn):
+    return [m["regla"] for m in marcas_guardadas() if m["usn"] == usn]
+
+
+def probar_farmeo():
+    print("señales de farmeo:")
+    avisos, cerrados = [], []
+    antitrampa._avisar_gms = avisos.append
+    notas.combo_total_de = lambda cancion: 2000
+    niveles = {}
+    notas.nivel_de = lambda cancion, por_defecto=None: niveles.get(cancion, por_defecto)
+
+    c = jugador(6001)
+    correr_carreras(c, 12, reaccion=lambda i: 2.0 + (0.05 if i % 2 else -0.05))
+    ok("listo_automatico" in reglas_de(6001), "«listo» siempre a los 2,0 s ± 0,05 = listo automático")
+    c = jugador(6002)
+    correr_carreras(c, 12)
+    ok("listo_automatico" not in reglas_de(6002), "revés: una persona tarda distinto cada vez")
+
+    c = jugador(6003)
+    correr_carreras(c, antitrampa.ANTITRAMPA_SIN_HABLAR)
+    ok("carreras_sin_hablar" in reglas_de(6003), f"{antitrampa.ANTITRAMPA_SIN_HABLAR} carreras sin chat")
+    c = jugador(6004)
+    correr_carreras(c, antitrampa.ANTITRAMPA_SIN_HABLAR, antes=lambda i: i % 10 == 5 and antitrampa.al_hablar(c))
+    ok("carreras_sin_hablar" not in reglas_de(6004), "revés: escribe en el chat de vez en cuando")
+
+    c = jugador(6005)
+    correr_carreras(c, antitrampa.ANTITRAMPA_MISMA_CANCION, cancion=lambda i: 500)
+    ok("misma_cancion" in reglas_de(6005), "la misma canción muchas veces seguidas")
+
+    c = jugador(6006)
+    correr_carreras(c, 8, antes=lambda i: antitrampa.al_campana(c))
+    ok("campanas_automaticas" in reglas_de(6006), "campana en cada ronda")
+    c = jugador(6007)
+    correr_carreras(c, 8, antes=lambda i: i % 3 == 0 and antitrampa.al_campana(c))
+    ok("campanas_automaticas" not in reglas_de(6007), "revés: campana de vez en cuando")
+
+    c = jugador(6008)
+    correr_carreras(c, 5, combo=lambda i: 450)
+    ok("combo_repetido" in reglas_de(6008), "combo 450 exacto en canciones distintas (fallar al llegar a N)")
+    c = jugador(6009)
+    correr_carreras(c, 5, combo=lambda i: 450, cancion=lambda i: 900)
+    ok("combo_repetido" not in reglas_de(6009), "revés: el mismo combo repitiendo LA MISMA canción es normal")
+
+    niveles.update({1000 + i: 2 + i for i in range(12)})
+    c = jugador(6010)
+    correr_carreras(c, 10, cancion=lambda i: 1000 + i, pd=lambda i: 97)
+    ok("precision_constante" in reglas_de(6010), "97 % igual del nivel 2 al 11 = automático calibrado")
+    c = jugador(6011)
+    correr_carreras(c, 10, cancion=lambda i: 1000 + i, pd=lambda i: 99 - 2 * i)
+    ok("precision_constante" not in reglas_de(6011), "revés: una persona baja en las difíciles")
+
+    for i in range(antitrampa.ANTITRAMPA_EXPULSIONES):
+        antitrampa.al_expulsar_espectador(c, ahora=50_000.0 + i)
+    ok("expulsa_espectadores" in reglas_de(6011), "espectadores echados en serie (sólo se registra)")
+
+    print("expulsión por farmeo (dos señales):")
+    from servidor import salas
+
+    class TimerYa:
+        def __init__(self, s, f, args):
+            self.f, self.args, self.daemon = f, args, True
+
+        def start(self):
+            cerrados.append(self.args[1])
+            self.f(*self.args)
+
+    antitrampa.threading.Timer = TimerYa
+    c = jugador(6012)
+    otro = jugador(6099)
+    salas.CONEXIONES.update({6012: c, 6099: otro})
+    try:
+        retenidas = correr_carreras(c, 15, cancion=lambda i: 500, reaccion=lambda i: 2.0)
+    finally:
+        salas.CONEXIONES.pop(6012, None)
+        salas.CONEXIONES.pop(6099, None)
+    r = reglas_de(6012)
+    ok("farmeo" in r and r.index("farmeo") > r.index("listo_automatico"), "listo automático + otra señal = farmeo")
+    ok(any(retenidas) and retenidas[-1] is True, "la carrera del farmeo no cobra")
+    ok(c.conn.cerrado and c.cerrado, "se le cierra la conexión")
+    ok(any("detectado por usar trampas" in n for _cmd, n in otro.enviados), "los demás ven el anuncio público")
+    ok(any("expulsado" in n for _cmd, n in c.enviados), "él ve por qué lo expulsaron")
+    ok(antitrampa.esta_bloqueado(c), "y queda bloqueado")
+    ok(not antitrampa.esta_bloqueado(jugador(6013)), "revés: otra cuenta no queda bloqueada")
+    ok(antitrampa.juzgar_cartel(c, 99_999, 10, 90, 50, 77) is True, "si vuelve a reportar estando bloqueado, no cobra")
 
 
 def probar_cartel():
@@ -185,8 +304,9 @@ def probar_cartel():
     correr(combo=500, frame=61)
     ok(pagos == [], "con R2Mods informado por el FF59, la carrera limpia tampoco cobra")
     ff59(f"R2AT v=1 exe={EXE_BUENO} previo=0")
+    antitrampa._BLOQUEADOS[Conn.usn] = 0
     correr(combo=500, frame=62)
-    ok(any(k == "exp" for k, _u, _n in pagos), "revés: tras reabrir el juego limpio, vuelve a cobrar")
+    ok(any(k == "exp" for k, _u, _n in pagos), "revés: pasado el bloqueo y con el juego limpio, vuelve a cobrar")
 
 
 def main():
@@ -195,6 +315,7 @@ def main():
         probar_juzgar()
         probar_ff3d()
         probar_cliente()
+        probar_farmeo()
         probar_cartel()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)

@@ -2341,6 +2341,7 @@ def coop_puede_arrancar(st):
 
 def h_30_ff24(st, cmd, data):
     # rama original:  cmd == 36
+    antitrampa.al_listo(st)                   # ★ 18-nov: el «iniciar» del anfitrión (auto inicio = siempre igual)
     # ★★★ GUARD DEL RELEVO, antes de nada. Ver `relevo_puede_arrancar`: el cliente NO impide
     #   arrancar un 1v1, y una partida así rompe el cartel (medido el 2026-09-05).
     _no24 = (relevo_puede_arrancar(st) or cuatro_puede_arrancar(st) or jefe_puede_arrancar(st)

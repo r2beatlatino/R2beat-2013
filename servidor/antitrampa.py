@@ -13,19 +13,38 @@ import datetime
 import json
 import os
 import re
+import socket
+import statistics
 import threading
 import time
+from collections import deque
 
 from .ajustes import (
     ANTITRAMPA,
+    ANTITRAMPA_ANUNCIO,
+    ANTITRAMPA_ANUNCIO_PUBLICO,
     ANTITRAMPA_ARCHIVO,
+    ANTITRAMPA_BLOQUEO_S,
+    ANTITRAMPA_CAMPANAS_SEGUIDAS,
+    ANTITRAMPA_COMBO_MINIMO,
+    ANTITRAMPA_COMBO_VECES,
     ANTITRAMPA_EXE_MD5,
+    ANTITRAMPA_EXPULSIONES,
+    ANTITRAMPA_EXPULSIONES_S,
+    ANTITRAMPA_FARMEO_SENALES,
     ANTITRAMPA_FF3D0_MIN,
     ANTITRAMPA_LENTO_FACTOR,
     ANTITRAMPA_LENTO_MARGEN_S,
+    ANTITRAMPA_LISTO_DESVIO_S,
+    ANTITRAMPA_LISTO_MUESTRAS,
+    ANTITRAMPA_MISMA_CANCION,
+    ANTITRAMPA_PRECISION_CARRERAS,
+    ANTITRAMPA_PRECISION_NIVELES,
+    ANTITRAMPA_PRECISION_RANGO,
     ANTITRAMPA_REGLAS,
     ANTITRAMPA_RELOJ_MARGEN_S,
     ANTITRAMPA_RELOJ_TOLERANCIA,
+    ANTITRAMPA_SIN_HABLAR,
 )
 from .registro import log
 
@@ -88,7 +107,8 @@ def juzgar_cartel(st, frame, combo, pd, star, cancion, relevo=False, coop=False,
         return retener
     for regla, detalle in marcas:
         retener |= anotar(st, regla, detalle, {"cancion": cancion, "frame": frame, "combo": combo,
-                                               "pd": pd, "star": star}) == "retener"
+                                               "pd": pd, "star": star}) in _QUE_RETIENEN
+    retener |= _farmeo_al_cartel(st, cancion, combo, pd, ahora) in _QUE_RETIENEN
     st.at_ultimo = (clave, retener)
     return retener
 
@@ -103,7 +123,7 @@ def _revisar_cuenta(st):
         c = _CUENTAS.setdefault(usn, {"hola": False, "retener": False, "sin_hola_avisado": False})
         avisar_sin_hola = not c["hola"] and not c["sin_hola_avisado"]
         c["sin_hola_avisado"] |= avisar_sin_hola
-        retener = c["retener"]
+        retener = c["retener"] or _BLOQUEADOS.get(usn, 0) > time.monotonic()
     if avisar_sin_hola:
         anotar(st, "sin_antitrampa", "terminó una carrera sin que su dll mandara el «hola» del antitrampa", {})
     if retener:
@@ -171,12 +191,193 @@ def anotar(st, regla, detalle, extra):
     if accion in ("retener", "avisar"):
         _avisar_gms(f"ANTITRAMPA {regla}: {nick or usn} — {detalle}"
                     + (" (premio retenido)" if accion == "retener" else ""))
+    if accion == "expulsar":
+        _expulsar(st, usn, nick, regla, detalle)
     return accion
 
 
 # Las que informa el cliente fuera de una carrera: si son «retener», retienen todas las de la sesión.
 _REGLAS_DE_CUENTA = {"modulo_prohibido", "codigo_modificado", "codigo_previo", "exe_desconocido", "memoria_ajena",
                      "depurador", "animaciones_tocadas"}
+_QUE_RETIENEN = ("retener", "expulsar")
+_BLOQUEADOS = {}                              # usn -> time.monotonic() hasta el que no puede jugar
+
+
+def _expulsar(st, usn, nick, regla, detalle):
+    """Aviso al jugador, anuncio, bloqueo y fuera. El cierre va un segundo después: que le lleguen los avisos."""
+    if usn:
+        _BLOQUEADOS[usn] = time.monotonic() + ANTITRAMPA_BLOQUEO_S
+        _FARMEO.pop(usn, None)                # al volver, el farmeo se cuenta de cero (y puede volver a saltar)
+    _avisar_gms(f"ANTITRAMPA {regla}: {nick or usn} EXPULSADO ({ANTITRAMPA_BLOQUEO_S // 60} min) — {detalle}")
+    anuncio = ANTITRAMPA_ANUNCIO.format(nick=nick or f"usn {usn}")
+    try:
+        from .salas import CONEXIONES, avisar_a_uno
+        conn = CONEXIONES.get(usn) or st
+        avisar_a_uno(conn, f"Fuiste expulsado por el antitrampa ({regla}). Podés volver en "
+                           f"{ANTITRAMPA_BLOQUEO_S // 60} minutos.")
+        if ANTITRAMPA_ANUNCIO_PUBLICO:
+            for c in list(CONEXIONES.values()):
+                if c is not None and c is not conn:
+                    avisar_a_uno(c, anuncio)
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude avisar la expulsión de usn={usn}: {e!r}")
+        conn = st
+    t = threading.Timer(1.0, cerrar_conexion, args=(conn, f"expulsado por {regla}"))
+    t.daemon = True
+    t.start()
+
+
+def cerrar_conexion(conn, motivo):
+    """`shutdown` y no `close`, como el cambio de canal: el hilo de la conexión sale por su camino normal."""
+    log("TRAMP", f"  ⛔ cierro la conexión de usn={getattr(conn, 'usn', None)}: {motivo}")
+    conn.cerrado = True
+    try:
+        conn.conn.shutdown(socket.SHUT_RDWR)
+    except Exception:                         # noqa: BLE001
+        try:
+            conn.conn.close()
+        except Exception:                     # noqa: BLE001
+            pass
+
+
+def esta_bloqueado(st):
+    """La cuenta fue expulsada y todavía no pasó el bloqueo."""
+    usn = getattr(st, "usn", None)
+    return bool(usn) and _BLOQUEADOS.get(usn, 0) > time.monotonic()
+
+
+# ═══ SEÑALES DE FARMEO ═════════════════════════════════════════════════════════════════════════════════════════════
+#   Por usn (sobrevive al cambio de canal). Cada señal se anota una vez por sesión; con ANTITRAMPA_FARMEO_SENALES
+#   distintas salta «farmeo». Los `al_*` los llaman los handlers; `ahora` es para las pruebas.
+_FARMEO = {}
+_farmeo_lock = threading.Lock()
+
+
+def _estado(usn):
+    return _FARMEO.setdefault(usn, {
+        "fin": None, "reacciones": deque(maxlen=ANTITRAMPA_LISTO_MUESTRAS), "sin_hablar": 0,
+        "cancion": None, "misma": 0, "campana_ronda": False, "campanas": 0,
+        "combos": deque(maxlen=10), "precisiones": deque(maxlen=ANTITRAMPA_PRECISION_CARRERAS),
+        "expulsiones": deque(maxlen=ANTITRAMPA_EXPULSIONES), "senales": set()})
+
+
+def _ahora(ahora):
+    return time.monotonic() if ahora is None else ahora
+
+
+def _senal(st, regla, detalle):
+    """Anota una señal (una vez por sesión) y, si ya van las suficientes, el «farmeo». Devuelve la acción más dura."""
+    usn = getattr(st, "usn", None)
+    with _farmeo_lock:
+        e = _estado(usn)
+        if regla in e["senales"]:
+            return None
+        e["senales"].add(regla)
+        reales = sorted(s for s in e["senales"] if s != "farmeo"
+                        and ANTITRAMPA_REGLAS.get(s, "registrar") not in ("apagado", "registrar"))
+        farmeo = len(reales) >= ANTITRAMPA_FARMEO_SENALES and "farmeo" not in e["senales"]
+        if farmeo:
+            e["senales"].add("farmeo")
+    accion = anotar(st, regla, detalle, {})
+    if farmeo:
+        accion = anotar(st, "farmeo", "señales: " + ", ".join(reales), {})
+    return accion
+
+
+def _farmeo_al_cartel(st, cancion, combo, pd, ahora=None):
+    usn = getattr(st, "usn", None)
+    if not usn:
+        return None
+    try:
+        from . import notas
+        nivel = notas.nivel_de(cancion) if cancion else None
+    except Exception:                         # noqa: BLE001
+        nivel = None
+    senales = []
+    with _farmeo_lock:
+        e = _estado(usn)
+        e["fin"] = _ahora(ahora)
+        e["sin_hablar"] += 1
+        e["misma"] = e["misma"] + 1 if cancion and cancion == e["cancion"] else 1
+        e["cancion"] = cancion
+        e["campanas"] = e["campanas"] + 1 if e["campana_ronda"] else 0
+        e["campana_ronda"] = False
+        if combo >= ANTITRAMPA_COMBO_MINIMO:
+            e["combos"].append((combo, cancion))
+        if nivel is not None and pd:
+            e["precisiones"].append((pd, nivel))
+        if e["sin_hablar"] >= ANTITRAMPA_SIN_HABLAR:
+            senales.append(("carreras_sin_hablar", f"{e['sin_hablar']} carreras seguidas sin escribir en el chat"))
+        if e["misma"] >= ANTITRAMPA_MISMA_CANCION:
+            senales.append(("misma_cancion", f"la canción {cancion} {e['misma']} veces seguidas"))
+        if e["campanas"] >= ANTITRAMPA_CAMPANAS_SEGUIDAS:
+            senales.append(("campanas_automaticas", f"campana en {e['campanas']} rondas seguidas"))
+        iguales = [c for c in e["combos"] if c[0] == combo]
+        if (combo >= ANTITRAMPA_COMBO_MINIMO and len(iguales) >= ANTITRAMPA_COMBO_VECES
+                and len({c[1] for c in iguales}) >= 3):
+            senales.append(("combo_repetido", f"combo {combo} exacto en {len(iguales)} carreras de "
+                                              f"{len({c[1] for c in iguales})} canciones distintas"))
+        p = list(e["precisiones"])
+        if len(p) >= ANTITRAMPA_PRECISION_CARRERAS:
+            pds, niveles = [x[0] for x in p], [x[1] for x in p]
+            if (max(niveles) - min(niveles) >= ANTITRAMPA_PRECISION_NIVELES
+                    and max(pds) - min(pds) <= ANTITRAMPA_PRECISION_RANGO):
+                senales.append(("precision_constante", f"precisión {min(pds)}–{max(pds)} en canciones de nivel "
+                                                       f"{min(niveles)} a {max(niveles)}"))
+    peor = None
+    for regla, detalle in senales:
+        accion = _senal(st, regla, detalle)
+        if accion in _QUE_RETIENEN:
+            peor = "expulsar"
+    return peor
+
+
+def al_listo(st, ahora=None):
+    """«Listo» o «iniciar»: cuánto tardó desde su última llegada. Siempre lo mismo = lo aprieta un programa."""
+    usn = getattr(st, "usn", None)
+    if not ANTITRAMPA or not usn:
+        return
+    with _farmeo_lock:
+        e = _estado(usn)
+        if e["fin"] is None:
+            return
+        reaccion = _ahora(ahora) - e["fin"]
+        e["fin"] = None                       # una reacción por carrera
+        if not 0 < reaccion < 120:
+            return
+        e["reacciones"].append(reaccion)
+        r = list(e["reacciones"])
+    if len(r) >= ANTITRAMPA_LISTO_MUESTRAS and statistics.pstdev(r) < ANTITRAMPA_LISTO_DESVIO_S:
+        _senal(st, "listo_automatico", f"{len(r)} carreras: listo/iniciar a los {statistics.mean(r):.2f} s "
+                                       f"± {statistics.pstdev(r):.2f}")
+
+
+def al_hablar(st):
+    """Una línea de chat: hay alguien del otro lado."""
+    usn = getattr(st, "usn", None)
+    if usn:
+        with _farmeo_lock:
+            _estado(usn)["sin_hablar"] = 0
+
+
+def al_campana(st):
+    usn = getattr(st, "usn", None)
+    if ANTITRAMPA and usn:
+        with _farmeo_lock:
+            _estado(usn)["campana_ronda"] = True
+
+
+def al_expulsar_espectador(st, ahora=None):
+    usn = getattr(st, "usn", None)
+    if not ANTITRAMPA or not usn:
+        return
+    t = _ahora(ahora)
+    with _farmeo_lock:
+        ex = _estado(usn)["expulsiones"]
+        ex.append(t)
+        serie = len(ex) >= ANTITRAMPA_EXPULSIONES and t - ex[0] <= ANTITRAMPA_EXPULSIONES_S
+    if serie:
+        _senal(st, "expulsa_espectadores", f"{len(ex)} espectadores echados en {t - ex[0]:.0f} s")
 
 
 def _nick(usn):
