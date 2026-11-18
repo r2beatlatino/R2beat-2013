@@ -5503,3 +5503,10 @@ ANTITRAMPA_PRECISION_NIVELES = 6         # entre la canción más fácil y la m�
 ANTITRAMPA_PRECISION_RANGO = 1           # y la precisión no se movió más que esto (en puntos)
 ANTITRAMPA_EXPULSIONES = 5               # espectadores echados…
 ANTITRAMPA_EXPULSIONES_S = 600           # …en este tiempo
+
+# ── ★ ANTITRAMPA: lo nuevo que informa la dll (18-nov, a la par del «Avital» del otro cliente) ──────────────────
+ANTITRAMPA_REGLAS.update({
+    "teclas_inyectadas": "avisar",        # teclas que manda un programa (cuenta como SEÑAL de farmeo)
+    "hilo_ajeno":        "avisar",        # un hilo del juego que arranca en memoria inyectada
+    "proceso_prohibido": "expulsar",      # Cheat Engine, ToolBit, R2TR, un acelerador… abiertos con el juego
+})

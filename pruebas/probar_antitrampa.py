@@ -241,6 +241,12 @@ def probar_farmeo():
         antitrampa.al_expulsar_espectador(c, ahora=50_000.0 + i)
     ok("expulsa_espectadores" in reglas_de(6011), "espectadores echados en serie (sólo se registra)")
 
+    c = jugador(6014)
+    antitrampa.al_ff59(c, "R2AT teclas=300 inyectadas=280")
+    antitrampa.al_ff59(c, "R2AT hilo=0x00D90000")
+    ok(reglas_de(6014)[-2:] == ["teclas_inyectadas", "hilo_ajeno"] and not antitrampa.esta_bloqueado(c),
+       "teclas inyectadas y un hilo ajeno avisan, sin expulsar")
+
     print("expulsión por farmeo (dos señales):")
     from servidor import salas
 
@@ -270,6 +276,15 @@ def probar_farmeo():
     ok(antitrampa.esta_bloqueado(c), "y queda bloqueado")
     ok(not antitrampa.esta_bloqueado(jugador(6013)), "revés: otra cuenta no queda bloqueada")
     ok(antitrampa.juzgar_cartel(c, 99_999, 10, 90, 50, 77) is True, "si vuelve a reportar estando bloqueado, no cobra")
+
+    c = jugador(6015)
+    correr_carreras(c, 9, reaccion=lambda i: 2.0)
+    antitrampa.al_ff59(c, "R2AT teclas=500 inyectadas=480")
+    ok(reglas_de(6015)[-1] == "farmeo" and antitrampa.esta_bloqueado(c),
+       "listo automático + teclas inyectadas = farmeo y expulsión")
+    c = jugador(6016)
+    antitrampa.al_ff59(c, "R2AT proceso=cheatengine-i386.exe")
+    ok(reglas_de(6016)[-1] == "proceso_prohibido" and antitrampa.esta_bloqueado(c), "Cheat Engine abierto = expulsión")
 
 
 def probar_cartel():

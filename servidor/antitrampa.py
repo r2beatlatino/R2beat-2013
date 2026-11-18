@@ -158,6 +158,12 @@ def al_ff59(st, texto):
                                     f"la primera en {d['memoria']}", {})
     elif "depurador" in d:
         anotar(st, "depurador", "un depurador enganchado al juego", {})
+    elif "inyectadas" in d:
+        _senal(st, "teclas_inyectadas", f"{d['inyectadas']} de {d.get('teclas', '?')} teclas las mandó un programa")
+    elif "hilo" in d:
+        anotar(st, "hilo_ajeno", f"un hilo del juego arranca en memoria inyectada ({d['hilo']})", {})
+    elif "proceso" in d:
+        anotar(st, "proceso_prohibido", f"tiene abierto {d['proceso']}", {})
     else:
         log("TRAMP", f"  ? usn={st.usn}: renglón R2AT que no conozco: {m.group(0)!r}")
     return True

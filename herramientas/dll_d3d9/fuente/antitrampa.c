@@ -258,6 +258,273 @@ static void at_revisar_memoria(void)
     }
 }
 
+/* 6 · TECLAS INYECTADAS: un gancho de teclado de Windows ve la marca LLKHF_INJECTED en lo que manda un programa
+ *     (SendInput / keybd_event: el «juego automático» por teclas). Sólo cuentan con el juego delante. */
+static volatile LONG g_at_teclas, g_at_inyectadas;
+static LONG g_at_inyectadas_informadas;
+static DWORD g_at_teclas_aviso;
+static int g_at_teclas_siempre;              /* la prueba sin juego: cuenta aunque no esté delante */
+
+static int at_juego_delante(void)
+{
+    DWORD pid = 0;
+    HWND f = GetForegroundWindow();
+    if (f) GetWindowThreadProcessId(f, &pid);
+    return pid == GetCurrentProcessId();
+}
+
+static LRESULT CALLBACK at_teclado_ll(int codigo, WPARAM w, LPARAM l)
+{
+    if (codigo == HC_ACTION && (w == WM_KEYDOWN || w == WM_SYSKEYDOWN) && (g_at_teclas_siempre || at_juego_delante())) {
+        InterlockedIncrement(&g_at_teclas);
+        if (((KBDLLHOOKSTRUCT *)l)->flags & LLKHF_INJECTED) InterlockedIncrement(&g_at_inyectadas);
+    }
+    return CallNextHookEx(NULL, codigo, w, l);
+}
+
+static DWORD WINAPI at_hilo_teclado(LPVOID nada)
+{
+    (void)nada;
+    if (!SetWindowsHookExW(WH_KEYBOARD_LL, at_teclado_ll, GetModuleHandleA(NULL), 0)) return 0;
+    MSG m;
+    while (GetMessageW(&m, NULL, 0, 0) > 0) DispatchMessageW(&m);
+    return 0;
+}
+
+static void at_revisar_teclas(void)
+{
+    LONG iny = g_at_inyectadas;
+    if (iny - g_at_inyectadas_informadas < 10 || GetTickCount() - g_at_teclas_aviso < 60000) return;
+    g_at_inyectadas_informadas = iny;
+    g_at_teclas_aviso = GetTickCount();
+    at_encolar("R2AT teclas=%ld inyectadas=%ld", g_at_teclas, iny);
+}
+
+/* 7 · HILOS AJENOS: un hilo del juego que arranca en memoria que no es de ningún módulo ni de nuestras cuevas = código
+ *     inyectado (CreateRemoteThread a una cueva, el clásico de los trainers). Cada dirección se informa una vez. */
+static DWORD g_at_hilos_vistos[32];
+static int g_at_nhilos_vistos;
+
+static int at_es_nuestra(void *base)
+{
+    for (LONG i = 0; i < g_at_ncuevas && i < AT_CUEVAS_MAX; i++)
+        if (g_at_cueva_base[i] == base) return 1;
+    return 0;
+}
+
+static void at_revisar_hilos(void)
+{
+    typedef LONG (WINAPI *NTQIT)(HANDLE, int, PVOID, ULONG, PULONG);
+    static NTQIT consultar;
+    if (!consultar) consultar = (NTQIT)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationThread");
+    if (!consultar) return;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snap == INVALID_HANDLE_VALUE) return;
+    DWORD yo = GetCurrentProcessId();
+    THREADENTRY32 t;
+    t.dwSize = sizeof(t);
+    for (BOOL ok = Thread32First(snap, &t); ok; ok = Thread32Next(snap, &t)) {
+        if (t.th32OwnerProcessID != yo) continue;
+        HANDLE h = OpenThread(THREAD_QUERY_INFORMATION, FALSE, t.th32ThreadID);
+        if (!h) continue;
+        DWORD inicio = 0;
+        LONG r = consultar(h, 9 /*ThreadQuerySetWin32StartAddress*/, &inicio, sizeof(inicio), NULL);
+        CloseHandle(h);
+        MEMORY_BASIC_INFORMATION mbi;
+        if (r != 0 || !inicio || !VirtualQuery((void *)inicio, &mbi, sizeof(mbi))) continue;
+        if (mbi.Type == MEM_IMAGE || at_es_nuestra(mbi.AllocationBase)) continue;
+        int visto = 0;
+        for (int i = 0; i < g_at_nhilos_vistos; i++) visto |= g_at_hilos_vistos[i] == inicio;
+        if (visto || g_at_nhilos_vistos >= 32) continue;
+        g_at_hilos_vistos[g_at_nhilos_vistos++] = inicio;
+        at_encolar("R2AT hilo=0x%08X", inicio);
+    }
+    CloseHandle(snap);
+}
+
+/* 8 · PROCESOS de trampas abiertos al mismo tiempo que el juego (cada uno una vez) */
+static const char *const AT_PROCESOS[] = {
+    "cheatengine", "toolbit", "r2tr.exe", "gearnt", "speedgear", "speederxp", "artmoney", "wpepro", "x32dbg", "ollydbg",
+};
+static char g_at_procesos_vistos[512];
+
+static void at_revisar_procesos(void)
+{
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return;
+    PROCESSENTRY32 p;
+    p.dwSize = sizeof(p);
+    for (BOOL ok = Process32First(snap, &p); ok; ok = Process32Next(snap, &p)) {
+        char nombre[MAX_PATH];
+        lstrcpynA(nombre, p.szExeFile, sizeof(nombre));
+        CharLowerA(nombre);
+        for (int i = 0; i < (int)(sizeof(AT_PROCESOS) / sizeof(AT_PROCESOS[0])); i++) {
+            if (!at_busca(nombre, AT_PROCESOS[i])) continue;
+            if (at_busca(g_at_procesos_vistos, nombre)) break;
+            if (lstrlenA(g_at_procesos_vistos) + lstrlenA(nombre) + 2 < (int)sizeof(g_at_procesos_vistos)) {
+                lstrcatA(g_at_procesos_vistos, nombre);
+                lstrcatA(g_at_procesos_vistos, "|");
+            }
+            for (char *c = nombre; *c; c++) if (*c == ' ' || *c == '=') *c = '_';
+            at_encolar("R2AT proceso=%s", nombre);
+            break;
+        }
+    }
+    CloseHandle(snap);
+}
+
+/* 9 · LA PANTALLA «Sistema de Prevención de Hackeo»: mientras arranca el juego, una ventana con imagen y barra, sin
+ *     robarle el foco. Se va cuando aparece la ventana del juego (no antes de `pantalla_min` ms; como mucho
+ *     `pantalla_max`). La imagen es un BMP junto a la dll ([antitrampa] imagen=…); sin él se dibuja una propia. */
+static int g_at_pantalla_min = 3000, g_at_pantalla_max = 8000;
+static char g_at_imagen_ruta[MAX_PATH];
+static HBITMAP g_at_imagen;
+static DWORD g_at_pantalla_t0;
+static HWND g_at_pantalla;
+
+static BOOL CALLBACK at_buscar_juego(HWND h, LPARAM hay)
+{
+    DWORD pid = 0;
+    RECT r;
+    GetWindowThreadProcessId(h, &pid);
+    if (pid == GetCurrentProcessId() && h != g_at_pantalla && IsWindowVisible(h) && GetWindowRect(h, &r)
+        && r.right - r.left >= 320 && r.bottom - r.top >= 240) {
+        *(int *)hay = 1;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static void at_texto(HDC dc, const WCHAR *t, RECT r, UINT forma)
+{
+    RECT s = r;
+    OffsetRect(&s, 1, 1);
+    SetTextColor(dc, RGB(0, 0, 0));
+    DrawTextW(dc, t, -1, &s, forma);
+    SetTextColor(dc, RGB(255, 255, 255));
+    DrawTextW(dc, t, -1, &r, forma);
+}
+
+static void at_pintar(HWND w, HDC dc)
+{
+    RECT c;
+    GetClientRect(w, &c);
+    int an = c.right, al = c.bottom;
+    if (g_at_imagen) {
+        BITMAP b;
+        GetObjectA(g_at_imagen, sizeof(b), &b);
+        HDC m = CreateCompatibleDC(dc);
+        HGDIOBJ viejo = SelectObject(m, g_at_imagen);
+        SetStretchBltMode(dc, HALFTONE);
+        StretchBlt(dc, 0, 0, an, al, m, 0, 0, b.bmWidth, b.bmHeight, SRCCOPY);
+        SelectObject(m, viejo);
+        DeleteDC(m);
+    } else {
+        for (int y = 0; y < al; y += 2) {                                   /* degradado violeta → azul noche */
+            RECT f = { 0, y, an, y + 2 };
+            HBRUSH b = CreateSolidBrush(RGB(70 - 50 * y / al, 30 - 14 * y / al, 110 - 60 * y / al));
+            FillRect(dc, &f, b);
+            DeleteObject(b);
+        }
+        HFONT t = CreateFontW(-46, 0, 0, 0, FW_HEAVY, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+        HGDIOBJ v = SelectObject(dc, t);
+        SetBkMode(dc, TRANSPARENT);
+        RECT r = { 0, al / 4, an, al / 4 + 60 };
+        at_texto(dc, L"R2Beat 2013", r, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+        SelectObject(dc, v);
+        DeleteObject(t);
+    }
+    RECT franja = { 0, al - 56, an, al };                                   /* la franja de abajo, como el otro */
+    HBRUSH oscura = CreateSolidBrush(RGB(16, 16, 28));
+    FillRect(dc, &franja, oscura);
+    DeleteObject(oscura);
+    HFONT f = CreateFontW(-16, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    HGDIOBJ v = SelectObject(dc, f);
+    SetBkMode(dc, TRANSPARENT);
+    RECT r = { 12, al - 52, an - 12, al - 30 };
+    at_texto(dc, L"Sistema de Prevención de Hackeo", r, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+    SelectObject(dc, v);
+    DeleteObject(f);
+    DWORD pasado = GetTickCount() - g_at_pantalla_t0;
+    int lleno = (int)((an - 24) * (pasado < (DWORD)g_at_pantalla_max ? pasado : (DWORD)g_at_pantalla_max)
+                      / (DWORD)g_at_pantalla_max);
+    RECT marco = { 12, al - 24, an - 12, al - 10 };
+    HBRUSH borde = CreateSolidBrush(RGB(120, 140, 200));
+    FrameRect(dc, &marco, borde);
+    DeleteObject(borde);
+    for (int x = 0; x < lleno - 2; x++) {                                   /* la barra azul, con brillo */
+        RECT col = { 13 + x, al - 23, 14 + x, al - 11 };
+        HBRUSH b = CreateSolidBrush(RGB(40 + 60 * x / an, 120 + 80 * x / an, 255));
+        FillRect(dc, &col, b);
+        DeleteObject(b);
+    }
+}
+
+static LRESULT CALLBACK at_pantalla_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
+{
+    if (m == WM_PAINT) {
+        PAINTSTRUCT ps;
+        HDC dc = BeginPaint(w, &ps);
+        RECT c;
+        GetClientRect(w, &c);
+        HDC mem = CreateCompatibleDC(dc);                                   /* sin parpadeo */
+        HBITMAP lienzo = CreateCompatibleBitmap(dc, c.right, c.bottom);
+        HGDIOBJ viejo = SelectObject(mem, lienzo);
+        at_pintar(w, mem);
+        BitBlt(dc, 0, 0, c.right, c.bottom, mem, 0, 0, SRCCOPY);
+        SelectObject(mem, viejo);
+        DeleteObject(lienzo);
+        DeleteDC(mem);
+        EndPaint(w, &ps);
+        return 0;
+    }
+    if (m == WM_TIMER) {
+        DWORD pasado = GetTickCount() - g_at_pantalla_t0;
+        int hay = 0;
+        if (pasado >= (DWORD)g_at_pantalla_min) EnumWindows(at_buscar_juego, (LPARAM)&hay);
+        if (hay || pasado >= (DWORD)g_at_pantalla_max) DestroyWindow(w);
+        else InvalidateRect(w, NULL, FALSE);
+        return 0;
+    }
+    if (m == WM_DESTROY) { PostQuitMessage(0); return 0; }
+    return DefWindowProcW(w, m, wp, lp);
+}
+
+static DWORD WINAPI at_hilo_pantalla(LPVOID nada)
+{
+    (void)nada;
+    g_at_pantalla_t0 = GetTickCount();
+    if (g_at_imagen_ruta[0])
+        g_at_imagen = (HBITMAP)LoadImageA(NULL, g_at_imagen_ruta, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
+    int an = 480, al = 270;
+    if (g_at_imagen) {
+        BITMAP b;
+        GetObjectA(g_at_imagen, sizeof(b), &b);
+        an = b.bmWidth > 900 ? 900 : b.bmWidth;
+        al = b.bmWidth > 900 ? b.bmHeight * 900 / b.bmWidth : b.bmHeight;
+    }
+    WNDCLASSW wc = { 0 };
+    wc.lpfnWndProc = at_pantalla_proc;
+    wc.hInstance = GetModuleHandleA(NULL);
+    wc.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_APPSTARTING);
+    wc.lpszClassName = L"R2AT_Pantalla";
+    RegisterClassW(&wc);
+    RECT area;
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &area, 0);
+    g_at_pantalla = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, wc.lpszClassName,
+                                    L"Sistema de Prevención de Hackeo", WS_POPUP,
+                                    area.left + (area.right - area.left - an) / 2,
+                                    area.top + (area.bottom - area.top - al) / 2, an, al, NULL, NULL, wc.hInstance, NULL);
+    if (!g_at_pantalla) return 0;
+    ShowWindow(g_at_pantalla, SW_SHOWNOACTIVATE);
+    SetTimer(g_at_pantalla, 1, 30, NULL);
+    MSG m;
+    while (GetMessageW(&m, NULL, 0, 0) > 0) DispatchMessageW(&m);
+    if (g_at_imagen) DeleteObject(g_at_imagen);
+    apuntar("  [antitrampa] pantalla de prevención cerrada a los %lu ms", GetTickCount() - g_at_pantalla_t0);
+    return 0;
+}
+
 static DWORD WINAPI at_hilo(LPVOID nada)
 {
     (void)nada;
@@ -276,8 +543,10 @@ static DWORD WINAPI at_hilo(LPVOID nada)
     for (DWORD vuelta = 0;; vuelta++) {
         Sleep(5000);
         at_revisar_codigo();
+        at_revisar_teclas();
+        if (vuelta % 2 == 0) at_revisar_hilos();
         if (vuelta % 3 == 0) at_revisar_modulos();
-        if (vuelta % 6 == 0) at_revisar_memoria();
+        if (vuelta % 6 == 0) { at_revisar_memoria(); at_revisar_procesos(); }
         if (!depurador && IsDebuggerPresent()) { depurador = 1; at_encolar("R2AT depurador=1"); }
     }
     return 0;
@@ -292,6 +561,20 @@ static void antitrampa_iniciar(void)
     if (!GetPrivateProfileIntA("antitrampa", "activo", 1, ini)) {
         apuntar("  [antitrampa] apagado ([antitrampa] activo=0)");
         return;
+    }
+    if (GetPrivateProfileIntA("antitrampa", "pantalla", 1, ini)) {
+        char nombre[MAX_PATH];
+        GetPrivateProfileStringA("antitrampa", "imagen", "antitrampa_pantalla.bmp", nombre, sizeof(nombre), ini);
+        if (nombre[0] && !at_busca(nombre, "\\") && !at_busca(nombre, "/")) {           /* sólo junto a la dll */
+            lstrcpyA(g_at_imagen_ruta, g_carpeta);
+            lstrcatA(g_at_imagen_ruta, nombre);
+            if (GetFileAttributesA(g_at_imagen_ruta) == INVALID_FILE_ATTRIBUTES) g_at_imagen_ruta[0] = 0;
+        }
+        g_at_pantalla_min = GetPrivateProfileIntA("antitrampa", "pantalla_min", 3000, ini);
+        g_at_pantalla_max = GetPrivateProfileIntA("antitrampa", "pantalla_max", 8000, ini);
+        if (g_at_pantalla_max < g_at_pantalla_min) g_at_pantalla_max = g_at_pantalla_min;
+        HANDLE hp = CreateThread(NULL, 0, at_hilo_pantalla, NULL, 0, NULL);
+        if (hp) CloseHandle(hp);
     }
     BYTE *base = (BYTE *)GetModuleHandleA(NULL);
     IMAGE_NT_HEADERS32 *nt = base ? at_cabecera(base) : NULL;
@@ -332,5 +615,7 @@ static void antitrampa_iniciar(void)
     apuntar("  [antitrampa] ★ vigilo %d páginas de sólo lectura del exe; contra el disco: %d distintas%s",
             vigiladas, g_at_previo, g_at_previo > 0 ? " ⛔ (alguien lo tocó antes que nosotros)" : "");
     HANDLE h = CreateThread(NULL, 0, at_hilo, NULL, 0, NULL);
+    if (h) CloseHandle(h);
+    h = CreateThread(NULL, 0, at_hilo_teclado, NULL, 0, NULL);
     if (h) CloseHandle(h);
 }

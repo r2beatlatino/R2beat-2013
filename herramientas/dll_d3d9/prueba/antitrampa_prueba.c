@@ -57,6 +57,12 @@ int main(int argc, char **argv)
     static const BYTE gancho[5] = { 0xE9, 0x11, 0x22, 0x33, 0x44 };
     char esperado[64];
     GetTempPathA(MAX_PATH, g_carpeta);
+    if (argc > 1 && !lstrcmpA(argv[1], "esperar")) { Sleep(6000); return 0; }      /* el «proceso de trampas» */
+    if (argc > 1 && !lstrcmpA(argv[1], "pantalla")) {                              /* para mirarla */
+        antitrampa_iniciar();
+        Sleep(4000);
+        return 0;
+    }
     if (argc > 1 && !lstrcmpA(argv[1], "limpio")) {
         antitrampa_iniciar();
         ok(g_at_previo == 0, "revés: sin tocar nada, el exe en memoria es igual al del disco");
@@ -102,6 +108,45 @@ int main(int argc, char **argv)
         at_revisar_modulos();
         ok(cola_tiene("modulo=toolbit_prueba.dll"), "un módulo «toolbit» se informa");
     }
+
+    at_revisar_hilos();
+    ok(!cola_tiene("hilo="), "revés: los hilos propios (los nuestros, los del sistema) no se informan");
+    ajena[0] = 0xC3;                                                         /* ret: nunca corre (suspendido) */
+    HANDLE hilo = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ajena, NULL, CREATE_SUSPENDED, NULL);
+    at_revisar_hilos();
+    wsprintfA(esperado, "hilo=0x%08X", (DWORD)ajena);
+    ok(hilo && cola_tiene(esperado), "un hilo que arranca en memoria ajena se informa");
+    if (hilo) { TerminateThread(hilo, 0); CloseHandle(hilo); }
+
+    at_revisar_procesos();
+    ok(!cola_tiene("proceso="), "revés: sin procesos de trampas abiertos no se informa nada");
+    if (argc > 2) {
+        STARTUPINFOA si = { sizeof(si) };
+        PROCESS_INFORMATION pi;
+        char linea[MAX_PATH + 16];
+        wsprintfA(linea, "\"%s\" esperar", argv[2]);
+        ok(CreateProcessA(argv[2], linea, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi),
+           "abro «cheatengine_prueba.exe»");
+        Sleep(300);
+        at_revisar_procesos();
+        ok(cola_tiene("proceso=cheatengine_prueba.exe"), "un proceso de trampas abierto se informa");
+        TerminateProcess(pi.hProcess, 0);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    }
+
+    g_at_teclas_siempre = 1;
+    Sleep(300);                                                              /* que el gancho ya esté puesto */
+    INPUT in[2] = { 0 };
+    in[0].type = in[1].type = INPUT_KEYBOARD;
+    in[0].ki.wVk = in[1].ki.wVk = VK_F24;                                    /* una tecla que nadie usa */
+    in[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    for (int i = 0; i < 12; i++) SendInput(2, in, sizeof(INPUT));
+    Sleep(500);
+    ok(g_at_inyectadas >= 12 && g_at_teclas >= 12, "las teclas que manda un programa se cuentan como inyectadas");
+    g_at_teclas_aviso = GetTickCount() - 61000;
+    at_revisar_teclas();
+    ok(cola_tiene("inyectadas="), "y se informan");
     printf(g_mal ? "\n%d MAL\n" : "\ntodo bien\n", g_mal);
     return g_mal ? 1 : 0;
 }
