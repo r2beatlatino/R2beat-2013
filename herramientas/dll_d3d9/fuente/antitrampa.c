@@ -381,7 +381,7 @@ static char g_at_imagen_ruta[MAX_PATH];
 static HBITMAP g_at_imagen;
 static DWORD g_at_pantalla_t0;
 static HWND g_at_pantalla;
-static int g_at_pct, g_at_listo;
+static int g_at_pct, g_at_listo, g_at_pantalla_centro;
 
 static BOOL CALLBACK at_buscar_juego(HWND h, LPARAM hay)
 {
@@ -507,11 +507,15 @@ static DWORD WINAPI at_hilo_pantalla(LPVOID nada)
     wc.lpszClassName = L"R2AT_Pantalla";
     RegisterClassW(&wc);
     RECT area;
-    SystemParametersInfoW(SPI_GETWORKAREA, 0, &area, 0);
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &area, 0);                  /* el escritorio sin la barra de tareas */
+    int x = area.right - an - 12, y = area.bottom - al - 12;                /* de fábrica: abajo a la derecha */
+    if (g_at_pantalla_centro) {
+        x = area.left + (area.right - area.left - an) / 2;
+        y = area.top + (area.bottom - area.top - al) / 2;
+    }
     g_at_pantalla = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, wc.lpszClassName,
-                                    L"Sistema de Prevención de Hackeo", WS_POPUP,
-                                    area.left + (area.right - area.left - an) / 2,
-                                    area.top + (area.bottom - area.top - al) / 2, an, al, NULL, NULL, wc.hInstance, NULL);
+                                    L"Sistema de Prevención de Hackeo", WS_POPUP, x, y, an, al, NULL, NULL,
+                                    wc.hInstance, NULL);
     if (!g_at_pantalla) return 0;
     ShowWindow(g_at_pantalla, SW_SHOWNOACTIVATE);
     SetTimer(g_at_pantalla, 1, 30, NULL);
@@ -569,6 +573,7 @@ static void antitrampa_iniciar(void)
         }
         g_at_pantalla_min = GetPrivateProfileIntA("antitrampa", "pantalla_min", 3000, ini);
         g_at_pantalla_max = GetPrivateProfileIntA("antitrampa", "pantalla_max", 8000, ini);
+        g_at_pantalla_centro = GetPrivateProfileIntA("antitrampa", "pantalla_centro", 0, ini);
         if (g_at_pantalla_max < g_at_pantalla_min) g_at_pantalla_max = g_at_pantalla_min;
         HANDLE hp = CreateThread(NULL, 0, at_hilo_pantalla, NULL, 0, NULL);
         if (hp) CloseHandle(hp);
