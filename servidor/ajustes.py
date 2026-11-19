@@ -5467,7 +5467,8 @@ ANTITRAMPA_REGLAS.update({
 })
 #   Los R2Beat.exe aceptados: el que deja `herramientas/receta_exe.py` (MD5_ESPERADO). Al cambiar la receta, sumá el
 #   nuevo acá y dejá el anterior mientras haya jugadores con él.
-ANTITRAMPA_EXE_MD5 = {"7b8626647231e715d3f2fe33eebe2c46"}
+ANTITRAMPA_EXE_MD5 = {"7b8626647231e715d3f2fe33eebe2c46",   # el de la receta (herramientas/receta_exe.py)
+                      "0f79000e1f71162a0e45191ef7876076"}   # ★ 18-nov: el R2Beat.exe/R2BeatMultiTest.exe que reparte el launcher hoy
 
 # ── ★ ANTITRAMPA DEL FARMEO (`antitrampa.py`, «señales de farmeo») ─────────────────────────────────────
 #   El farmeo (juego automático, auto listo/inicio, misma canción, campanas solas, fallar a un combo fijo…) se ve

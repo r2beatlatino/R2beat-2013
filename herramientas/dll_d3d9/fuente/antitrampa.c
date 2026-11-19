@@ -206,6 +206,21 @@ static void at_revisar_codigo(void)
 }
 
 /* 3 · módulos conocidos, cada uno una sola vez */
+/* ¿el archivo está en la carpeta de Windows (System32, SysWOW64…)? Windows carga su propio d3dref9.dll (medido en
+ * una RTX 3090 en d3d9 nativo, 18-nov); la trampa con ese nombre va JUNTO AL JUEGO, y ésa se sigue informando. */
+static int g_at_windows_avisado;
+static int at_de_windows(const char *ruta)
+{
+    char win[MAX_PATH + 1], r[MAX_PATH];
+    UINT n = GetWindowsDirectoryA(win, MAX_PATH);
+    if (!n || n >= MAX_PATH - 1 || !ruta) return 0;
+    if (win[n - 1] != 0x5C) { win[n++] = 0x5C; win[n] = 0; }
+    lstrcpynA(r, ruta, MAX_PATH);
+    CharLowerA(r);
+    CharLowerA(win);
+    return lstrlenA(r) > (int)n && CompareStringA(LOCALE_INVARIANT, 0, r, n, win, n) == CSTR_EQUAL;
+}
+
 static void at_revisar_modulos(void)
 {
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
@@ -219,6 +234,10 @@ static void at_revisar_modulos(void)
         for (int i = 0; i < (int)(sizeof(AT_MODULOS) / sizeof(AT_MODULOS[0])); i++) {
             if (!at_busca(nombre, AT_MODULOS[i])) continue;
             if (at_busca(g_at_modulos_vistos, nombre)) break;
+            if (at_de_windows(m.szExePath)) {        /* ★ el d3dref9.dll de System32/SysWOW64 lo carga Windows mismo */
+                if (!g_at_windows_avisado++) apuntar("  [antitrampa] %s es de Windows (%s): no cuenta", nombre, m.szExePath);
+                break;                               /* ⚠ NO va a «vistos»: una copia junto al juego se informa igual */
+            }
             if (lstrlenA(g_at_modulos_vistos) + lstrlenA(nombre) + 2 < (int)sizeof(g_at_modulos_vistos)) {
                 lstrcatA(g_at_modulos_vistos, nombre);
                 lstrcatA(g_at_modulos_vistos, "|");

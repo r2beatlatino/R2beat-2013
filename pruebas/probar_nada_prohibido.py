@@ -10,7 +10,8 @@ Revisa los archivos que sigue git (o, sin git, todos). Lo prohibido (ver CONTRIB
   · datos de un server: bases (.db), gm.txt / admin.txt / streamers.txt, sesiones, claves (.key, .pem);
   · datos personales en el texto: emails, rutas con el usuario de Windows, IPs públicas que no son
     las conocidas del juego, un hash de contraseña.
-La única excepción binaria es nuestra `exe/d3d9.dll` (el fuente está en herramientas/dll_d3d9/).
+Las excepciones binarias son nuestra `exe/d3d9.dll` (el fuente está en herramientas/dll_d3d9/) y la imagen de la
+pantalla del antitrampa, `exe/antitrampa_pantalla.bmp` (hecha por nosotros, no es del juego).
 
 ★ Con su revés: antes de mirar el repo se comprueba que el detector SÍ caza cada cosa prohibida.
 """
@@ -22,7 +23,8 @@ import tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-BINARIOS_PERMITIDOS = {"exe/d3d9.dll", "despliegue/ejemplo.env"}   # (el .env de ejemplo, sin claves)
+BINARIOS_PERMITIDOS = {"exe/d3d9.dll", "despliegue/ejemplo.env",   # (el .env de ejemplo, sin claves)
+                       "exe/antitrampa_pantalla.bmp"}             # ★ 18-nov: la pantalla del antitrampa, hecha por nosotros (Benja: «que el bmp entre»)
 TIPOS = (".pak", ".exe", ".dll", ".db", ".db-wal", ".db-shm", ".sqlite", ".sqlite3", ".bin", ".dak", ".key",
          ".pem", ".ogg", ".mp3", ".wav", ".dds", ".tga", ".bmp", ".png", ".jpg", ".jpeg", ".gif", ".zip",
          ".rar", ".7z", ".env")

@@ -49,12 +49,16 @@ def main():
             return 1
         modulo = os.path.join(tmp, "toolbit_prueba.dll")
         shutil.copy(os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "SysWOW64", "version.dll"), modulo)
+        # ★ 18-nov: un d3dref9.dll JUNTO al juego (en una subcarpeta: el de Windows también se carga, por ruta)
+        os.makedirs(os.path.join(tmp, "juego"))
+        d3dref = os.path.join(tmp, "juego", "d3dref9.dll")
+        shutil.copy(os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "SysWOW64", "d3dref9.dll"), d3dref)
         proceso = os.path.join(tmp, "cheatengine_prueba.exe")             # el mismo programa, con otro nombre
         shutil.copy(exe, proceso)
         if "--pantalla" in sys.argv:                                        # sólo mostrarla (para mirarla)
             return subprocess.run([exe, "pantalla"]).returncode
         fallas = 0
-        for args in (["limpio"], [modulo, proceso]):
+        for args in (["limpio"], [modulo, proceso, d3dref]):
             print(f"── {'limpio' if args == ['limpio'] else 'con trampas de mentira'}", flush=True)
             fallas += subprocess.run([exe] + args).returncode != 0
     print("\n→ TODO BIEN" if not fallas else "\n⛔ ALGO DIO MAL")

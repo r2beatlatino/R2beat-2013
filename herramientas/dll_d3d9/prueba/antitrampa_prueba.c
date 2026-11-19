@@ -108,6 +108,17 @@ int main(int argc, char **argv)
         at_revisar_modulos();
         ok(cola_tiene("modulo=toolbit_prueba.dll"), "un módulo «toolbit» se informa");
     }
+    if (argc > 3) {                                  /* ★ 18-nov: el d3dref9.dll que carga Windows no es una trampa */
+        char sis[MAX_PATH];
+        GetSystemDirectoryA(sis, MAX_PATH);
+        lstrcatA(sis, "\\d3dref9.dll");
+        ok(LoadLibraryA(sis) != NULL, "cargo el d3dref9.dll de la carpeta de Windows");
+        at_revisar_modulos();
+        ok(!cola_tiene("modulo=d3dref9.dll"), "revés: el d3dref9.dll de la carpeta de Windows no se informa");
+        ok(LoadLibraryA(argv[3]) != NULL, "cargo un d3dref9.dll JUNTO al juego (la trampa)");
+        at_revisar_modulos();
+        ok(cola_tiene("modulo=d3dref9.dll"), "un d3dref9.dll fuera de la carpeta de Windows se informa");
+    }
 
     at_revisar_hilos();
     ok(!cola_tiene("hilo="), "revés: los hilos propios (los nuestros, los del sistema) no se informan");
