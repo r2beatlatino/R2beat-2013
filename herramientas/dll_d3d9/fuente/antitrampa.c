@@ -373,7 +373,7 @@ static void at_revisar_procesos(void)
     CloseHandle(snap);
 }
 
-/* 9 · LA PANTALLA «Sistema de Prevención de Hackeo»: mientras arranca el juego, la imagen y «Cargando juego… N %», sin
+/* 9 · LA PANTALLA «Sistema de Prevención de Hackeo»: mientras arranca el juego, la imagen, «Verificando el juego… N %» y la barra, sin
  *     robarle el foco. Se va cuando aparece la ventana del juego (no antes de `pantalla_min` ms; como mucho
  *     `pantalla_max`). La imagen es un BMP junto a la dll ([antitrampa] imagen=…); sin él se dibuja una propia. */
 static int g_at_pantalla_min = 3000, g_at_pantalla_max = 8000;
@@ -398,15 +398,49 @@ static BOOL CALLBACK at_buscar_juego(HWND h, LPARAM hay)
 
 static void at_texto(HDC dc, const WCHAR *t, RECT r, UINT forma)
 {
-    static const signed char borde[8][2] = { {-2, 0}, {2, 0}, {0, -2}, {0, 2}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1} };
-    SetTextColor(dc, RGB(45, 20, 80));                                      /* contorno violeta: se lee sobre la imagen */
-    for (int i = 0; i < 8; i++) {
+    for (int i = 2; i >= 1; i--) {                                         /* sombra violeta: se lee sobre la imagen */
         RECT s = r;
-        OffsetRect(&s, borde[i][0], borde[i][1]);
+        OffsetRect(&s, i, i);
+        SetTextColor(dc, RGB(30, 20, 60));
         DrawTextW(dc, t, -1, &s, forma);
     }
     SetTextColor(dc, RGB(255, 255, 255));
     DrawTextW(dc, t, -1, &r, forma);
+}
+
+/* El lienzo es un DIB de 32 bits (lo arma WM_PAINT): así se mezclan colores a mano, sin AlphaBlend (msimg32). */
+static DWORD *g_at_pix;
+static int g_at_pix_an;
+
+static void at_mezclar(int x, int y, COLORREF c, int a)                    /* a: 0..255 */
+{
+    DWORD *p = &g_at_pix[y * g_at_pix_an + x];
+    int r = (*p >> 16) & 255, g = (*p >> 8) & 255, b = *p & 255;
+    r += (GetRValue(c) - r) * a / 255;
+    g += (GetGValue(c) - g) * a / 255;
+    b += (GetBValue(c) - b) * a / 255;
+    *p = (DWORD)(r << 16 | g << 8 | b);
+}
+
+static int at_capsula(int x, int y, int x0, int y0, int x1, int y1)        /* cuánto del píxel cae adentro: 0..16 */
+{
+    int n = 0, r = (y1 - y0) * 4, cy = (y0 + y1) * 4, izq = x0 * 8 + r, der = x1 * 8 - r;   /* en octavos de píxel */
+    for (int sy = 0; sy < 4; sy++)
+        for (int sx = 0; sx < 4; sx++) {
+            int px = x * 8 + 2 * sx + 1, py = y * 8 + 2 * sy + 1;
+            int cx = px < izq ? izq : px > der ? der : px;
+            n += (px - cx) * (px - cx) + (py - cy) * (py - cy) <= r * r;
+        }
+    return n;
+}
+
+static COLORREF at_degradado(int x, int x0, int x1)                        /* rosa → celeste → amarillo (el logo) */
+{
+    int t = (x - x0) * 512 / (x1 - x0 > 0 ? x1 - x0 : 1);
+    COLORREF a = t < 256 ? RGB(255, 90, 170) : RGB(60, 190, 255), b = t < 256 ? RGB(60, 190, 255) : RGB(255, 210, 40);
+    t &= 255;
+    return RGB(GetRValue(a) + (GetRValue(b) - GetRValue(a)) * t / 255, GetGValue(a) + (GetGValue(b) - GetGValue(a)) * t / 255,
+               GetBValue(a) + (GetBValue(b) - GetBValue(a)) * t / 255);
 }
 
 static void at_pintar(HWND w, HDC dc)
@@ -438,13 +472,30 @@ static void at_pintar(HWND w, HDC dc)
         SelectObject(dc, v);
         DeleteObject(t);
     }
-    WCHAR cargando[48];                                                     /* sólo «Cargando juego… N %», sin barra */
-    wsprintfW(cargando, L"Cargando juego… %d %%", g_at_pct);
-    HFONT f = CreateFontW(-20, 0, 0, 0, FW_HEAVY, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    if (g_at_pix) {
+        GdiFlush();
+        for (int y = al - 64; y < al; y++)                                  /* abajo se oscurece de a poco */
+            for (int x = 0; x < an; x++) at_mezclar(x, y, RGB(25, 15, 60), 230 * (y - (al - 64)) / 64);
+        int x0 = 14, x1 = an - 14, y0 = al - 20, y1 = al - 10;              /* la barra redondeada */
+        int lleno = x0 + (x1 - x0) * g_at_pct / 100;
+        if (lleno < x0 + (y1 - y0)) lleno = x0 + (y1 - y0);
+        for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++) {
+                int pista = at_capsula(x, y, x0, y0, x1, y1);
+                if (!pista) continue;
+                at_mezclar(x, y, RGB(10, 6, 30), 170 * pista / 16);           /* la pista: oscura, no blanca */
+                int barra = g_at_pct > 0 && x < lleno ? at_capsula(x, y, x0, y0, lleno, y1) : 0;
+                if (barra) at_mezclar(x, y, at_degradado(x, x0, x1), 255 * barra / 16);
+            }
+    }
+    WCHAR cuanto[16];
+    wsprintfW(cuanto, L"%d %%", g_at_pct);
+    HFONT f = CreateFontW(-15, 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     HGDIOBJ v = SelectObject(dc, f);
     SetBkMode(dc, TRANSPARENT);
-    RECT r = { 0, al - 40, an, al - 10 };
-    at_texto(dc, cargando, r, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    RECT r = { 14, al - 44, an - 14, al - 23 };
+    at_texto(dc, L"Verificando el juego\u2026", r, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+    at_texto(dc, cuanto, r, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
     SelectObject(dc, v);
     DeleteObject(f);
 }
@@ -457,9 +508,20 @@ static LRESULT CALLBACK at_pantalla_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
         RECT c;
         GetClientRect(w, &c);
         HDC mem = CreateCompatibleDC(dc);                                   /* sin parpadeo */
-        HBITMAP lienzo = CreateCompatibleBitmap(dc, c.right, c.bottom);
+        BITMAPINFO bi = { 0 };
+        bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+        bi.bmiHeader.biWidth = c.right;
+        bi.bmiHeader.biHeight = -c.bottom;                                  /* de arriba hacia abajo */
+        bi.bmiHeader.biPlanes = 1;
+        bi.bmiHeader.biBitCount = 32;
+        bi.bmiHeader.biCompression = BI_RGB;
+        void *pix = NULL;
+        HBITMAP lienzo = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &pix, NULL, 0);
         HGDIOBJ viejo = SelectObject(mem, lienzo);
+        g_at_pix = (DWORD *)pix;
+        g_at_pix_an = c.right;
         at_pintar(w, mem);
+        g_at_pix = NULL;
         BitBlt(dc, 0, 0, c.right, c.bottom, mem, 0, 0, SRCCOPY);
         SelectObject(mem, viejo);
         DeleteObject(lienzo);

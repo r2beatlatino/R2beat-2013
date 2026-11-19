@@ -16,7 +16,7 @@ La dll compilada y qué hace cada `.ini`: [`exe/LEEME.md`](../../exe/LEEME.md).
   copia. Busca también módulos de trampas, memoria ejecutable ajena, un depurador, hilos que arrancan en memoria
   inyectada, procesos de trampas abiertos (Cheat Engine, ToolBit, aceleradores…) y teclas inyectadas por un programa
   (un gancho de teclado `WH_KEYBOARD_LL`, sólo con el juego delante).
-- Al abrir el juego muestra la pantalla «Sistema de Prevención de Hackeo» (la imagen y «Cargando juego… N %») hasta que aparece la ventana
+- Al abrir el juego muestra la pantalla «Sistema de Prevención de Hackeo» (la imagen, «Verificando el juego… N %» y una barra de colores) hasta que aparece la ventana
   del juego. `[antitrampa] pantalla=0` la apaga; `imagen=` un BMP junto a la dll (de fábrica `antitrampa_pantalla.bmp`;
   sin él se dibuja una propia); `pantalla_min` / `pantalla_max` en ms (3000 / 8000).
   Sale abajo a la derecha, encima de la barra de tareas; `pantalla_centro=1` la pone en el medio.
