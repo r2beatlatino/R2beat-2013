@@ -22,8 +22,10 @@ from collections import deque
 from .ajustes import (
     ANTITRAMPA,
     ANTITRAMPA_ANUNCIO,
+    ANTITRAMPA_ANUNCIO_BANEO,
     ANTITRAMPA_ANUNCIO_PUBLICO,
     ANTITRAMPA_ARCHIVO,
+    ANTITRAMPA_BANEO_EN,
     ANTITRAMPA_BLOQUEO_S,
     ANTITRAMPA_CAMPANAS_SEGUIDAS,
     ANTITRAMPA_COMBO_MINIMO,
@@ -133,7 +135,7 @@ def _revisar_cuenta(st):
 
 
 # Los ganchos que reconocemos (la dll los informa con «gancho=<nombre>»): nombre -> regla.
-_GANCHOS = {"automatico": "juego_automatico"}
+_GANCHOS = {"automatico": "juego_automatico", "sala": "sala_automatica", "relevo": "relevo_automatico"}
 
 
 def _va(texto):
@@ -222,30 +224,97 @@ def anotar(st, regla, detalle, extra):
 
 
 # Las que informa el cliente fuera de una carrera: si son «retener», retienen todas las de la sesión.
-_REGLAS_DE_CUENTA = {"modulo_prohibido", "juego_automatico", "codigo_modificado", "codigo_previo", "exe_desconocido", "memoria_ajena",
-                     "depurador", "animaciones_tocadas"}
+_REGLAS_DE_CUENTA = {"modulo_prohibido", "juego_automatico", "sala_automatica", "relevo_automatico",
+                     "codigo_modificado", "codigo_previo", "exe_desconocido", "memoria_ajena", "depurador",
+                     "animaciones_tocadas"}
 _QUE_RETIENEN = ("retener", "expulsar")
 _BLOQUEADOS = {}                              # usn -> time.monotonic() hasta el que no puede jugar
+_EXPULSADOS = {}                              # usn -> cuántas faltas tenía su cuenta al expulsarlo (esta sesión del server)
+
+
+def fue_expulsado(st):
+    """¿El antitrampa expulsó a este jugador (desde que arrancó el server)?"""
+    return bool(_EXPULSADOS.get(getattr(st, "usn", None)))
+
+
+def _escalon(usn, regla):
+    """★ 19-nov — LA ESCALERA (anonimo03): suma la falta a la CUENTA y dice qué toca.
+    -> (faltas, cuenta, baneada). Sin base o sin cuenta cuenta como la primera."""
+    try:
+        from . import almacen
+        cuenta, n = almacen.antitrampa_sumar_falta(usn, regla)
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude sumar la falta de usn={usn}: {e!r}")
+        return 1, None, False
+    if not cuenta:
+        return 1, None, False
+    baneada = False
+    if ANTITRAMPA_BANEO_EN and n >= ANTITRAMPA_BANEO_EN:
+        try:
+            almacen.banear_cuenta(cuenta)
+            baneada = True
+        except Exception as e:                # noqa: BLE001
+            log("TRAMP", f"  ⚠ no pude banear la cuenta {cuenta!r}: {e!r}")
+    return n, cuenta, baneada
 
 
 def _expulsar(st, usn, nick, regla, detalle):
-    """Aviso al jugador, anuncio, bloqueo y fuera. El cierre va un segundo después: que le lleguen los avisos."""
+    """Aviso al jugador, anuncio y fuera. El cierre va un segundo después: que le lleguen los avisos.
+    ★ 19-nov — la escalera, por cuenta: 1.ª falta = fuera · 2.ª = fuera con ADVERTENCIA · 3.ª = baneo permanente
+    (`BANNED:`). El bloqueo por tiempo (`ANTITRAMPA_BLOQUEO_S`) queda en 0: la carrera de esta sesión no cobra igual."""
+    # ★ UNA falta por sesión del juego (de «hola» a «hola»): con dos funciones prendidas llegan dos ganchos en el mismo
+    #   segundo (medido 19-nov: automático + sala ⇒ 1.ª y 2.ª juntas). Lo que llegue después sólo vuelve a cerrar.
+    with _cuentas_lock:
+        sesion = _CUENTAS.setdefault(usn, {"hola": True, "retener": False, "sin_hola_avisado": False}) if usn else {}
+        ya = sesion.get("expulsado")
+        sesion["expulsado"] = True
+    if ya:
+        log("TRAMP", f"  ⛔ usn={usn}: {regla} en la misma sesión ya expulsada: no suma otra falta, sólo cierra")
+        _cerrar_luego(st, usn, regla)
+        return
+    faltas, cuenta, baneada = _escalon(usn, regla) if usn else (1, None, False)
     if usn:
-        _BLOQUEADOS[usn] = time.monotonic() + ANTITRAMPA_BLOQUEO_S
+        _EXPULSADOS[usn] = faltas
+        if ANTITRAMPA_BLOQUEO_S:
+            _BLOQUEADOS[usn] = time.monotonic() + ANTITRAMPA_BLOQUEO_S
+        with _cuentas_lock:                   # lo que quede de esta sesión no cobra (al reabrir limpio, sí)
+            _CUENTAS.setdefault(usn, {"hola": True, "retener": False, "sin_hola_avisado": False})["retener"] = True
         _FARMEO.pop(usn, None)                # al volver, el farmeo se cuenta de cero (y puede volver a saltar)
-    _avisar_gms(f"ANTITRAMPA {regla}: {nick or usn} EXPULSADO ({ANTITRAMPA_BLOQUEO_S // 60} min) — {detalle}")
-    anuncio = ANTITRAMPA_ANUNCIO.format(nick=nick or f"usn {usn}")
+    if baneada:
+        al_jugador = (f"Fuiste expulsado por el antitrampa ({regla}). Es la {faltas}.ª vez: "
+                      f"tu cuenta quedó BANEADA PERMANENTEMENTE.")
+        que = f"BANEADA la cuenta {cuenta!r} ({faltas}.ª falta)"
+    elif ANTITRAMPA_BANEO_EN and faltas == ANTITRAMPA_BANEO_EN - 1:
+        al_jugador = (f"ADVERTENCIA: fuiste expulsado por el antitrampa ({regla}) por {faltas}.ª vez. "
+                      f"La próxima, tu cuenta queda baneada para siempre.")
+        que = f"EXPULSADO con advertencia ({faltas}.ª falta)"
+    else:
+        al_jugador = f"Fuiste expulsado por el antitrampa ({regla})."
+        que = f"EXPULSADO ({faltas}.ª falta)"
+    _avisar_gms(f"ANTITRAMPA {regla}: {nick or usn} {que} — {detalle}")
+    log("TRAMP", f"  ⛔ usn={usn} cuenta={cuenta!r}: {que}")
+    anuncio = (ANTITRAMPA_ANUNCIO_BANEO if baneada else ANTITRAMPA_ANUNCIO).format(nick=nick or f"usn {usn}")
     try:
         from .salas import CONEXIONES, avisar_a_uno
         conn = CONEXIONES.get(usn) or st
-        avisar_a_uno(conn, f"Fuiste expulsado por el antitrampa ({regla}). Podés volver en "
-                           f"{ANTITRAMPA_BLOQUEO_S // 60} minutos.")
+        avisar_a_uno(conn, al_jugador)
         if ANTITRAMPA_ANUNCIO_PUBLICO:
             for c in list(CONEXIONES.values()):
                 if c is not None and c is not conn:
                     avisar_a_uno(c, anuncio)
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude avisar la expulsión de usn={usn}: {e!r}")
+        conn = st
+    t = threading.Timer(1.0, cerrar_conexion, args=(conn, f"expulsado por {regla}"))
+    t.daemon = True
+    t.start()
+
+
+def _cerrar_luego(st, usn, regla):
+    try:
+        from .salas import CONEXIONES
+        conn = CONEXIONES.get(usn) or st
+    except Exception:                         # noqa: BLE001
         conn = st
     t = threading.Timer(1.0, cerrar_conexion, args=(conn, f"expulsado por {regla}"))
     t.daemon = True

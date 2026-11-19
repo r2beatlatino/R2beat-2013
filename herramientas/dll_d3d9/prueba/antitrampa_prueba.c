@@ -70,6 +70,7 @@ int main(int argc, char **argv)
     }
     ok(escribir_por_fuera(g_previo + 16, gancho, 5), "escribo «antes que nosotros», como un trainer");
     antitrampa_iniciar();
+    g_at_cerrar = 0;                                                       /* la prueba no se cierra a sí misma */
     ok(g_at_ini != NULL, "se inició y vigila el exe");
     ok(g_at_previo == 1, "previo: UNA página distinta del disco");
     ok(g_at_previo_va == (int)(DWORD)(g_previo + 16), "previo: en la dirección tocada");
@@ -85,10 +86,12 @@ int main(int argc, char **argv)
     g_at_ganchos[0].rva = (DWORD)(g_ajeno + 100) - 0x400000;                  /* «el automático» cae acá */
     at_revisar_ganchos();
     ok(!cola_tiene("gancho="), "revés: sin tocar, el gancho conocido no se informa");
+    ok(g_at_cerrar_t0 == 0, "revés: sin el automático, el juego no se marca para cerrar");
     ok(escribir_por_fuera(g_ajeno + 100, gancho, 5), "escribo por fuera, como un trainer");
     at_revisar_ganchos();
     wsprintfA(esperado, "gancho=automatico va=0x%08X bytes=E9_11_22_33_44", (DWORD)(g_ajeno + 100));
     ok(cola_tiene(esperado), "el gancho conocido se informa con nombre, al toque (sin esperar dos pasadas)");
+    ok(g_at_cerrar_t0 != 0, "y el juego queda marcado para cerrarse (como RBit)");
     at_revisar_codigo();
     ok(!cola_tiene("codigo="), "una sola pasada distinta todavía no se informa");
     at_revisar_codigo();
