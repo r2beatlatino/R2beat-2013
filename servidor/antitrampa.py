@@ -29,6 +29,7 @@ from .ajustes import (
     ANTITRAMPA_COMBO_MINIMO,
     ANTITRAMPA_COMBO_VECES,
     ANTITRAMPA_EXE_MD5,
+    ANTITRAMPA_GANCHOS,
     ANTITRAMPA_EXPULSIONES,
     ANTITRAMPA_EXPULSIONES_S,
     ANTITRAMPA_FARMEO_SENALES,
@@ -131,6 +132,17 @@ def _revisar_cuenta(st):
     return retener
 
 
+# Los ganchos que reconocemos (la dll los informa con «gancho=<nombre>»): nombre -> regla.
+_GANCHOS = {"automatico": "juego_automatico"}
+
+
+def _va(texto):
+    try:
+        return int(texto, 16)
+    except ValueError:
+        return -1
+
+
 def al_ff59(st, texto):
     """Un renglón «R2AT …» de la dll (antitrampa.c). Devuelve True si era uno (el FF59 ya está atendido)."""
     m = _R2AT.search(texto)
@@ -148,6 +160,13 @@ def al_ff59(st, texto):
         if d.get("previo", "0") not in ("0", "-1"):
             anotar(st, "codigo_previo", f"{d['previo']} página(s) del exe ya tocadas al abrir el juego, la primera "
                                         f"en {d.get('previo_va')}", {})
+    elif "gancho" in d:                                    # un gancho conocido de un programa de trampas
+        regla = _GANCHOS.get(d["gancho"], "codigo_modificado")
+        anotar(st, regla, f"gancho «{d['gancho']}» en {d.get('va')}: {d.get('bytes', '').replace('_', ' ')}", {})
+    elif "codigo" in d and _va(d["codigo"]) in ANTITRAMPA_GANCHOS:   # dll sin «gancho=»: por la dirección
+        anotar(st, _GANCHOS[ANTITRAMPA_GANCHOS[_va(d["codigo"])]],
+               f"gancho «{ANTITRAMPA_GANCHOS[_va(d['codigo'])]}» en {d['codigo']}: "
+               f"{d.get('bytes', '').replace('_', ' ')}", {})
     elif "codigo" in d:
         anotar(st, "codigo_modificado", f"{d.get('paginas')} página(s) del exe tocadas por fuera, la primera en "
                                         f"{d['codigo']}: {d.get('bytes', '').replace('_', ' ')}", {})
@@ -203,7 +222,7 @@ def anotar(st, regla, detalle, extra):
 
 
 # Las que informa el cliente fuera de una carrera: si son «retener», retienen todas las de la sesión.
-_REGLAS_DE_CUENTA = {"modulo_prohibido", "codigo_modificado", "codigo_previo", "exe_desconocido", "memoria_ajena",
+_REGLAS_DE_CUENTA = {"modulo_prohibido", "juego_automatico", "codigo_modificado", "codigo_previo", "exe_desconocido", "memoria_ajena",
                      "depurador", "animaciones_tocadas"}
 _QUE_RETIENEN = ("retener", "expulsar")
 _BLOQUEADOS = {}                              # usn -> time.monotonic() hasta el que no puede jugar

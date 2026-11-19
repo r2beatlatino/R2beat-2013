@@ -286,6 +286,19 @@ def probar_farmeo():
     antitrampa.al_ff59(c, "R2AT proceso=cheatengine-i386.exe")
     ok(reglas_de(6016)[-1] == "proceso_prohibido" and antitrampa.esta_bloqueado(c), "Cheat Engine abierto = expulsión")
 
+    print("el gancho del juego automático (Ñ2Hock, R2Beat.exe+0x1080B5):")
+    c = jugador(6017)
+    antitrampa.al_ff59(c, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+    ok(reglas_de(6017)[-1] == "juego_automatico" and antitrampa.esta_bloqueado(c), "«gancho=automatico» = expulsión")
+    c = jugador(6018)
+    antitrampa.al_ff59(c, "R2AT codigo=0x005080B5 paginas=4 bytes=E9_46_81_B2_31_90_90_6A")
+    ok(reglas_de(6018)[-1] == "juego_automatico" and antitrampa.esta_bloqueado(c),
+       "una dll vieja que lo manda como «codigo=0x005080B5» también expulsa")
+    c = jugador(6019)
+    antitrampa.al_ff59(c, "R2AT codigo=0x00494E76 paginas=17 bytes=E9_85_B1_BC_03_00_6A_1D")
+    ok(reglas_de(6019)[-1] == "codigo_modificado" and not antitrampa.esta_bloqueado(c),
+       "revés: los otros parches de Ñ2Hock (far, teclado…) sólo avisan")
+
 
 def probar_cartel():
     print("el cartel (h_21_ff28) no paga lo retenido:")

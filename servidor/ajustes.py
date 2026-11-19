@@ -5470,6 +5470,13 @@ ANTITRAMPA_REGLAS.update({
 ANTITRAMPA_EXE_MD5 = {"7b8626647231e715d3f2fe33eebe2c46",   # el de la receta (herramientas/receta_exe.py)
                       "0f79000e1f71162a0e45191ef7876076"}   # ★ 18-nov: el R2Beat.exe/R2BeatMultiTest.exe que reparte el launcher hoy
 
+# ── ★ GANCHOS CONOCIDOS: el juego automático ───────────────────────────────────────────────────────────
+#   Ñ2Hock/ToolBit ponen el juego automático con un salto (E9 …) en R2Beat.exe+0x1080B5 (va 0x005080B5). La dll lo
+#   mira aparte y lo informa con «R2AT gancho=automatico»; una dll más vieja lo manda como «codigo=0x005080B5» y
+#   se reconoce por la dirección. El resto de lo que parchea Ñ2Hock (far, obstáculos, teclado…) sigue sólo avisando.
+ANTITRAMPA_GANCHOS = {0x005080B5: "automatico"}       # va -> nombre del gancho
+ANTITRAMPA_REGLAS["juego_automatico"] = "expulsar"
+
 # ── ★ ANTITRAMPA DEL FARMEO (`antitrampa.py`, «señales de farmeo») ─────────────────────────────────────
 #   El farmeo (juego automático, auto listo/inicio, misma canción, campanas solas, fallar a un combo fijo…) se ve
 #   en el COMPORTAMIENTO, haga lo que haga el programa por dentro. Cada señal sola sólo avisa: una persona puede

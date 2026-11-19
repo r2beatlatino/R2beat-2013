@@ -205,6 +205,31 @@ static void at_revisar_codigo(void)
     if (nuevas) at_encolar("R2AT codigo=0x%08X paginas=%d bytes=%s", primera, nuevas, bytes);
 }
 
+/* 2b · ganchos conocidos, mirados aparte: «codigo=» sólo dice la PRIMERA página tocada de cada pasada y otro parche
+ *      (far, teclado…) puede taparlo. El juego automático de Ñ2Hock/ToolBit es un salto en R2Beat.exe+0x1080B5. */
+static struct { DWORD rva; const char *nombre; BYTE visto; } g_at_ganchos[] = { { 0x1080B5, "automatico", 0 } };
+
+static void at_revisar_ganchos(void)
+{
+    for (int i = 0; i < (int)(sizeof(g_at_ganchos) / sizeof(g_at_ganchos[0])); i++) {
+        DWORD rva = g_at_ganchos[i].rva, p = rva / AT_PAGINA;
+        if (p >= g_at_paginas || !g_at_vigila[p] || g_at_abiertas[p] > 0 || rva % AT_PAGINA > AT_PAGINA - 8) continue;
+        BYTE *mem = g_at_ini + rva, *esp = g_at_copia + rva;
+        MEMORY_BASIC_INFORMATION mbi;
+        if (!VirtualQuery(mem, &mbi, sizeof(mbi)) || mbi.State != MEM_COMMIT
+            || (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) continue;
+        int distinto = 0;
+        for (int k = 0; k < 5; k++) distinto |= mem[k] != esp[k];
+        if (!distinto) { g_at_ganchos[i].visto = 0; continue; }
+        if (g_at_ganchos[i].visto) continue;
+        g_at_ganchos[i].visto = 1;
+        char bytes[3 * 8 + 1];
+        int n = 0;
+        for (int k = 0; k < 8; k++) n += wsprintfA(bytes + n, k ? "_%02X" : "%02X", mem[k]);
+        at_encolar("R2AT gancho=%s va=0x%08X bytes=%s", g_at_ganchos[i].nombre, (DWORD)(0x400000 + rva), bytes);
+    }
+}
+
 /* 3 · módulos conocidos, cada uno una sola vez */
 /* ¿el archivo está en la carpeta de Windows (System32, SysWOW64…)? Windows carga su propio d3dref9.dll (medido en
  * una RTX 3090 en d3d9 nativo, 18-nov); la trampa con ese nombre va JUNTO AL JUEGO, y ésa se sigue informando. */
@@ -625,6 +650,7 @@ static DWORD WINAPI at_hilo(LPVOID nada)
     for (DWORD vuelta = 0;; vuelta++) {
         Sleep(5000);
         at_revisar_codigo();
+        at_revisar_ganchos();
         at_revisar_teclas();
         if (vuelta % 2 == 0) at_revisar_hilos();
         if (vuelta % 3 == 0) at_revisar_modulos();

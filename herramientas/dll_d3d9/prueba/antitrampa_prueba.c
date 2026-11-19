@@ -82,7 +82,13 @@ int main(int argc, char **argv)
     at_revisar_codigo();
     ok(!cola_tiene("codigo="), "revés: lo escrito con VirtualProtect (nuestro) no se informa");
 
+    g_at_ganchos[0].rva = (DWORD)(g_ajeno + 100) - 0x400000;                  /* «el automático» cae acá */
+    at_revisar_ganchos();
+    ok(!cola_tiene("gancho="), "revés: sin tocar, el gancho conocido no se informa");
     ok(escribir_por_fuera(g_ajeno + 100, gancho, 5), "escribo por fuera, como un trainer");
+    at_revisar_ganchos();
+    wsprintfA(esperado, "gancho=automatico va=0x%08X bytes=E9_11_22_33_44", (DWORD)(g_ajeno + 100));
+    ok(cola_tiene(esperado), "el gancho conocido se informa con nombre, al toque (sin esperar dos pasadas)");
     at_revisar_codigo();
     ok(!cola_tiene("codigo="), "una sola pasada distinta todavía no se informa");
     at_revisar_codigo();
