@@ -10,6 +10,7 @@ import re
 import struct
 import threading
 import time
+from . import antitrampa
 from . import notas
 
 from .ajustes import (
@@ -575,7 +576,7 @@ def unificar_cartel_de_relevo(todos, rid):
         _llegaron = [m["frame"] for m in miembros if not m.get("fallo")]
         _n = len(miembros)
         _frame = min(_llegaron) if _llegaron else 0xFFFFFFFF
-        _combo = max(m["combo"] for m in miembros)
+        _combo = max([m["combo"] for m in miembros if not m.get("retenido")] or [0])   # ★ el retenido no presta su combo
         _pd    = round(sum(m["pd"] for m in miembros) / _n)
         _star  = round(sum(m["star"] for m in miembros) / _n)
         _puesto = _puesto_eq.get(eq, 7) if _llegaron else 7
@@ -601,7 +602,7 @@ def unificar_cartel_de_relevo(todos, rid):
             #   cartel muestra.
             #   ⚠ Esto PISA la exp que se calculó arriba con el desempeño individual. Es a
             #     propósito y sólo en relevo; en equipo y en solo cada uno sigue con la suya.
-            m["exp"] = m["pd"] * 10 + m["combo"] + m["star"]
+            m["exp"] = 0 if m.get("retenido") else m["pd"] * 10 + m["combo"] + m["star"]
     log("LOBBY", "  ★★★ CARTEL DE RELEVO: " + " · ".join(
         f"equipo {eq} ({len(ms)}) puesto {ms[0]['puesto']} frame={ms[0]['frame']} "
         f"combo={ms[0]['combo']} pd={ms[0]['pd']}" for eq, ms in sorted(equipos.items())))
@@ -758,6 +759,15 @@ def h_21_ff28(st, cmd, data):
                          f"{getattr(st, 'usn', None)} -> las ignoro. O el parche del cliente "
                          f"escribe mal, o ese byte NO era libre.")
             milesimas = 0
+    # ★ ANTITRAMPA: con los bytes CRUDOS, antes del tope. Ver `antitrampa.py` y `ANTITRAMPA_REGLAS`.
+    _rid_at = getattr(st, "room_id", None)
+    with _mesa_lock:
+        _cancion_at = (CARRERAS.get(_rid_at) or {}).get("cancion") if _rid_at is not None else None
+    _cancion_at = (_cancion_at or (seleccion_de(_rid_at)["cancion"] if _rid_at is not None else 0)
+                   or getattr(st, "room_song", DEFAULT_ROOM_SONG))
+    _retener28 = antitrampa.juzgar_cartel(st, frame, combo, pd, star, _cancion_at,
+                                          relevo=bool(getattr(st, "room_mode", 0) & MODE_RELEVO),
+                                          coop=bool(getattr(st, "room_colab", False)))
     # plausibilidad (guía CBT anti-cheat capa 1): pd y star son PORCENTAJES -> tope 100.
     if pd > 100:   pd = 100
     if star > 100: star = 100
@@ -804,8 +814,9 @@ def h_21_ff28(st, cmd, data):
     #     `frame=8248 combo=0 pd=0 star=0` = caso (a). Antes lo contábamos como llegada.
     _fallo28 = (frame == 0xFFFFFFFF) or (combo == 0 and pd == 0 and star == 0)
     _res = {"slot": _mi_slot28, "frame": frame, "combo": combo, "pd": pd, "star": star,
-            "coin": coin, "exp": exp, "perdio": _perdio, "usn": getattr(st, "usn", None),
-            "fallo": _fallo28, "milesimas": milesimas,
+            "coin": 0 if _retener28 else coin, "exp": 0 if _retener28 else exp,
+            "perdio": _perdio, "usn": getattr(st, "usn", None),
+            "fallo": _fallo28, "milesimas": milesimas, "retenido": _retener28,
             # ★ En qué ronda del gorila se lo atrapó (`None` = se escapó). Lo usa el medallón del
             #   cartel en cooperativo: ver `medallon_del_gorila`.
             "ronda_captura": getattr(st, "chase_ronda_captura", None) if _es_chase else None}
@@ -1469,6 +1480,10 @@ def h_21_ff28(st, cmd, data):
     for _r in _pagar:
         if _r.get("usn") is None:
             continue
+        if _r.get("retenido"):
+            # ★ ANTITRAMPA: ni exp, ni Rcoin, ni récord, ni medallas, ni misiones. El porqué ya está en el log.
+            log("LOBBY", f"  🚩 premio RETENIDO por el antitrampa: usn={_r['usn']} slot={_r['slot']}")
+            continue
         # ★★ El bono de pareja se PAGA además de dibujarse. Sale de la MISMA lista que se metió
         #   en la fila del cartel, no de un recálculo: así el número de la pantalla y el del saldo
         #   no se pueden separar. Es la lección de la exp y del rcoin, que ya nos mordió dos veces.
@@ -1780,6 +1795,9 @@ def h_24_ff59(st, cmd, data):
     # ★ 06-nov (161): la misma línea dice también si el chart del FF57 puede pasar de 4096 (chart_grande.c):
     #   «R2DLL abandono12=1 chart64k=1» (cada cosa, si la trae). A la que no lo dice, el chart le va recortado.
     #   (Se busca en cualquier parte del texto, como antes: el exe le antepone «USN:… TIME:…» a lo que reporta.)
+    # ★ 18-nov: los renglones «R2AT …» del antitrampa de la dll (antitrampa.c) van a `antitrampa.py`.
+    if antitrampa.al_ff59(st, txt):
+        return
     _r2dll = re.search(r"R2DLL((?: \w+=\w+)+)", txt)
     if _r2dll and getattr(st, "usn", None):
         _trae = set(_r2dll.group(1).split())
@@ -2323,6 +2341,7 @@ def coop_puede_arrancar(st):
 
 def h_30_ff24(st, cmd, data):
     # rama original:  cmd == 36
+    antitrampa.al_listo(st)                   # ★ 18-nov: el «iniciar» del anfitrión (auto inicio = siempre igual)
     # ★★★ GUARD DEL RELEVO, antes de nada. Ver `relevo_puede_arrancar`: el cliente NO impide
     #   arrancar un 1v1, y una partida así rompe el cartel (medido el 2026-09-05).
     _no24 = (relevo_puede_arrancar(st) or cuatro_puede_arrancar(st) or jefe_puede_arrancar(st)
@@ -2734,6 +2753,7 @@ def dar_el_go(rid, motivo=""):
             continue
         try:
             _c.send_ff55(0x24, bytes([0, 0]), name="FF24 GO count=0 (arranca carrera)")
+            antitrampa.marcar_salida(_c)
             _n += 1
         except Exception as e:
             log("LOBBY", f"  ⚠ no pude mandar el GO a usn={_u}: {e!r}")

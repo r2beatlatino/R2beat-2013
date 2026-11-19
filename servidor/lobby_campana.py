@@ -622,6 +622,8 @@ def h_ffa8_campana(st, cmd, data):
 
     _metal, _plus = CAMPANAS[_item]
     _nombre = f"campana de {_metal}{'+' if _plus else ''}"
+    from . import antitrampa                  # ★ 18-nov: campana en cada ronda = campanas automáticas
+    antitrampa.al_campana(st)
 
     if not CAMPANA_ACTIVA:
         log("LOBBY", "  ⚠ CAMPANA apagada por perilla (CAMPANA_ACTIVA) -> no se difunde")

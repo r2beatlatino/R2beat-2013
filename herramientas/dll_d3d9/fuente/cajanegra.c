@@ -157,6 +157,7 @@ static void cn_leer_anterior(const char *ruta)
 static DWORD g_cn_cap_usn;                /* a qué usn ya le dije qué trae esta dll */
 static void cn_enviar_pendiente(void)
 {
+    at_enviar_pendiente();                   /* ★ 18-nov: los renglones del antitrampa (antitrampa.c) */
     if (g_cn_enviados >= g_cn_npend && !g_gr_abandono && !g_cg_activo) return;
     if (!g_cn_base) g_cn_base = (BYTE *)GetModuleHandleA(NULL);
     if (!g_cn_t0) { g_cn_t0 = GetTickCount(); return; }

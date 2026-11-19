@@ -5418,3 +5418,96 @@ DOCE_CUATRO = True
 #   llegue primero sin tomar en cuenta el esfuerzo de los demás». Antes ganaba el equipo del 1.º. Sólo en la sala de
 #   12 y en equipo (no relevo, no jefe: el jefe tiene su regla). En 0 vuelve a «gana el equipo del 1.º».
 DOCE_GANA_CON = 3
+
+# ── ★ ANTITRAMPA DEL CARTEL (`antitrampa.py`) ─────────────────────────────────────────────────────────
+#   Lo que el server puede comprobar solo, sin creerle al cliente: el combo contra el chart que mandamos,
+#   los porcentajes y el reloj del juego (`frame`, 60 por segundo) contra el reloj del server desde el GO.
+#   Qué se hace con cada regla:
+#     "retener"   -> log + archivo + aviso a los GM conectados + NO se paga ni se anota la carrera
+#     "avisar"    -> log + archivo + aviso a los GM conectados
+#     "registrar" -> log + archivo
+#     "apagado"   -> nada
+ANTITRAMPA = True
+ANTITRAMPA_REGLAS = {
+    "combo_imposible":      "retener",    # combo > total de notas del chart servido
+    "porcentaje_imposible": "retener",    # pd o star > 100 en el paquete crudo
+    # ⏳ "avisar" hasta medirlo en prod: no está comprobado que el frame arranque en el GO y no en la
+    #   carga. Si las marcas de `antitrampa.jsonl` sólo caen en tramposos, pasarlo a "retener".
+    "reloj_rapido":         "avisar",     # el juego contó más tiempo del que pasó desde el GO
+    "reloj_lento":          "avisar",     # el juego contó mucho menos (velocidad de práctica en línea)
+    "animaciones_tocadas":  "avisar",     # FF3D(0) repetido: la comprobación de las 112 animaciones falló
+}
+#   Reloj rápido: se marca si frame/60 > transcurrido × (1 + TOLERANCIA) + MARGEN_S. El transcurrido
+#   se mide desde que el server manda el GO, que ya llega tarde al cliente, así que sólo juega a favor.
+ANTITRAMPA_RELOJ_TOLERANCIA = 0.05
+ANTITRAMPA_RELOJ_MARGEN_S = 3.0
+#   Reloj lento: frame/60 < transcurrido × FACTOR − MARGEN_S. Sólo carreras sueltas (no relevo ni
+#   cooperativo, donde el frame no cubre la carrera entera). El margen absorbe el FF27 (4 s) y la red.
+ANTITRAMPA_LENTO_FACTOR = 0.85
+ANTITRAMPA_LENTO_MARGEN_S = 8.0
+#   Cuántos FF3D(0) en una sesión hacen falta para marcar. Un cambio de canal manda uno solo.
+ANTITRAMPA_FF3D0_MIN = 3
+#   Dónde se anotan las marcas (una línea JSON por marca). En `datos/`, que no se sube.
+ANTITRAMPA_ARCHIVO = os.environ.get("R2_ANTITRAMPA") or os.path.join(
+    os.path.dirname(_DIR_SERVIDOR), "datos", "antitrampa.jsonl")
+
+# ── ★ ANTITRAMPA DEL CLIENTE (`herramientas/dll_d3d9/fuente/antitrampa.c`) ──────────────────────────────
+#   La dll manda por FF59 renglones «R2AT …»: un «hola» al llegar al lobby (con el md5 del R2Beat.exe del disco y si
+#   el exe ya venía tocado al cargarse) y uno por hallazgo. ⚠ Es lo que el cliente DICE: una dll recompilada puede
+#   callar. Por eso casi todo sólo avisa; lo que no se puede falsear lo mira `ANTITRAMPA_REGLAS` de arriba.
+#   "retener" acá = se retiene el premio de TODAS las carreras de esa cuenta hasta que vuelva a abrir el juego.
+ANTITRAMPA_REGLAS.update({
+    "modulo_prohibido":  "retener",       # ToolBit, R2Mods, Cheat Engine… cargado en el juego
+    "codigo_modificado": "avisar",        # una página del exe cambió sin pasar por nuestra dll
+    "codigo_previo":     "avisar",        # el exe ya estaba tocado cuando se cargó nuestra dll
+    "exe_desconocido":   "registrar",     # el md5 del R2Beat.exe no es ninguno de ANTITRAMPA_EXE_MD5
+    "memoria_ajena":     "registrar",     # memoria ejecutable que no es nuestra (superposiciones dan falsos)
+    "depurador":         "registrar",
+    "sin_antitrampa":    "registrar",     # terminó una carrera sin haber mandado nunca el «hola» (dll vieja o apagada)
+})
+#   Los R2Beat.exe aceptados: el que deja `herramientas/receta_exe.py` (MD5_ESPERADO). Al cambiar la receta, sumá el
+#   nuevo acá y dejá el anterior mientras haya jugadores con él.
+ANTITRAMPA_EXE_MD5 = {"7b8626647231e715d3f2fe33eebe2c46",   # el de la receta (herramientas/receta_exe.py)
+                      "0f79000e1f71162a0e45191ef7876076"}   # ★ 18-nov: el R2Beat.exe/R2BeatMultiTest.exe que reparte el launcher hoy
+
+# ── ★ ANTITRAMPA DEL FARMEO (`antitrampa.py`, «señales de farmeo») ─────────────────────────────────────
+#   El farmeo (juego automático, auto listo/inicio, misma canción, campanas solas, fallar a un combo fijo…) se ve
+#   en el COMPORTAMIENTO, haga lo que haga el programa por dentro. Cada señal sola sólo avisa: una persona puede
+#   repetir canción o no hablar. Dos señales distintas en la misma sesión = «farmeo».
+#   "expulsar" = mensaje al jugador, anuncio público (si ANTITRAMPA_ANUNCIO_PUBLICO), se cierra la conexión, no cobra
+#   esa carrera y no puede volver a entrar hasta que pasen ANTITRAMPA_BLOQUEO_S.
+ANTITRAMPA_REGLAS.update({
+    "listo_automatico":      "avisar",    # «listo»/«iniciar» siempre al mismo instante tras la carrera
+    "carreras_sin_hablar":   "avisar",    # muchas carreras seguidas sin una sola línea de chat
+    "misma_cancion":         "avisar",    # la misma canción muchas veces seguidas
+    "campanas_automaticas":  "avisar",    # tocó campana en cada ronda, muchas rondas seguidas
+    "combo_repetido":        "avisar",    # el mismo combo en canciones distintas (fallar al llegar a N)
+    "precision_constante":   "avisar",    # la misma precisión en canciones de niveles muy distintos
+    "expulsa_espectadores":  "registrar", # el anfitrión echa espectadores en serie
+    "farmeo":                "expulsar",  # dos señales distintas o más en la misma sesión
+    "modulo_prohibido":      "expulsar",  # ToolBit, R2Mods, Cheat Engine…: son herramientas de farmeo
+})
+ANTITRAMPA_FARMEO_SENALES = 2
+ANTITRAMPA_BLOQUEO_S = 600
+ANTITRAMPA_ANUNCIO_PUBLICO = True        # False = el anuncio de la expulsión va sólo a los GM
+ANTITRAMPA_ANUNCIO = "{nick} ha sido detectado por usar trampas en el cliente."
+#   Los umbrales de cada señal.
+ANTITRAMPA_LISTO_MUESTRAS = 8            # reacciones medidas (de la llegada al «listo»/«iniciar»)
+ANTITRAMPA_LISTO_DESVIO_S = 0.25         # una persona varía más que esto entre carrera y carrera
+ANTITRAMPA_SIN_HABLAR = 40               # carreras seguidas sin chat
+ANTITRAMPA_MISMA_CANCION = 15            # carreras seguidas con la misma canción
+ANTITRAMPA_CAMPANAS_SEGUIDAS = 6         # rondas seguidas con campana
+ANTITRAMPA_COMBO_VECES = 4               # el mismo combo (≥ ANTITRAMPA_COMBO_MINIMO) en ≥ 3 canciones distintas
+ANTITRAMPA_COMBO_MINIMO = 50
+ANTITRAMPA_PRECISION_CARRERAS = 10       # carreras miradas para la precisión constante
+ANTITRAMPA_PRECISION_NIVELES = 6         # entre la canción más fácil y la más difícil, al menos estos niveles
+ANTITRAMPA_PRECISION_RANGO = 1           # y la precisión no se movió más que esto (en puntos)
+ANTITRAMPA_EXPULSIONES = 5               # espectadores echados…
+ANTITRAMPA_EXPULSIONES_S = 600           # …en este tiempo
+
+# ── ★ ANTITRAMPA: lo nuevo que informa la dll (18-nov, a la par del «Avital» del otro cliente) ──────────────────
+ANTITRAMPA_REGLAS.update({
+    "teclas_inyectadas": "avisar",        # teclas que manda un programa (cuenta como SEÑAL de farmeo)
+    "hilo_ajeno":        "avisar",        # un hilo del juego que arranca en memoria inyectada
+    "proceso_prohibido": "expulsar",      # Cheat Engine, ToolBit, R2TR, un acelerador… abiertos con el juego
+})

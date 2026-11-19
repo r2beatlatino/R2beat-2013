@@ -27,6 +27,9 @@ jobs:
       - name: arranca y una cuenta entra por la red, como el juego (con sus reveses)
         run: python pruebas/probar_login.py
 
+      - name: antitrampa (reglas del cartel y que no se pague lo retenido)
+        run: python pruebas/probar_antitrampa.py
+
       - name: nada prohibido (bases, cuentas, paks, IPs, rutas personales)
         run: python pruebas/probar_nada_prohibido.py
 

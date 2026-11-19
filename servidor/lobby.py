@@ -27,6 +27,7 @@ import sys
 import threading
 import time                              # ⚠ lo usa el resumen por minuto del FF3D (handle_inner)
 from . import gacha
+from . import antitrampa
 from . import autoplay_gm
 from . import nombre_publico             # ★ 14-nov: la IP que se anuncia en los canales, sacada del DNS (si hay nombre)
 from . import notas
@@ -1008,6 +1009,11 @@ def handle_login(conn, addr):
         conn.close()
 def handle_inner(st, cmd, data):
     """Despacha un comando INTERNO (ya descifrado del FF55). Responde lo que el loading espera."""
+    # ★ 18-nov · ANTITRAMPA: la cuenta expulsada no juega hasta que pase su bloqueo (también tras re-loguear).
+    if antitrampa.esta_bloqueado(st):
+        if not getattr(st, "cerrado", False):
+            antitrampa.cerrar_conexion(st, "sigue bloqueada por el antitrampa")
+        return
     # ★★★★ 2026-08-05 — EL SEGUNDO FF4B QUE ACOMODA LOS SLOTS DE EQUIPO.
     #   Síntoma: al CREAR una sala en equipo el título salía bien pero los asientos quedaban
     #   dibujados como SOLO; cambiando a solo y volviendo a equipo se acomodaban.
@@ -1060,6 +1066,8 @@ def handle_inner(st, cmd, data):
     #   este cliente (mismo patrón que `FF111`/`FF63`/`FF3A`: el 0 avisa, el 1 confirma).
     #   ⏳ SIN CONFIRMAR que `01` sea "confirmar": si el síntoma fuera que te desconecta solo al entrar
     #     al lobby, entonces `01` es otra cosa y hay que mirar el `00` o el contexto.
+    if cmd == 0x3D and data:
+        antitrampa.al_ff3d(st, data)
     if cmd == 0x3D and CERRAR_LOBBY_EN_SWITCH and data and data[0] == 0x01:
         log("LOBBY", f"  ★★★ FF3D switch de canal (payload={hx(data)}) -> CIERRO el socket del lobby "
                      f"para que el cliente re-loguee y aterrice en el canal elegido")

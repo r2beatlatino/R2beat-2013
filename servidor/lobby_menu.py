@@ -665,6 +665,8 @@ def h_07_ff08(st, cmd, data):
     # str2=mensaje. Echo con el nick del host para que se dibuje "nick: msg". CALIBRAR b5/b6 si sale mal.
     mlen = data[0] if data else 0
     msg  = data[1:1 + mlen]
+    from . import antitrampa                  # ★ 18-nov: alguien escribió = hay una persona (señal de farmeo)
+    antitrampa.al_hablar(st)
     # ★ El APODO y el ESTILO (globo/color) se guardan en la conexión CHAT_CACHE_SEG (25-sep): leer el
     #   personaje entero son ~10 consultas, y se hacía en CADA mensaje (medido: 12 por mensaje con 40
     #   en la sala, `herramientas/medir_charla.py`). Tildar un globo o un crayón lo invalida al toque
