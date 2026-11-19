@@ -14,6 +14,7 @@ picker, estilos de texto…). Para sacarla, se borra.
 | `d3d9.dll` | la dll compilada |
 | `d3d9_proxy.ini` | su configuración (video, motor, métricas). Va al lado de la dll |
 | `d3d9_caras.ini` | las caras por sexo (sólo sirve si tu cliente tiene esas carpetas de caras) |
+| `antitrampa_pantalla.bmp` | la imagen de la pantalla «Ñ2-AntiCheat» al abrir el juego. Va al lado de la dll (sin ella se dibuja una propia) |
 
 ⚠ Algunas partes de la dll dibujan cosas que sólo existen en un cliente con contenido agregado (caras,
 monturas, auras). En un cliente de fábrica esas partes no encuentran nada y no hacen nada; lo demás anda.
