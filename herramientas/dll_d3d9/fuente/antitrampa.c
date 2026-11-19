@@ -373,7 +373,7 @@ static void at_revisar_procesos(void)
     CloseHandle(snap);
 }
 
-/* 9 · LA PANTALLA «Sistema de Prevención de Hackeo»: mientras arranca el juego, una ventana con imagen y barra, sin
+/* 9 · LA PANTALLA «Sistema de Prevención de Hackeo»: mientras arranca el juego, la imagen y «Cargando juego… N %», sin
  *     robarle el foco. Se va cuando aparece la ventana del juego (no antes de `pantalla_min` ms; como mucho
  *     `pantalla_max`). La imagen es un BMP junto a la dll ([antitrampa] imagen=…); sin él se dibuja una propia. */
 static int g_at_pantalla_min = 3000, g_at_pantalla_max = 8000;
@@ -381,6 +381,7 @@ static char g_at_imagen_ruta[MAX_PATH];
 static HBITMAP g_at_imagen;
 static DWORD g_at_pantalla_t0;
 static HWND g_at_pantalla;
+static int g_at_pct, g_at_listo;
 
 static BOOL CALLBACK at_buscar_juego(HWND h, LPARAM hay)
 {
@@ -397,10 +398,13 @@ static BOOL CALLBACK at_buscar_juego(HWND h, LPARAM hay)
 
 static void at_texto(HDC dc, const WCHAR *t, RECT r, UINT forma)
 {
-    RECT s = r;
-    OffsetRect(&s, 1, 1);
-    SetTextColor(dc, RGB(0, 0, 0));
-    DrawTextW(dc, t, -1, &s, forma);
+    static const signed char borde[8][2] = { {-2, 0}, {2, 0}, {0, -2}, {0, 2}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1} };
+    SetTextColor(dc, RGB(45, 20, 80));                                      /* contorno violeta: se lee sobre la imagen */
+    for (int i = 0; i < 8; i++) {
+        RECT s = r;
+        OffsetRect(&s, borde[i][0], borde[i][1]);
+        DrawTextW(dc, t, -1, &s, forma);
+    }
     SetTextColor(dc, RGB(255, 255, 255));
     DrawTextW(dc, t, -1, &r, forma);
 }
@@ -434,30 +438,15 @@ static void at_pintar(HWND w, HDC dc)
         SelectObject(dc, v);
         DeleteObject(t);
     }
-    RECT franja = { 0, al - 56, an, al };                                   /* la franja de abajo, como el otro */
-    HBRUSH oscura = CreateSolidBrush(RGB(16, 16, 28));
-    FillRect(dc, &franja, oscura);
-    DeleteObject(oscura);
-    HFONT f = CreateFontW(-16, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    WCHAR cargando[48];                                                     /* sólo «Cargando juego… N %», sin barra */
+    wsprintfW(cargando, L"Cargando juego… %d %%", g_at_pct);
+    HFONT f = CreateFontW(-20, 0, 0, 0, FW_HEAVY, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     HGDIOBJ v = SelectObject(dc, f);
     SetBkMode(dc, TRANSPARENT);
-    RECT r = { 12, al - 52, an - 12, al - 30 };
-    at_texto(dc, L"Sistema de Prevención de Hackeo", r, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+    RECT r = { 0, al - 40, an, al - 10 };
+    at_texto(dc, cargando, r, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     SelectObject(dc, v);
     DeleteObject(f);
-    DWORD pasado = GetTickCount() - g_at_pantalla_t0;
-    int lleno = (int)((an - 24) * (pasado < (DWORD)g_at_pantalla_max ? pasado : (DWORD)g_at_pantalla_max)
-                      / (DWORD)g_at_pantalla_max);
-    RECT marco = { 12, al - 24, an - 12, al - 10 };
-    HBRUSH borde = CreateSolidBrush(RGB(120, 140, 200));
-    FrameRect(dc, &marco, borde);
-    DeleteObject(borde);
-    for (int x = 0; x < lleno - 2; x++) {                                   /* la barra azul, con brillo */
-        RECT col = { 13 + x, al - 23, 14 + x, al - 11 };
-        HBRUSH b = CreateSolidBrush(RGB(40 + 60 * x / an, 120 + 80 * x / an, 255));
-        FillRect(dc, &col, b);
-        DeleteObject(b);
-    }
 }
 
 static LRESULT CALLBACK at_pantalla_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
@@ -480,10 +469,18 @@ static LRESULT CALLBACK at_pantalla_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
     }
     if (m == WM_TIMER) {
         DWORD pasado = GetTickCount() - g_at_pantalla_t0;
-        int hay = 0;
-        if (pasado >= (DWORD)g_at_pantalla_min) EnumWindows(at_buscar_juego, (LPARAM)&hay);
-        if (hay || pasado >= (DWORD)g_at_pantalla_max) DestroyWindow(w);
-        else InvalidateRect(w, NULL, FALSE);
+        if (!g_at_listo) {                       /* sube rápido y se frena antes del 95 % (no sabemos cuánto falta) */
+            int hay = 0;
+            if (pasado >= (DWORD)g_at_pantalla_min) EnumWindows(at_buscar_juego, (LPARAM)&hay);
+            g_at_listo = hay || pasado >= (DWORD)g_at_pantalla_max;
+            if (!g_at_listo) g_at_pct = (int)(95 * pasado / (pasado + (DWORD)g_at_pantalla_min / 2));
+        } else if (g_at_pct < 100) {
+            g_at_pct = g_at_pct + 6 > 100 ? 100 : g_at_pct + 6;           /* ya está el juego: llega al 100 % */
+        } else if (++g_at_listo > 10) {                                    /* y se queda en 100 % un ratito */
+            DestroyWindow(w);
+            return 0;
+        }
+        InvalidateRect(w, NULL, FALSE);
         return 0;
     }
     if (m == WM_DESTROY) { PostQuitMessage(0); return 0; }
