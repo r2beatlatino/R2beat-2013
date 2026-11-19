@@ -13,6 +13,7 @@ import shutil
 import struct
 import sys
 import tempfile
+import time
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="r2b_antitrampa_")
@@ -150,9 +151,12 @@ def probar_cliente():
     ok(antitrampa.juzgar_cartel(c, 240, 13, 90, 50, 77) is True, "…y retiene la carrera siguiente aunque esté limpia")
     ok(antitrampa.juzgar_cartel(Conn(), 240, 13, 90, 50, 77) is False, "revés: a otra cuenta no la toca")
     antitrampa.al_ff59(c, f"USN:5151\nR2AT v=1 exe={EXE_BUENO} previo=0")
-    ok(antitrampa.juzgar_cartel(c, 300, 14, 90, 50, 77) is True, "reabrir el juego no salta el bloqueo de la expulsión")
+    ok(antitrampa.juzgar_cartel(c, 300, 14, 90, 50, 77) is False,
+       "★ 19-nov sin bloqueo por tiempo: reabrir el juego limpio vuelve a cobrar")
+    antitrampa._BLOQUEADOS[5151] = time.monotonic() + 600                  # con ANTITRAMPA_BLOQUEO_S puesto, como antes
+    ok(antitrampa.juzgar_cartel(c, 360, 15, 90, 50, 77) is True, "con bloqueo por tiempo, aunque reabra, no cobra")
     antitrampa._BLOQUEADOS[5151] = 0
-    ok(antitrampa.juzgar_cartel(c, 360, 15, 90, 50, 77) is False, "pasado el bloqueo, y con el juego limpio, cobra")
+    ok(antitrampa.juzgar_cartel(c, 420, 16, 90, 50, 77) is False, "pasado el bloqueo, y con el juego limpio, cobra")
 
 
 class Socket:
@@ -244,7 +248,7 @@ def probar_farmeo():
     c = jugador(6014)
     antitrampa.al_ff59(c, "R2AT teclas=300 inyectadas=280")
     antitrampa.al_ff59(c, "R2AT hilo=0x00D90000")
-    ok(reglas_de(6014)[-2:] == ["teclas_inyectadas", "hilo_ajeno"] and not antitrampa.esta_bloqueado(c),
+    ok(reglas_de(6014)[-2:] == ["teclas_inyectadas", "hilo_ajeno"] and not antitrampa.fue_expulsado(c),
        "teclas inyectadas y un hilo ajeno avisan, sin expulsar")
 
     print("expulsión por farmeo (dos señales):")
@@ -273,18 +277,79 @@ def probar_farmeo():
     ok(c.conn.cerrado and c.cerrado, "se le cierra la conexión")
     ok(any("detectado por usar trampas" in n for _cmd, n in otro.enviados), "los demás ven el anuncio público")
     ok(any("expulsado" in n for _cmd, n in c.enviados), "él ve por qué lo expulsaron")
-    ok(antitrampa.esta_bloqueado(c), "y queda bloqueado")
-    ok(not antitrampa.esta_bloqueado(jugador(6013)), "revés: otra cuenta no queda bloqueada")
+    ok(antitrampa.fue_expulsado(c), "y queda anotado como expulsado")
+    ok(not antitrampa.fue_expulsado(jugador(6013)), "revés: otra cuenta no queda expulsada")
     ok(antitrampa.juzgar_cartel(c, 99_999, 10, 90, 50, 77) is True, "si vuelve a reportar estando bloqueado, no cobra")
 
     c = jugador(6015)
     correr_carreras(c, 9, reaccion=lambda i: 2.0)
     antitrampa.al_ff59(c, "R2AT teclas=500 inyectadas=480")
-    ok(reglas_de(6015)[-1] == "farmeo" and antitrampa.esta_bloqueado(c),
+    ok(reglas_de(6015)[-1] == "farmeo" and antitrampa.fue_expulsado(c),
        "listo automático + teclas inyectadas = farmeo y expulsión")
     c = jugador(6016)
     antitrampa.al_ff59(c, "R2AT proceso=cheatengine-i386.exe")
-    ok(reglas_de(6016)[-1] == "proceso_prohibido" and antitrampa.esta_bloqueado(c), "Cheat Engine abierto = expulsión")
+    ok(reglas_de(6016)[-1] == "proceso_prohibido" and antitrampa.fue_expulsado(c), "Cheat Engine abierto = expulsión")
+
+    print("el gancho del juego automático (Ñ2Hock, R2Beat.exe+0x1080B5):")
+    c = jugador(6017)
+    antitrampa.al_ff59(c, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+    ok(reglas_de(6017)[-1] == "juego_automatico" and antitrampa.fue_expulsado(c), "«gancho=automatico» = expulsión")
+    c = jugador(6018)
+    antitrampa.al_ff59(c, "R2AT codigo=0x005080B5 paginas=4 bytes=E9_46_81_B2_31_90_90_6A")
+    ok(reglas_de(6018)[-1] == "juego_automatico" and antitrampa.fue_expulsado(c),
+       "una dll vieja que lo manda como «codigo=0x005080B5» también expulsa")
+    c = jugador(6019)
+    antitrampa.al_ff59(c, "R2AT codigo=0x00494E76 paginas=17 bytes=E9_85_B1_BC_03_00_6A_1D")
+    ok(reglas_de(6019)[-1] == "codigo_modificado" and not antitrampa.fue_expulsado(c),
+       "revés: los otros parches de Ñ2Hock (far, teclado…) sólo avisan")
+    c = jugador(6020)
+    antitrampa.al_ff59(c, "R2AT gancho=sala va=0x005AEDD4 bytes=E9_27_12_78_03_90_6A_07")
+    ok(reglas_de(6020)[-1] == "sala_automatica" and antitrampa.fue_expulsado(c),
+       "Auto Listo / Anfitrión al azar / Misma canción («gancho=sala») = expulsión")
+    c = jugador(6021)
+    antitrampa.al_ff59(c, "R2AT codigo=0x005AEDD4 paginas=1 bytes=E9_27_12_6F_03_90_6A_07")
+    ok(reglas_de(6021)[-1] == "sala_automatica" and antitrampa.fue_expulsado(c),
+       "la dll vieja lo manda como «codigo=0x005AEDD4» (medido 19-nov) y también expulsa")
+    c = jugador(6022)
+    antitrampa.al_ff59(c, "R2AT gancho=relevo va=0x00505340 bytes=E9_00_00_00_00_90_90_90")
+    ok(reglas_de(6022)[-1] == "relevo_automatico" and antitrampa.fue_expulsado(c), "pisar el gancho del relevo = expulsión")
+
+    print("la escalera (por cuenta): 1.ª fuera · 2.ª advertencia · 3.ª baneo permanente:")
+    from servidor import almacen, basedatos
+    usn, motivo = basedatos.cuenta_crear("tramposo", "A" * 64)
+    ok(usn is not None, f"creo la cuenta de prueba ({motivo or 'ok'})")
+    ok(not antitrampa.esta_bloqueado(jugador(usn)), "revés: sin faltas, nada")
+    textos = []
+    for vez in range(1, 4):
+        c = jugador(usn)
+        salas.CONEXIONES[usn] = c
+        try:
+            antitrampa.al_ff59(c, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+        finally:
+            salas.CONEXIONES.pop(usn, None)
+        textos.append(" ".join(n for _cmd, n in c.enviados))
+        ok(c.conn.cerrado, f"{vez}.ª: lo saca del juego")
+        ok(not antitrampa.esta_bloqueado(c), f"{vez}.ª: sin bloqueo de 10 min")
+        ph = almacen.conectar().execute("SELECT pass_hash FROM users WHERE username='tramposo'").fetchone()["pass_hash"]
+        ok(ph.startswith("BANNED:") == (vez == 3), f"{vez}.ª: {'BANEADA' if vez == 3 else 'la cuenta sigue activa'}")
+    ok("expulsado" in textos[0] and "ADVERTENCIA" not in textos[0] and "BANEADA" not in textos[0],
+       "1.ª: sólo «fuiste expulsado»")
+    ok("ADVERTENCIA" in textos[1] and "baneada para siempre" in textos[1], "2.ª: con la advertencia")
+    ok("BANEADA PERMANENTEMENTE" in textos[2], "3.ª: le dice que quedó baneada")
+    ok(almacen.conectar().execute("SELECT faltas FROM antitrampa_faltas WHERE username='tramposo'").fetchone()[0] == 3,
+       "las faltas quedan en la base (sobreviven a reiniciar el server)")
+    ok(almacen.conectar().execute("SELECT COUNT(*) FROM antitrampa_faltas WHERE username<>'tramposo'").fetchone()[0]
+       == 0, "revés: los jugadores sin cuenta en la base no suman faltas a nadie")
+    usn2, _m = basedatos.cuenta_crear("doble", "B" * 64)
+    c = jugador(usn2)
+    antitrampa.al_ff59(c, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_C0_00_90_90_6A")
+    antitrampa.al_ff59(c, "R2AT gancho=sala va=0x005AEDD4 bytes=E9_27_12_B4_00_90_6A_07")
+    ok(almacen.conectar().execute("SELECT faltas FROM antitrampa_faltas WHERE username='doble'").fetchone()[0] == 1,
+       "dos funciones prendidas en la MISMA sesión (medido 19-nov) = UNA sola falta")
+    c = jugador(usn2)                                                       # reabre el juego: otra sesión
+    antitrampa.al_ff59(c, "R2AT gancho=sala va=0x005AEDD4 bytes=E9_27_12_B4_00_90_6A_07")
+    ok(almacen.conectar().execute("SELECT faltas FROM antitrampa_faltas WHERE username='doble'").fetchone()[0] == 2,
+       "al reabrir el juego y volver a hacerlo, sí suma la segunda")
 
 
 def probar_cartel():

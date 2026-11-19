@@ -5470,6 +5470,18 @@ ANTITRAMPA_REGLAS.update({
 ANTITRAMPA_EXE_MD5 = {"7b8626647231e715d3f2fe33eebe2c46",   # el de la receta (herramientas/receta_exe.py)
                       "0f79000e1f71162a0e45191ef7876076"}   # ★ 18-nov: el R2Beat.exe/R2BeatMultiTest.exe que reparte el launcher hoy
 
+# ── ★ GANCHOS CONOCIDOS: el juego automático ───────────────────────────────────────────────────────────
+#   Ñ2Hock/ToolBit ponen el juego automático con un salto (E9 …) en R2Beat.exe+0x1080B5 (va 0x005080B5). La dll lo
+#   mira aparte y lo informa con «R2AT gancho=automatico»; una dll más vieja lo manda como «codigo=0x005080B5» y
+#   se reconoce por la dirección. El resto de lo que parchea Ñ2Hock (far, obstáculos, teclado…) sigue sólo avisando.
+#   ★ 19-nov, medido en el juego con Ñ2Hock: «Auto Listo / Inicio», «Anfitrión: al azar» y «Misma canción» comparten
+#   un salto en +0x1AEDD4 (va 0x005AEDD4) → «sala_automatica». «Auto Relevo» engancha +0x105340, donde ya está el gancho
+#   del relevo de nuestra dll (Ñ2Hock no lo pisa); si algo lo pisa → «relevo_automatico».
+ANTITRAMPA_GANCHOS = {0x005080B5: "automatico", 0x005AEDD4: "sala", 0x00505340: "relevo"}   # va -> nombre
+ANTITRAMPA_REGLAS["juego_automatico"] = "expulsar"
+ANTITRAMPA_REGLAS["sala_automatica"] = "expulsar"
+ANTITRAMPA_REGLAS["relevo_automatico"] = "expulsar"
+
 # ── ★ ANTITRAMPA DEL FARMEO (`antitrampa.py`, «señales de farmeo») ─────────────────────────────────────
 #   El farmeo (juego automático, auto listo/inicio, misma canción, campanas solas, fallar a un combo fijo…) se ve
 #   en el COMPORTAMIENTO, haga lo que haga el programa por dentro. Cada señal sola sólo avisa: una persona puede
@@ -5488,9 +5500,15 @@ ANTITRAMPA_REGLAS.update({
     "modulo_prohibido":      "expulsar",  # ToolBit, R2Mods, Cheat Engine…: son herramientas de farmeo
 })
 ANTITRAMPA_FARMEO_SENALES = 2
-ANTITRAMPA_BLOQUEO_S = 600
+#   ★ 19-nov (anonimo03: «el bloqueo de 10 min aún no lo pongamos, solo lo bota; la segunda con advertencia y la
+#   3.ª baneo permanente»): LA ESCALERA, por cuenta (tabla `antitrampa_faltas`): 1.ª = fuera · 2.ª = fuera con
+#   advertencia · `ANTITRAMPA_BANEO_EN`.ª = `BANNED:` (0 = nunca banea). El bloqueo por tiempo queda en 0 (600 =
+#   como antes: 10 min sin poder entrar); igual, lo que quede de esa sesión no cobra.
+ANTITRAMPA_BLOQUEO_S = 0
+ANTITRAMPA_BANEO_EN = 3
 ANTITRAMPA_ANUNCIO_PUBLICO = True        # False = el anuncio de la expulsión va sólo a los GM
 ANTITRAMPA_ANUNCIO = "{nick} ha sido detectado por usar trampas en el cliente."
+ANTITRAMPA_ANUNCIO_BANEO = "{nick} ha sido baneado permanentemente por usar trampas en el cliente."
 #   Los umbrales de cada señal.
 ANTITRAMPA_LISTO_MUESTRAS = 8            # reacciones medidas (de la llegada al «listo»/«iniciar»)
 ANTITRAMPA_LISTO_DESVIO_S = 0.25         # una persona varía más que esto entre carrera y carrera

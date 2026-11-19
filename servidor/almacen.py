@@ -266,6 +266,34 @@ def cuenta_de_uid(uid):
         return _ubicacion(conectar(), uid)
 
 
+# ═══ ★ 19-nov · LA ESCALERA DEL ANTITRAMPA (anonimo03: «solo lo bota, la segunda con advertencia, la 3.ª baneo
+#   permanente»). Por CUENTA: crear otro personaje no la limpia. `antitrampa.py` decide qué hacer con el número.
+def antitrampa_sumar_falta(uid, regla):
+    """Una expulsión más de la cuenta del personaje `uid`. -> (cuenta, faltas ya contando ésta) o (None, 0)."""
+    with _lock:
+        c = conectar()
+        cuenta, _ = _ubicacion(c, uid)
+        if not cuenta:
+            return None, 0
+        c.execute("INSERT INTO antitrampa_faltas (username, faltas, ultima_regla, ultima) "
+                  "VALUES (?, 1, ?, datetime('now', 'localtime')) ON CONFLICT(username) DO UPDATE SET "
+                  "faltas = faltas + 1, ultima_regla = excluded.ultima_regla, ultima = excluded.ultima",
+                  (cuenta, regla))
+        n = c.execute("SELECT faltas FROM antitrampa_faltas WHERE username = ?", (cuenta,)).fetchone()["faltas"]
+        c.commit()
+        return cuenta, int(n)
+
+
+def banear_cuenta(usuario):
+    """`BANNED:` delante del `pass_hash` (como siempre: todo login la rechaza; se deshace sacándolo). True si cambió."""
+    with _lock:
+        c = conectar()
+        cur = c.execute("UPDATE users SET pass_hash = 'BANNED:' || pass_hash WHERE username = ? COLLATE BINARY "
+                        "AND pass_hash NOT LIKE 'BANNED:%'", (usuario,))
+        c.commit()
+        return cur.rowcount > 0
+
+
 # ═══ MUDAR PERSONAJES ENTRE CUENTAS (25-oct, anonimo03: «fusionar, separar cuentas… control total», en el panel) ═══════
 #   ⛔ Nada se copia ni se borra: un personaje es su uid, y con él viajan su Rcoin, EXP, inventario, ropa, amigos,
 #     círculo y récords. Mudarlo es cambiar DE QUÉ CUENTA cuelga: una fila de `cuenta_personajes`.

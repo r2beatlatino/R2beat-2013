@@ -301,6 +301,11 @@ CREATE TABLE IF NOT EXISTS movimientos_personajes (
     id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER NOT NULL,
     de_cuenta TEXT, de_ranura INTEGER, a_cuenta TEXT, a_ranura INTEGER,
     motivo TEXT NOT NULL, actor INTEGER DEFAULT 0, cuando TEXT NOT NULL, deshecho INTEGER DEFAULT 0);
+-- ★ 19-nov (la escalera del antitrampa): cuántas veces una CUENTA (no el personaje: crear otro no la limpia) fue
+--   expulsada por el antitrampa. 1.ª = fuera, 2.ª = fuera con advertencia, 3.ª = `BANNED:` (antitrampa.py).
+--   Perdonar a alguien: borrar su fila (y sacarle el `BANNED:` del `pass_hash`).
+CREATE TABLE IF NOT EXISTS antitrampa_faltas (
+    username TEXT PRIMARY KEY, faltas INTEGER NOT NULL DEFAULT 0, ultima_regla TEXT, ultima TEXT);
 
 CREATE INDEX IF NOT EXISTS ix_inv_uid   ON inventory(uid);
 CREATE INDEX IF NOT EXISTS ix_chars_nk  ON chars(nickname);
