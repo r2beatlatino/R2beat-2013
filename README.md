@@ -1,5 +1,7 @@
 # R2Beat 2013 — servidor abierto
 
+> Parte de **Eñeños** · coordinado por [`r2beatlatino/coordinador`](https://github.com/r2beatlatino/coordinador) (las cuentas, el panel y el catálogo de juegos).
+
 Servidor para **R2Beat Latino 2013**, el juego de ritmo de Softnyx, escrito desde cero en Python.
 El servicio oficial cerró; esto permite volver a jugarlo en tu propia computadora o en un servidor.
 
