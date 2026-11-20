@@ -1,0 +1,32 @@
+{
+  "id": "r2beat2013",
+  "nombre": "R2Beat 2013",
+  "coordinador": "r2beatlatino/coordinador",
+  "pase": {
+    "live": "r2beat2013",
+    "test": "r2beat2013-prueba"
+  },
+  "capacidades": {
+    "estado": "GET /api/admin/salud",
+    "conectados": "GET /api/admin/conectados",
+    "buscar": "GET /api/admin/usuarios?q=",
+    "ficha": "GET /api/admin/usuario/<uid>",
+    "aviso": "POST /api/admin/aviso",
+    "echar": "POST /api/admin/usuario/<uid>/echar",
+    "sancionar_chat": "POST /api/admin/usuario/<uid>/mute",
+    "banear": "POST /api/admin/usuario/<uid>/ban",
+    "dar_moneda": "POST /api/admin/usuario/<uid>/rcoin",
+    "auditoria": "GET /api/admin/auditoria"
+  },
+  "extras": [
+    "circulos",
+    "cupones",
+    "tira",
+    "mision",
+    "streamers",
+    "alertas",
+    "salas",
+    "chat"
+  ],
+  "nota": "Las rutas /api/admin son del panel de prod (parte privada: panel_admin.py y api_web.py), no de este repo. capacidades null = todavía no lo soporta; lo lee el Coordinador para armar su panel."
+}
