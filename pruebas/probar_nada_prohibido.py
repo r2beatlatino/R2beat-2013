@@ -32,7 +32,8 @@ ARCHIVOS = {"gm.txt", "admin.txt", "streamers.txt", "datos.db", "sesiones.json",
 DEL_CLIENTE = re.compile(r"^servidor/(?:shop_lt\.txt|notes_map_2013\.json|tablas-cliente/[^/]+\.(?:txt|xml|csv))$")
 # IPs que SÍ pueden aparecer: locales, de ejemplo, el server original de Softnyx (lo que reemplaza
 # el parche del exe) y la versión de una herramienta que tiene forma de IP.
-IPS_CONOCIDAS = {"127.0.0.1", "0.0.0.0", "8.8.8.8", "216.177.209.25", "1.10.0.113"}
+IPS_CONOCIDAS = {"127.0.0.1", "0.0.0.0", "8.8.8.8", "216.177.209.25", "1.10.0.113",
+                 "6.0.0.0"}   # ★ la versión de Microsoft.Windows.Common-Controls en el manifiesto de la ventana del Ñ2Hock
 IP = re.compile(r"(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.])")
 TEXTO = [
     ("un email", re.compile(r"[\w.+-]+@(?:gmail|hotmail|outlook|yahoo|live|icloud|proton(?:mail)?)\.\w+", re.I)),
