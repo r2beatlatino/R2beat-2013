@@ -40,6 +40,7 @@ from .ajustes import (
     ANTITRAMPA_LENTO_MARGEN_S,
     ANTITRAMPA_LISTO_DESVIO_S,
     ANTITRAMPA_LISTO_MUESTRAS,
+    ANTITRAMPA_MODULOS_PERMITIDOS,
     ANTITRAMPA_MISMA_CANCION,
     ANTITRAMPA_PRECISION_CARRERAS,
     ANTITRAMPA_PRECISION_NIVELES,
@@ -172,6 +173,10 @@ def al_ff59(st, texto):
     elif "codigo" in d:
         anotar(st, "codigo_modificado", f"{d.get('paginas')} página(s) del exe tocadas por fuera, la primera en "
                                         f"{d['codigo']}: {d.get('bytes', '').replace('_', ' ')}", {})
+    elif "modulo" in d and d["modulo"].lower().startswith(ANTITRAMPA_MODULOS_PERMITIDOS):
+        # ★ 19-nov: el motor de práctica de Ñ2Hock (ToolBitPracticeEngine_<hash>.dll): la dll del launcher
+        #   todavía lo informa como «toolbit», pero NO es el ToolBit de trampas. Sólo queda registrado.
+        anotar(st, "modulo_permitido", f"tiene cargado {d['modulo']} (permitido)", {})
     elif "modulo" in d:
         anotar(st, "modulo_prohibido", f"tiene cargado {d['modulo']}", {})
     elif "memoria" in d:

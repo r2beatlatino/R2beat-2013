@@ -302,6 +302,12 @@ def probar_farmeo():
     antitrampa.al_ff59(c, "R2AT codigo=0x00494E76 paginas=17 bytes=E9_85_B1_BC_03_00_6A_1D")
     ok(reglas_de(6019)[-1] == "codigo_modificado" and not antitrampa.fue_expulsado(c),
        "revés: los otros parches de Ñ2Hock (far, teclado…) sólo avisan")
+    c = jugador(6023)
+    antitrampa.al_ff59(c, "R2AT modulo=toolbitpracticeengine_0123456789ab.dll")
+    ok(reglas_de(6023)[-1] == "modulo_permitido" and not antitrampa.fue_expulsado(c),
+       "revés: el motor de práctica de Ñ2Hock (ToolBitPracticeEngine) no expulsa")
+    antitrampa.al_ff59(c, "R2AT modulo=toolbitdll.dll")
+    ok(reglas_de(6023)[-1] == "modulo_prohibido", "…pero el ToolBit de trampas sí")
     c = jugador(6020)
     antitrampa.al_ff59(c, "R2AT gancho=sala va=0x005AEDD4 bytes=E9_27_12_78_03_90_6A_07")
     ok(reglas_de(6020)[-1] == "sala_automatica" and antitrampa.fue_expulsado(c),
@@ -389,8 +395,23 @@ def probar_cartel():
     ok(any(k == "exp" for k, _u, _n in pagos), "revés: pasado el bloqueo y con el juego limpio, vuelve a cobrar")
 
 
+def probar_catalogo():
+    print("el catálogo del panel (servidor/antitrampa_catalogo.json) sigue al código:")
+    with open(os.path.join(RAIZ, "servidor", "antitrampa_catalogo.json"), encoding="utf-8") as f:
+        cat = json.load(f)
+    ids = {r["id"]: r for r in cat["reglas"]}
+    ok(set(ids) == set(antitrampa.ANTITRAMPA_REGLAS),
+       f"las mismas reglas (sobran {sorted(set(ids) - set(antitrampa.ANTITRAMPA_REGLAS))}, "
+       f"faltan {sorted(set(antitrampa.ANTITRAMPA_REGLAS) - set(ids))})")
+    ok(all(ids[r]["accion"] == a for r, a in antitrampa.ANTITRAMPA_REGLAS.items() if r in ids),
+       "con la misma acción por defecto")
+    ok({int(g["va"], 16): g["id"] for g in cat["ganchos"]} == antitrampa.ANTITRAMPA_GANCHOS, "y los mismos ganchos")
+    ok(len(cat["escalera"]) == antitrampa.ANTITRAMPA_BANEO_EN, "y la escalera llega al baneo")
+
+
 def main():
     try:
+        probar_catalogo()
         probar_reglas()
         probar_juzgar()
         probar_ff3d()

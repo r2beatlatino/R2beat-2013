@@ -73,6 +73,8 @@ static LARGE_INTEGER g_calc_frec;
  *   mira muestra la del corredor que sigue (la arma con lo que llega) y su conteo propio queda apagado */
 static void (*g_calc_al_juzgar)(int p, int reinicio) = NULL;
 static void (*g_calc_antes_de_dibujar)(void) = NULL;
+/* ★ 19-nov: el de la herramienta (AutoFar y el cartel del Far): DESPUÉS del panel, encima de todo */
+static void (*g_calc_despues_de_dibujar)(void) = NULL;
 static int g_calc_ajena = 0;
 
 #define CALC_ANCHO 131
@@ -765,6 +767,7 @@ static int TC calc_mi_hud(void *self, int a, int b)
     int r = g_calc_hud_real(self, a, b);
     if (g_calc_antes_de_dibujar) g_calc_antes_de_dibujar();
     calc_dibujar();
+    if (g_calc_despues_de_dibujar) g_calc_despues_de_dibujar();
     return r;
 }
 

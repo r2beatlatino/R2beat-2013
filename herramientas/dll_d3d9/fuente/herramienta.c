@@ -46,6 +46,9 @@
 #define HT_PERMITIR_FAR        1    /* Far Vision                                      */
 #define HT_PERMITIR_RESULTADOS 1    /* Resultados rápido                               */
 
+#define HT_N_TEMAS 5                /* los estilos de la ventana (§ 7)                 */
+#define HT_TEMA_N2H 5               /* ★ 19-nov: el de Ñ2Hock.exe, con pestañas (§ 7.3c) — el de fábrica */
+
 /* ── el mapa (✔ leído del exe, igual en R2Beat_local.exe y en el de prod) ───── */
 #define HT_SALA        0x00931660   /* el administrador de asientos ([+0x40] = mi asiento) */
 #define HT_PARTIDA     0x009314C8   /* cGame ([+0x0C] banderas del modo)               */
@@ -215,7 +218,7 @@ static const BYTE  T_ALFA_PREF[4][3] = { {0xC6,0x42,0x0A}, {0xC6,0x41,0x0A}, {0x
 enum {
     O_ESTR_OBST, O_OBST_ESTR,
     O_LOCURA, O_LOCURA_S, O_PIEDRA, O_PIEDRA_S, O_NIEBLA, O_NIEBLA_S, O_ESPEJO, O_ESPEJO_S, O_ALEATORIO, O_ALEATORIO_S,
-    O_OPACIDAD, O_FAR, O_CAMARA,
+    O_OPACIDAD, O_FAR, O_AUTOFAR, O_FAR_IND, O_CAMARA,
     O_VELOCIDAD, O_BOOSTER, O_GHOST, O_CARRILES, O_NOMBRES, O_RESULTADOS,
     O_AUTOCTRL, O_TECLADO, O_ANCLAR, O_HOTKEYS,
     O_N
@@ -264,8 +267,13 @@ static HT_OP g_op[O_N] = {
       L"Saca el Modo Aleatorio aunque lo tengas puesto. Vale desde la próxima carrera." },
     { "opacidad",         L"Opacidad obstáculos", -1, NULL, 0,               HT_PERMITIR_OPACIDAD, 0,
       L"Obstáculos transparentes. El nivel, con la barra de abajo." },
-    { "far",              L"Far Vision",            -1, NULL, 0,             HT_PERMITIR_FAR, 0,
+    { "far",              L"Far Vision",     O_AUTOFAR, NULL, 0,             HT_PERMITIR_FAR, 0,
       L"Ver más lejos. La escala (x0.50 a x3.00), con la barra de abajo." },
+    /* ★ 19-nov (de Ñ2Hock): el Far según el BPM y el cartel «FAR 15.5» — § 5b */
+    { "autofar",          L"AutoFar",        O_FAR,     NULL, 0,             HT_PERMITIR_FAR, 1,
+      L"El Far solo, según el BPM de la canción (más rápida = más lejos). Excluye el Far manual." },
+    { "far_indicador",    L"Indicador Far",         -1, NULL, 0,             1, 0,
+      L"Muestra «FAR 15.5» en la carrera al empezar y cada vez que cambia el Far." },
     { "camara_fija",      L"Cámara Fija",           -1, NT(T_CAMARA),        1, 1,
       L"La cámara no acompaña los movimientos." },
     { "efecto_velocidad", L"Efecto Velocidad",      -1, NT(T_VELOCIDAD),     1, 0,
@@ -294,6 +302,7 @@ static HT_OP g_op[O_N] = {
 static int g_ht_alfa_nivel = 15;            /* 1..15 -> alfa = 17 x nivel (15 = 0xFF, el de fábrica) */
 static int g_ht_alfa_puesto = 0xFF;         /* lo que quedó escrito en los cuatro sitios          */
 static int g_ht_far_pct = 100;              /* % de lo que el juego trae (50..300)                 */
+static int g_ht_far_n2h = 22;               /* ★ 19-nov: la barra del Far de Ñ2Hock, 2..44 (= Far 1.0..22.0) */
 static float g_ht_far_orig[2]; static int g_ht_far_capturado = 0;
 static float g_ht_far_escrito[2];
 /* los atajos de los deslizadores (Bajar / Subir) */
@@ -591,6 +600,7 @@ static void ht_poner_ganchos(void)
 
 /* ═══ 5 · APLICAR una opción (desde cualquier hilo) ═══════════════════════════ */
 static void ht_far_aplicar(void);
+static void ht_autofar_aplicar(void);
 static void ht_alfa_aplicar(void);
 static void ht_nombre_dik(int dik, wchar_t *s);
 
@@ -615,6 +625,7 @@ static void ht_aplicar(int i)
     HT_OP *o = &g_op[i];
     int quiere = o->quiere && o->permitida && !o->rota && !g_ht_apagada;
     if (i == O_FAR) { ht_far_aplicar(); return; }
+    if (i == O_AUTOFAR) { ht_autofar_aplicar(); return; }
     if (i == O_OPACIDAD) { ht_alfa_aplicar(); return; }
     if (!o->t) {                                     /* las que viven en un gancho o en la ventana */
         if (quiere != o->puesta && i != O_ANCLAR && i != O_HOTKEYS) {
@@ -712,12 +723,182 @@ static void ht_far_aplicar(void)
     /* si el juego los rehizo (no son ni los suyos ni los nuestros), mandan los de ahora */
     if (*a != g_ht_far_escrito[0] && *a != g_ht_far_orig[0]) g_ht_far_orig[0] = *a;
     if (*b != g_ht_far_escrito[1] && *b != g_ht_far_orig[1]) g_ht_far_orig[1] = *b;
-    float f = quiere ? (float)g_ht_far_pct / 100.0f : 1.0f;
-    g_ht_far_escrito[0] = g_ht_far_orig[0] * f;
-    g_ht_far_escrito[1] = g_ht_far_orig[1] * f;
+    /* ★ 19-nov: la escala de Ñ2Hock (FarVisionPatch.ValueFor): base = 0.06 + (barra − 22) · 0.0025 */
+    if (quiere) {
+        float base = 0.06f + (float)(g_ht_far_n2h - 22) * 0.0025f;
+        g_ht_far_escrito[0] = base * 14.5f;
+        g_ht_far_escrito[1] = base * 5.5f;
+    } else {
+        g_ht_far_escrito[0] = g_ht_far_orig[0];
+        g_ht_far_escrito[1] = g_ht_far_orig[1];
+    }
+    if (g_op[O_AUTOFAR].puesta && !quiere) return;    /* ★ manda AutoFar: no se pisa lo suyo */
     *a = g_ht_far_escrito[0];
     *b = g_ht_far_escrito[1];
     o->puesta = quiere;
+}
+
+/* ═══ 5b · ★ AUTOFAR Y EL INDICADOR DEL FAR (19-nov, lo que hacía Ñ2Hock, adentro) ═══════════
+ *
+ *   La ESCALA del Far es la de Ñ2Hock, para que los números sean los mismos que ya conocen:
+ *       base = 0.06 + (Far − 11) · 0.005      lejos = base · 14.5 (0x9D45E0)   cerca = base · 5.5 (0x9D45D8)
+ *     (Far 11 ≈ lo de fábrica). Va de 1.0 a 22.0.
+ *   ★ El BPM, SIN ganchos: Ñ2Hock enganchaba 0x42A37B / 0x4EA99D sólo para agarrar el puntero del
+ *     jugador; acá se lo lee directo — partida [0x9314C8] → +0xA14 (los jugadores) → [asiento·4], y el
+ *     asiento es [[0x931660]+0x40]. BPM = float [jugador+0x58] × 20244.506. No se escribe NADA en el exe.
+ *   La curva (la de fábrica de Ñ2Hock): 148 BPM → 18 · 180 → 17 · 277 → 11, en línea recta entre
+ *     medio, y fuera de los extremos se queda en el extremo. Cada 200 ms, en el hilo del juego (lo
+ *     llama el HUD de carrera, `g_calc_despues_de_dibujar`): sólo en carrera, sin ventana ni timer. */
+#define HT_AF_CADA_MS   200
+#define HT_IND_MS       (g_n2i.dura)                /* cuánto se ve el cartel (Personalización · Far) */
+/* ★ 19-nov: el indicador como el de Ñ2Hock (FarIndicatorSettings): lo edita Personalización · Far.
+ *   ⚠ Con la letra del juego: Tamaño, Fuente y Negrita por ahora sólo se ven en la vista previa. */
+typedef struct { int animar, conectar, ronda, tam, dura, negrita; COLORREF color; int x, y; wchar_t letra[64]; } N2_IND;
+static N2_IND g_n2i = { 1, 1, 1, 48, 900, 1, RGB(0xFA, 0xCC, 0x15), 500, 450, L"Segoe UI" };   /* x, y en milésimas */
+static volatile int g_n2i_forzar = 0;               /* «Probar» / «al conectar»: mostrarlo la próxima vez */
+static volatile int g_ht_ind_ventana = 0;           /* ★ 19-nov: 1 = lo dibuja la capa de Ñ2Hock (n2h_ventana.c), con su letra y tamaño */
+static volatile float g_ht_af_bpm = 0.0f;           /* el último BPM leído (0 = ninguno)          */
+static volatile float g_ht_af_far = 0.0f;           /* el último Far que escribió AutoFar          */
+static DWORD g_ht_af_ult = 0;
+static float g_ht_ind_visto = -1.0f;                /* el Far que mostró el cartel la última vez   */
+static DWORD g_ht_ind_hasta = 0, g_ht_ind_ult_cuadro = 0;
+static char  g_ht_ind_txt[16];
+
+static float ht_af_curva(float bpm)
+{
+    float f;
+    if (bpm <= 148.0f) f = 18.0f;
+    else if (bpm <= 180.0f) f = 18.0f - (bpm - 148.0f) / 32.0f;
+    else if (bpm <= 277.0f) f = 17.0f - 6.0f * (bpm - 180.0f) / 97.0f;
+    else f = 11.0f;
+    f = (float)(int)(f * 10.0f + 0.5f) / 10.0f;
+    return f < 1.0f ? 1.0f : (f > 22.0f ? 22.0f : f);
+}
+
+static int ht_leer_ptr(const void *p, BYTE **v)
+{
+    if (!ht_memoria_ok(p, 4, 0)) return 0;
+    *v = *(BYTE *const *)p;
+    return *v != NULL;
+}
+
+/* el BPM de la canción que corre, leído del jugador local. 0 si no se puede. */
+static float ht_af_leer_bpm(void)
+{
+    BYTE *m, *perfil, *lista, *jug;
+    if (!ht_leer_ptr(HT_VA(HT_PARTIDA), &m) || !ht_leer_ptr(HT_VA(HT_SALA), &perfil)) return 0.0f;
+    if (!ht_memoria_ok(perfil + 0x40, 1, 0)) return 0.0f;
+    BYTE asiento = perfil[0x40];
+    if (asiento >= 12 || !ht_leer_ptr(m + 0xA14, &lista) || !ht_leer_ptr(lista + asiento * 4, &jug)) return 0.0f;
+    if (!ht_memoria_ok(jug + 0x58, 4, 0)) return 0.0f;
+    float bpm = *(volatile float *)(jug + 0x58) * 20244.506f;
+    return (bpm >= 30.0f && bpm <= 400.0f) ? bpm : 0.0f;            /* también descarta NaN */
+}
+
+/* los dos float del Far a una escala de Ñ2Hock. 0 si no se pudo. */
+static int ht_far_escribir_escala(float vfar)
+{
+    volatile float *a = (volatile float *)HT_VA(HT_FAR_A), *b = (volatile float *)HT_VA(HT_FAR_B);
+    if (!ht_memoria_ok((const void *)a, 4, 1) || !ht_memoria_ok((const void *)b, 4, 1)) return 0;
+    if (!g_ht_far_capturado) {                      /* lo de fábrica, para devolverlo al apagar */
+        float va = *a, vb = *b;
+        if (!(va > 0.0f && va < 1.0e6f && vb > 0.0f && vb < 1.0e6f)) return 0;
+        g_ht_far_orig[0] = va; g_ht_far_orig[1] = vb;
+        g_ht_far_capturado = 1;
+    }
+    float base = 0.06f + (vfar - 11.0f) * 0.005f;
+    g_ht_far_escrito[0] = base * 14.5f;
+    g_ht_far_escrito[1] = base * 5.5f;
+    *a = g_ht_far_escrito[0];
+    *b = g_ht_far_escrito[1];
+    return 1;
+}
+
+static void ht_autofar_aplicar(void)
+{
+    HT_OP *o = &g_op[O_AUTOFAR];
+    int quiere = o->quiere && o->permitida && !o->rota && !g_ht_apagada;
+    if (quiere == o->puesta) return;
+    o->puesta = quiere;
+    g_ht_af_far = 0.0f;
+    g_ht_af_ult = 0;
+    apuntar("  [tool] autofar %s", quiere ? "PRENDIDA" : "apagada");
+    if (!quiere) ht_far_aplicar();                  /* vuelve lo de fábrica (o el Far manual)      */
+}
+
+static void ht_autofar_tick(DWORD ahora)
+{
+    if (!g_op[O_AUTOFAR].puesta || ahora - g_ht_af_ult < HT_AF_CADA_MS) return;
+    g_ht_af_ult = ahora;
+    float bpm = ht_af_leer_bpm();
+    if (bpm <= 0.0f) return;
+    g_ht_af_bpm = bpm;
+    float vfar = ht_af_curva(bpm);
+    float d = vfar - g_ht_af_far;
+    if (d > -0.05f && d < 0.05f) return;
+    if (ht_far_escribir_escala(vfar)) {
+        if (g_ht_af_far == 0.0f)
+            apuntar("  [tool] autofar: %d BPM -> Far %d.%d", (int)(bpm + 0.5f), (int)vfar, (int)(vfar * 10.0f + 0.5f) % 10);
+        g_ht_af_far = vfar;
+    }
+}
+
+/* el Far que hay AHORA en el juego, en la escala de Ñ2Hock (−1 si los dos float no son un Far) */
+static float ht_far_actual(void)
+{
+    volatile float *a = (volatile float *)HT_VA(HT_FAR_A), *b = (volatile float *)HT_VA(HT_FAR_B);
+    if (!ht_memoria_ok((const void *)a, 4, 0) || !ht_memoria_ok((const void *)b, 4, 0)) return -1.0f;
+    float va = *a, vb = *b;
+    if (!(va > 0.0f && va < 1.0e6f && vb > 0.0f)) return -1.0f;
+    float r = vb / va - 5.5f / 14.5f;
+    if (r > 0.01f || r < -0.01f) return -1.0f;
+    float f = 11.0f + (va / 14.5f - 0.06f) / 0.005f;
+    return (float)(int)(f * 10.0f + (f >= 0 ? 0.5f : -0.5f)) / 10.0f;
+}
+
+/* el cartel «FAR 15.5»: al empezar la carrera y cuando el Far cambia. Con la letra del juego. */
+static void ht_indicador_tick(DWORD ahora)
+{
+    int nueva = !g_ht_ind_ult_cuadro || ahora - g_ht_ind_ult_cuadro > 1000;   /* el HUD paró: carrera nueva */
+    g_ht_ind_ult_cuadro = ahora;
+    if (!g_op[O_FAR_IND].quiere || g_ht_apagada) return;
+    float f = ht_far_actual();
+    if (f < 0.0f) return;
+    float d = f - g_ht_ind_visto;
+    int forzar = g_n2i_forzar;
+    if (forzar) g_n2i_forzar = 0;
+    if (nueva && !g_n2i.ronda) g_ht_ind_visto = f;                     /* «al empezar cada ronda» apagado */
+    if ((nueva && g_n2i.ronda) || forzar || d >= 0.05f || d <= -0.05f) {
+        g_ht_ind_visto = f;
+        g_ht_ind_hasta = ahora + HT_IND_MS;
+        int dec = (int)(f * 10.0f + 0.5f);
+        wsprintfA(g_ht_ind_txt, "FAR %d.%d", dec / 10, dec % 10);
+    }
+    if ((LONG)(g_ht_ind_hasta - ahora) <= 0) return;
+    if (g_ht_ind_ventana) return;                       /* la capa lo muestra (tamaño, letra, negrita) */
+    void *obj = NULL;
+    if (!ht_memoria_ok(HT_VA(0x0093149C), 4, 0) || !(obj = *(void **)HT_VA(0x0093149C))) return;
+    int W = calc_pantalla(4), H = calc_pantalla(8);
+    if (W <= 0 || H <= 0) return;
+    F_PINTAR pintar = (F_PINTAR)HT_VA(0x0063A640);
+    int x = W * g_n2i.x / 1000 - 4 * lstrlenA(g_ht_ind_txt), y = H * g_n2i.y / 1000 - 6;
+    DWORD a = 0xFF, resta = g_ht_ind_hasta - ahora;
+    if (g_n2i.animar && resta < 300) a = 0xFF * resta / 300;                   /* se desvanece al final */
+    if (g_n2i.animar && (DWORD)g_n2i.dura - resta < 150) y -= (int)(150 - ((DWORD)g_n2i.dura - resta)) / 25;   /* y salta al entrar */
+    DWORD col = (a << 24) | ((DWORD)GetRValue(g_n2i.color) << 16) | ((DWORD)GetGValue(g_n2i.color) << 8) | GetBValue(g_n2i.color);
+    pintar(obj, x + 1, y + 1, (int)((a * 0xC0 / 0xFF) << 24), 0, "%s", g_ht_ind_txt);   /* sombra */
+    pintar(obj, x, y, (int)col, 0, "%s", g_ht_ind_txt);                                  /* el color elegido (#FACC15 de fábrica) */
+}
+
+static void (*g_ht_por_cuadro_mas)(void) = NULL;
+/* lo llama el HUD de carrera de calculadora.c, una vez por cuadro */
+static void ht_por_cuadro(void)
+{
+    if (!g_ht_base) return;
+    DWORD ahora = GetTickCount();
+    ht_autofar_tick(ahora);
+    ht_indicador_tick(ahora);
+    if (g_ht_por_cuadro_mas) g_ht_por_cuadro_mas();    /* ★ 19-nov: el chat dentro de la carrera (n2h_chat.c) */
 }
 
 /* ═══ 6 · EL INI — sección [herramienta], SIN reescribir lo demás ═════════════
@@ -805,6 +986,7 @@ static void ht_buf_poner(HT_BUF *x, const char *clave, const char *valor, const 
 }
 
 static int g_ht_tema;                           /* (definida con la tabla de temas, § 7) */
+static void (*g_ht_guardar_mas)(HT_BUF *x, const char *eol) = NULL;   /* ★ 19-nov: lo de Personalización (n2h_ventana.c) */
 static void ht_guardar(void)
 {
     EnterCriticalSection(&g_ht_cs);
@@ -830,6 +1012,7 @@ static void ht_guardar(void)
     }
     wsprintfA(v, "%d", g_ht_alfa_nivel); ht_buf_poner(&x, "opacidad_nivel", v, eol);
     wsprintfA(v, "%d", g_ht_far_pct);    ht_buf_poner(&x, "far_pct", v, eol);
+    wsprintfA(v, "%d", g_ht_far_n2h);    ht_buf_poner(&x, "far_n2h", v, eol);
     wsprintfA(v, "%d", g_ht_tk_far_menos);  ht_buf_poner(&x, "tk_far_menos", v, eol);
     wsprintfA(v, "%d", g_ht_tk_far_mas);    ht_buf_poner(&x, "tk_far_mas", v, eol);
     wsprintfA(v, "%d", g_ht_tk_alfa_menos); ht_buf_poner(&x, "tk_opacidad_menos", v, eol);
@@ -848,6 +1031,7 @@ static void ht_guardar(void)
             wsprintfA(v, "%d", (int)r.top);  ht_buf_poner(&x, "y", v, eol);
         }
     }
+    if (g_ht_guardar_mas) g_ht_guardar_mas(&x, eol);
     h = CreateFileA(g_ht_ini, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h != INVALID_HANDLE_VALUE) {
         DWORD esc = 0;
@@ -861,7 +1045,7 @@ static void ht_guardar(void)
 static void ht_leer(void)
 {
     for (int i = 0; i < O_N; i++) {
-        g_op[i].quiere = (int)GetPrivateProfileIntA("herramienta", g_op[i].clave, 0, g_ht_ini) != 0;
+        g_op[i].quiere = (int)GetPrivateProfileIntA("herramienta", g_op[i].clave, i == O_FAR_IND, g_ht_ini) != 0;
         if (g_op[i].con_tecla) {
             char k[48];
             wsprintfA(k, "tk_%s", g_op[i].clave);
@@ -872,13 +1056,15 @@ static void ht_leer(void)
     if (g_ht_alfa_nivel < 1 || g_ht_alfa_nivel > 15) g_ht_alfa_nivel = 15;
     g_ht_far_pct = (int)GetPrivateProfileIntA("herramienta", "far_pct", 100, g_ht_ini);
     if (g_ht_far_pct < 50 || g_ht_far_pct > 300) g_ht_far_pct = 100;
+    g_ht_far_n2h = (int)GetPrivateProfileIntA("herramienta", "far_n2h", 22, g_ht_ini);
+    if (g_ht_far_n2h < 2 || g_ht_far_n2h > 44) g_ht_far_n2h = 22;
     g_ht_tk_far_menos  = (int)GetPrivateProfileIntA("herramienta", "tk_far_menos", 0, g_ht_ini) & 0xFF;
     g_ht_tk_far_mas    = (int)GetPrivateProfileIntA("herramienta", "tk_far_mas", 0, g_ht_ini) & 0xFF;
     g_ht_tk_alfa_menos = (int)GetPrivateProfileIntA("herramienta", "tk_opacidad_menos", 0, g_ht_ini) & 0xFF;
     g_ht_tk_alfa_mas   = (int)GetPrivateProfileIntA("herramienta", "tk_opacidad_mas", 0, g_ht_ini) & 0xFF;
     g_ht_tecla_ver = (int)GetPrivateProfileIntA("herramienta", "tecla", VK_F12, g_ht_ini) & 0xFF;
-    g_ht_tema = (int)GetPrivateProfileIntA("herramienta", "tema", 1, g_ht_ini);
-    if (g_ht_tema < 1 || g_ht_tema > 4) g_ht_tema = 1;
+    g_ht_tema = (int)GetPrivateProfileIntA("herramienta", "tema", HT_TEMA_N2H, g_ht_ini);
+    if (g_ht_tema < 1 || g_ht_tema > HT_N_TEMAS) g_ht_tema = HT_TEMA_N2H;
     if (!g_ht_tecla_ver) g_ht_tecla_ver = VK_F12;
     for (int g = 0; g < 2; g++)
         for (int kk = 0; kk < 5; kk++) {
@@ -892,7 +1078,8 @@ static void ht_leer(void)
     for (int i = 0; i < O_N; i++) if (!g_op[i].permitida) g_op[i].quiere = 0;
     /* ★ 04-oct, anonimo03: la pastilla verde de arriba ya NO es un botón («sólo apaga y prende la luz»):
      *   los atajos van SIEMPRE prendidos y la pastilla queda como aviso, en verde */
-    g_op[O_HOTKEYS].quiere = 1;
+    /* ★ 19-nov: con la ventana de Ñ2Hock vuelve a ser la casilla «Hotkey» (se lee del ini, de fábrica prendida) */
+    g_op[O_HOTKEYS].quiere = (int)GetPrivateProfileIntA("herramienta", "hotkeys", 1, g_ht_ini) != 0;
 }
 
 /* ═══ 7 · LA VENTANA (su propio hilo: no depende del bucle del juego) ═════════
@@ -933,7 +1120,7 @@ typedef struct {
 } HT_TEMA;
 
 #define C_(r, g, b) RGB(0x##r, 0x##g, 0x##b)
-static const HT_TEMA HT_TEMAS[4] = {
+static const HT_TEMA HT_TEMAS[HT_N_TEMAS] = {
     /* 1 · NEÓN — el del launcher web tal cual: violeta, rosa y celeste, tilde verde, tirita arriba */
     { L"Neón",
       C_(1b,12,29), C_(14,0e,1e), C_(2a,1f,40), C_(3b,2d,58), C_(1b,12,29), C_(4a,3d,66), C_(24,1b,36),
@@ -958,6 +1145,15 @@ static const HT_TEMA HT_TEMAS[4] = {
       C_(ff,ff,ff), C_(cf,c6,ea), C_(8f,87,b3), C_(4d,46,73), C_(b9,9c,ff), C_(8f,6d,f5), C_(2c,23,57),
       C_(8f,e7,ff), C_(34,c7,73), C_(1d,5c,3d), C_(7d,ff,b0), C_(ea,ff,f0), C_(ff,7a,8a), C_(ff,ff,ff), C_(1b,15,33),
       18, 11, 13, 0, 1, 30, 0, 3, 3, L"Segoe UI", L"Segoe UI Light", 13, FW_LIGHT, 26, L"Ñ2H", L"ock", 12 },
+    /* 5 · Ñ2HOCK — ★ 19-nov (anonimo03: «no se parece a nada a lo que tenemos en el exe»): el de Ñ2Hock.exe,
+     *   adentro del juego como el ToolBitDLL de RBit. Su paleta «Noche» (Palette.cs: ventana 24,24,27 ·
+     *   página 32,32,36 · riel 63,63,70 · texto 229,231,235), casillas azules de Windows, los títulos de los
+     *   recuadros en el acento (rosa), recuadros finos como un GroupBox (cabecera 4) y PESTAÑAS. */
+    { L"Ñ2Hock",
+      C_(18,18,1b), C_(18,18,1b), C_(20,20,24), C_(3f,3f,46), C_(2d,2d,30), C_(71,71,7a), C_(27,27,2a),
+      C_(e5,e7,eb), C_(d1,d5,db), C_(a1,a1,aa), C_(52,52,5b), C_(e9,1e,7a), C_(c0,18,64), C_(4a,10,2c),
+      C_(60,a5,fa), C_(3b,82,f6), C_(1e,3a,8a), C_(60,a5,fa), C_(e5,e7,eb), C_(fb,92,3c), C_(ff,ff,ff), C_(20,20,24),
+      0, 3, 3, 1, 0, 24, 0, 4, 0, L"Segoe UI", L"Segoe UI", 12, FW_BOLD, 16, L"Ñ2H", L"ock", 11 },
 };
 #undef C_
 static int g_ht_tema = 1;                       /* 1..4: [herramienta] tema */
@@ -1019,7 +1215,8 @@ static int ht_tecla_viva(int id) { int i = ht_tecla_opcion(id); return g_op[i].p
 static void ht_que_es(int id, wchar_t *s)                       /* s: 64 */
 {
     if (id >= 0 && id < O_N) {
-        if (g_op[id].pareja >= 0 && g_op[id].pareja < id) wsprintfW(s, L"%s · Supr", g_op[g_op[id].pareja].texto);
+        if (g_op[id].pareja >= 0 && g_op[id].pareja < id && !lstrcmpW(g_op[id].texto, L"Supr"))
+            wsprintfW(s, L"%s · Supr", g_op[g_op[id].pareja].texto);
         else lstrcpyW(s, g_op[id].texto);
     } else if (id == K_ALFM) lstrcpyW(s, L"Opacidad · bajar");
     else if (id == K_ALFP) lstrcpyW(s, L"Opacidad · subir");
@@ -1178,18 +1375,24 @@ static void ht_soltar_repetida(int id, int valor, wchar_t *que)        /* que: 6
 }
 
 /* ── 7.2 · el estado de la ventana ───────────────────────────────────────────── */
-enum { E_OPCION, E_TECLA, E_SLIDER, E_VALOR, E_PILL, E_BOTON, E_CERRAR, E_FIJO, E_TITULO, E_AVISO };
+enum { E_OPCION, E_TECLA, E_SLIDER, E_VALOR, E_PILL, E_BOTON, E_CERRAR, E_FIJO, E_TITULO, E_AVISO, E_PESTANA };
 /* ★ 04-oct (el editor): cada pieza tiene un ID ESTABLE (§ 7.3b, ht_id_el) y puede estar OCULTA o con
- *   otro texto: eso lo pone el archivo de disposición. La ACCIÓN no cambia nunca: va por tipo y ref. */
-typedef struct { BYTE tipo; short x, y, w, h; int ref; const wchar_t *texto, *ayuda; BYTE oculto; } HT_EL;
-typedef struct { short x, y, w, h; const wchar_t *titulo, *nota; const char *id; BYTE oculto; } HT_CARTA;
-typedef struct { short x, y, w, h; const wchar_t *texto; BYTE fuente; COLORREF color; UINT fmt; const char *id; BYTE oculto; } HT_TX;
+ *   otro texto: eso lo pone el archivo de disposición. La ACCIÓN no cambia nunca: va por tipo y ref.
+ * ★ 19-nov (el tema Ñ2Hock): cada pieza es de una PESTAÑA (`pag`; 0xFF = de todas). Se ve y se toca sólo
+ *   la de la pestaña elegida. Las maquetas de los temas 1–4 arman todo con 0xFF: no cambian. */
+typedef struct { BYTE tipo; short x, y, w, h; int ref; const wchar_t *texto, *ayuda; BYTE oculto, pag; } HT_EL;
+typedef struct { short x, y, w, h; const wchar_t *titulo, *nota; const char *id; BYTE oculto, pag; } HT_CARTA;
+typedef struct { short x, y, w, h; const wchar_t *texto; BYTE fuente; COLORREF color; UINT fmt; const char *id; BYTE oculto, pag; } HT_TX;
 enum { F_TEXTO, F_CHICO, F_TITULO, F_CARTA, F_CHIP, F_PILL, F_N };
 
-#define HT_MAX_EL 96
+#define HT_MAX_EL 140
 static HT_EL    g_el[HT_MAX_EL];  static int g_nel;
-static HT_CARTA g_carta[6];       static int g_ncarta;
-static HT_TX    g_tx[20];         static int g_ntx;
+static HT_CARTA g_carta[14];      static int g_ncarta;
+static HT_TX    g_tx[40];         static int g_ntx;
+static BYTE g_ht_pag_armando = 0xFF;            /* la pestaña de lo que se está maquetando          */
+static int  g_ht_pag = 0;                       /* la pestaña a la vista (tema Ñ2Hock)              */
+static int  g_ht_pag_y0 = 0, g_ht_pag_y1 = 0;   /* el panel de las pestañas (0 = no hay pestañas)   */
+static int ht_en_pag(BYTE p) { return p == 0xFF || p == g_ht_pag; }
 static int g_ht_w = 728, g_ht_h = 512;
 static int g_ht_hover = -1, g_ht_arrastre = -1;
 static int g_ht_esperando = -1;                 /* el botoncito que espera una tecla (-1 ninguno) */
@@ -1224,20 +1427,22 @@ static int ht_el(BYTE tipo, int x, int y, int w, int h, int ref, const wchar_t *
     if (g_nel >= HT_MAX_EL) return -1;
     HT_EL *e = &g_el[g_nel];
     e->tipo = tipo; e->x = (short)x; e->y = (short)y; e->w = (short)w; e->h = (short)h;
-    e->ref = ref; e->texto = texto; e->ayuda = ayuda; e->oculto = 0;
+    e->ref = ref; e->texto = texto; e->ayuda = ayuda; e->oculto = 0; e->pag = g_ht_pag_armando;
     return g_nel++;
 }
 static void ht_carta(const char *id, int x, int y, int w, int h, const wchar_t *t, const wchar_t *nota)
 {
+    if (g_ncarta >= (int)(sizeof(g_carta) / sizeof(g_carta[0]))) return;
     HT_CARTA *c = &g_carta[g_ncarta++];
     c->x = (short)x; c->y = (short)y; c->w = (short)w; c->h = (short)h; c->titulo = t; c->nota = nota;
-    c->id = id; c->oculto = 0;
+    c->id = id; c->oculto = 0; c->pag = g_ht_pag_armando;
 }
 static void ht_tx(const char *id, int x, int y, int w, int h, const wchar_t *t, int f, COLORREF c, UINT fmt)
 {
+    if (g_ntx >= (int)(sizeof(g_tx) / sizeof(g_tx[0]))) return;
     HT_TX *e = &g_tx[g_ntx++];
     e->x = (short)x; e->y = (short)y; e->w = (short)w; e->h = (short)h; e->texto = t;
-    e->fuente = (BYTE)f; e->color = c; e->fmt = fmt; e->id = id; e->oculto = 0;
+    e->fuente = (BYTE)f; e->color = c; e->fmt = fmt; e->id = id; e->oculto = 0; e->pag = g_ht_pag_armando;
 }
 
 #define HT_M    14          /* margen                              */
@@ -1259,6 +1464,145 @@ static void ht_op_con_tecla(int i, int x, int y, int w)
     } else ht_el(E_OPCION, x, y + HT_DY, w, 24, i, g_op[i].texto, g_op[i].ayuda);
 }
 
+/* ── 7.3c · ★ LA MAQUETA DE Ñ2HOCK (19-nov) — el tema 5 ──────────────────────────────────────────
+ *   anonimo03: «quiero integrarlo como está integrado en el r2spaceWander» (el ToolBitDLL de RBit: «ToolBit
+ *   nativo, dentro del juego»). Es la ventana de Ñ2Hock.exe (Form1.Personal.cs) dentro de la dll: 330 de
+ *   ancho, PESTAÑAS (Juego · Controles · Entreno · Tramos · Chat) y recuadros finos con el título en rosa:
+ *     Juego     «Modos» (AutoCtrl, Locura/Sin Piedra/Niebla/Espejo/Aleatorio con su Supr) y «Visual»
+ *     Controles «Far» (Far Vision, AutoFar, la barra, Bajar/Subir, el indicador), «Obstáculos», «Teclado»
+ *     Entreno · Tramos · Chat: lo que viene (velocidad, tramo A/B, historial del chat)
+ *   ⚠ Sin las funciones automáticas de Ñ2Hock (juego automático, Auto Listo, Anfitrión al azar, Misma
+ *     canción, Auto Relevo): ésas las EXPULSA el antitrampa (servidor/ANTITRAMPA.md § 2.1).
+ *   No usa la disposición horneada ni el archivo del editor (son de la maqueta de dos columnas). */
+static const wchar_t *HT_PESTANAS[5] = { L"Juego", L"Controles", L"Entreno", L"Tramos", L"Chat" };
+
+static void ht_n2h_op(int i, int x, int y, int w)               /* una casilla sola */
+{
+    ht_el(E_OPCION, x, y, w, 24, i, g_op[i].texto, g_op[i].ayuda);
+}
+static void ht_n2h_op_tecla(int i, int x, int y, int w, int wt) /* casilla + su tecla al lado */
+{
+    ht_el(E_OPCION, x, y, w, 24, i, g_op[i].texto, g_op[i].ayuda);
+    ht_el(E_TECLA, x + w + 2, y + 1, wt, 22, i, NULL, HT_AYUDA_TECLA);
+}
+static void ht_n2h_proximamente(int pag, const char *id, const wchar_t *titulo, const wchar_t *texto)
+{
+    g_ht_pag_armando = (BYTE)pag;
+    ht_carta(id, 14, 100, 302, 92, titulo, NULL);
+    ht_tx(id, 24, 122, 284, 62, texto, F_TEXTO, HT_C_GRIS, DT_LEFT | DT_WORDBREAK);
+}
+
+static void ht_maquetar_n2h(void)
+{
+    const int W = 330, GX = 14, GW = W - 28, X = 22;
+    int y;
+    g_nel = g_ncarta = g_ntx = 0;
+    g_ht_w = W;
+
+    /* ── la cabecera (de todas las pestañas) ── */
+    g_ht_pag_armando = 0xFF;
+    ht_el(E_TITULO, 12, 6, 150, 32, 0, NULL, NULL);
+    ht_el(E_CERRAR, W - 12 - 22, 11, 22, 22, 0, NULL, L"Esconder (F12 la vuelve a mostrar)");
+    ht_el(E_OPCION, W - 12 - 22 - 10 - 84, 10, 84, 24, O_ANCLAR, L"Anclar", g_op[O_ANCLAR].ayuda);
+    ht_el(E_AVISO, 12, 44, W - 24, 18, 0, NULL, NULL);
+    for (int p = 0; p < 5; p++) {
+        int tw = (W - 16) / 5;
+        ht_el(E_PESTANA, 8 + p * tw, 68, tw - 2, 22, p, HT_PESTANAS[p], NULL);
+    }
+    g_ht_pag_y0 = 90;
+
+    /* ── Juego ── */
+    g_ht_pag_armando = 0;
+    y = 100;
+    ht_carta("n2h.modos", GX, y, GW, 20 + 6 * 25 + 4, L"Modos", NULL);
+    y += 20;
+    ht_n2h_op_tecla(O_AUTOCTRL, X, y, 92, 60);
+    y += 25;
+    {
+        static const int PARES[5][2] = { { O_LOCURA, O_LOCURA_S }, { O_PIEDRA, O_PIEDRA_S }, { O_NIEBLA, O_NIEBLA_S },
+                                         { O_ESPEJO, O_ESPEJO_S }, { O_ALEATORIO, O_ALEATORIO_S } };
+        for (int r = 0; r < 5; r++, y += 25) {
+            ht_n2h_op_tecla(PARES[r][0], X, y, 92, 60);
+            ht_n2h_op_tecla(PARES[r][1], X + 162, y, 62, 60);
+        }
+    }
+    y += 4 + 10;
+    ht_carta("n2h.visual", GX, y, GW, 20 + 5 * 23 + 6, L"Visual", NULL);
+    y += 20;
+    {
+        static const int IZQ[5] = { O_RESULTADOS, O_CARRILES, O_NOMBRES, O_VELOCIDAD, O_GHOST };
+        static const int DER[4] = { O_ESTR_OBST, O_OBST_ESTR, O_CAMARA, O_BOOSTER };
+        for (int r = 0; r < 5; r++) {
+            ht_n2h_op(IZQ[r], X, y + r * 23, 146);
+            if (r < 4) ht_n2h_op(DER[r], X + 150, y + r * 23, 140);
+        }
+        y += 5 * 23 + 6 + 6;
+    }
+    ht_tx("n2h.nota", GX + 2, y, GW, 16, L"Efectos: marcado = se apaga · PD Valofe: lo decide la sala (.pd on/off)",
+          F_CHICO, HT_C_GRIS, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    /* ── Controles ── */
+    g_ht_pag_armando = 1;
+    y = 100;
+    ht_carta("n2h.far", GX, y, GW, 130, L"Far", NULL);
+    y += 20;
+    ht_n2h_op(O_FAR, X, y, 120);
+    ht_n2h_op_tecla(O_AUTOFAR, X + 150, y, 82, 52);
+    y += 26;
+    ht_el(E_SLIDER, X - 4, y, 214, 26, 1, NULL, L"Arrastrá, o la rueda del mouse");
+    ht_el(E_VALOR, X + 214, y + 1, 72, 24, 1, NULL, NULL);
+    y += 30;
+    ht_tx("n2h.far_bajar", X, y, 34, 22, L"Bajar", F_TEXTO, HT_C_SUAVE, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    ht_el(E_TECLA, X + 36, y, 92, 22, K_FARM, NULL, L"Ver más cerca · clic y apretá una tecla · clic derecho: borrarla");
+    ht_tx("n2h.far_subir", X + 138, y, 34, 22, L"Subir", F_TEXTO, HT_C_SUAVE, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    ht_el(E_TECLA, X + 174, y, 112, 22, K_FARP, NULL, L"Ver más lejos · clic y apretá una tecla · clic derecho: borrarla");
+    y += 26;
+    ht_n2h_op(O_FAR_IND, X, y, 200);
+    y = 100 + 130 + 10;
+    ht_carta("n2h.obstaculos", GX, y, GW, 104, L"Obstáculos", NULL);
+    y += 20;
+    ht_n2h_op(O_OPACIDAD, X, y, 220);
+    y += 26;
+    ht_el(E_SLIDER, X - 4, y, 214, 26, 0, NULL, L"Arrastrá, o la rueda del mouse");
+    ht_el(E_VALOR, X + 214, y + 1, 72, 24, 0, NULL, NULL);
+    y += 30;
+    ht_tx("n2h.alfa_bajar", X, y, 34, 22, L"Bajar", F_TEXTO, HT_C_SUAVE, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    ht_el(E_TECLA, X + 36, y, 92, 22, K_ALFM, NULL, L"Bajar la opacidad · clic y apretá una tecla · clic derecho: borrarla");
+    ht_tx("n2h.alfa_subir", X + 138, y, 34, 22, L"Subir", F_TEXTO, HT_C_SUAVE, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    ht_el(E_TECLA, X + 174, y, 112, 22, K_ALFP, NULL, L"Subir la opacidad · clic y apretá una tecla · clic derecho: borrarla");
+    y = 240 + 104 + 10;
+    ht_carta("n2h.teclado", GX, y, GW, 124, L"Teclado", NULL);
+    y += 20;
+    for (int g = 0; g < 2; g++) {                    /* la cruz de Ñ2Hock: arriba / izq · abajo · der / booster */
+        static const int DX[5] = { 46, 2, 46, 90, 46 }, DY[5] = { 0, 24, 24, 24, 48 };
+        int bx = X + g * 150;
+        for (int k = 0; k < 5; k++)
+            ht_el(E_TECLA, bx + DX[k], y + DY[k], 42, 21, K_KB(g, k), NULL,
+                  L"Clic y apretá una tecla · clic derecho: borrarla · Esc: cancelar · en rosa: cambiada");
+    }
+    y += 76;
+    ht_n2h_op(O_TECLADO, X, y, 186);
+    ht_el(E_BOTON, X + 192, y + 1, 94, 22, 2, L"DE FÁBRICA", L"Vuelve las dos filas a W A S D LCtrl / ↑ ← ↓ → RCtrl");
+
+    /* ── lo que viene ── */
+    ht_n2h_proximamente(2, "n2h.entreno", L"Entreno",
+                        L"Próximamente: velocidad de práctica (50 a 150 %), repetir un tramo A/B y Anticaída. "
+                        L"Sólo en práctica o jugando solo.");
+    ht_n2h_proximamente(3, "n2h.tramos", L"Tramos",
+                        L"Próximamente: la velocidad cambia sola en cada tramo, y moverse en la canción (±1 s, ±5 s).");
+    ht_n2h_proximamente(4, "n2h.chat", L"Chat",
+                        L"Próximamente: el historial del chat de esta sesión y el chat dentro del juego.");
+
+    /* ── el pie ── */
+    g_ht_pag_armando = 0xFF;
+    g_ht_pag_y1 = 488;
+    ht_el(E_BOTON, 12, 498, 120, 28, 1, L"APAGAR TODO", L"Apaga todas las opciones (vuelve todo a fábrica)");
+    wsprintfW(g_ht_tema_txt, L"TEMA %d/%d", g_ht_tema, HT_N_TEMAS);
+    ht_el(E_BOTON, W - 12 - 84, 501, 84, 22, 3, g_ht_tema_txt,
+          L"Cambiar el estilo de la ventana: 1 Neón · 2 Sakura · 3 Arcade · 4 Medianoche · 5 Ñ2Hock. Queda guardado.");
+    g_ht_h = 498 + 28 + 12;
+}
+
 static void ht_maquetar(void)
 {
     const int XL = HT_M, XR = HT_M + HT_CW + 12, W = XR + HT_CW + HT_M;
@@ -1266,6 +1610,8 @@ static void ht_maquetar(void)
     int x, y;
     g_nel = g_ncarta = g_ntx = 0;
     g_ht_w = W;
+    g_ht_pag_armando = 0xFF;                         /* sin pestañas: todo de todas */
+    g_ht_pag_y0 = g_ht_pag_y1 = 0;
 
     /* la cabecera */
     ht_el(E_TITULO, 18, 9, W - HT_M - 26 - 10 - 96 - 8 - 96 - 10 - 76 - 8 - 18, 34, 0, NULL, NULL);
@@ -1273,7 +1619,7 @@ static void ht_maquetar(void)
     ht_el(E_PILL, W - HT_M - 26 - 10 - 96, 13, 96, 26, O_ANCLAR, g_op[O_ANCLAR].texto, g_op[O_ANCLAR].ayuda);
     ht_el(E_PILL, W - HT_M - 26 - 10 - 96 - 8 - 96, 13, 96, 26, O_HOTKEYS, g_op[O_HOTKEYS].texto, g_op[O_HOTKEYS].ayuda);
     /* ⚠ mientras anonimo03 elige el estilo: recorre los 4 temas (y lo guarda en el ini) */
-    wsprintfW(g_ht_tema_txt, L"TEMA %d/4", g_ht_tema);
+    wsprintfW(g_ht_tema_txt, L"TEMA %d/%d", g_ht_tema, HT_N_TEMAS);
     ht_el(E_BOTON, W - HT_M - 26 - 10 - 96 - 8 - 96 - 10 - 76, 15, 76, 22, 3, g_ht_tema_txt,
           L"Probar los 4 estilos: 1 Neón · 2 Sakura · 3 Arcade · 4 Medianoche. Queda guardado (sale cuando se elija uno).");
 
@@ -1326,9 +1672,14 @@ static void ht_maquetar(void)
     y += 30;
     /* ⚠ «Ocultar Nombres» no entra en media columna con su botoncito: va sola en su fila */
     ht_op_con_tecla(O_CAMARA, x, y, MED);
-    ht_el(E_FIJO, x + MED + 8, y + HT_DY, MED, 24, 1, L"AutoFar", L"El Far según el BPM de la canción: todavía no está hecho.");
+    /* ★ 19-nov: AutoFar ya está hecho (§ 5b). El cartel viejo queda ESCONDIDO y no se borra: las
+     *   disposiciones guardadas lo nombran ([fijo.autofar]), igual que el de Aleatorio */
+    ht_op_con_tecla(O_AUTOFAR, x + MED + 8, y, MED);
+    g_el[ht_el(E_FIJO, x + MED + 8, y + HT_DY, MED, 24, 1, L"AutoFar", NULL)].oculto = 1;
     y += HT_FILA;
-    ht_op_con_tecla(O_NOMBRES, x, y, 196); y += HT_FILA;
+    ht_op_con_tecla(O_NOMBRES, x, y, 196);
+    ht_op_con_tecla(O_FAR_IND, x + 204, y, IW - 204);
+    y += HT_FILA;
     y += 8 + 10;
 
     /* ⚠ con los interruptores (temas 2 y 4) «Configuración de Teclado» y «AutoCtrl» no entran en la
@@ -1410,6 +1761,7 @@ static void ht_id_el(const HT_EL *e, char *s)                    /* s: 48 */
     case E_CERRAR: lstrcpyA(s, "cerrar"); break;
     case E_FIJO:   lstrcpyA(s, e->ref ? "fijo.autofar" : "fijo.aleatorio"); break;
     case E_TITULO: lstrcpyA(s, "titulo"); break;
+    case E_PESTANA: wsprintfA(s, "pestana.%d", e->ref); break;
     case E_AVISO:  lstrcpyA(s, "aviso"); break;
     case E_TECLA:
         if (e->ref >= 0 && e->ref < O_N) wsprintfA(s, "tecla.%s", g_op[e->ref].clave);
@@ -1559,9 +1911,10 @@ static int ht_disp_aplicar_texto(const char *txt, int largo, char *motivo)    /*
 static void ht_maquetar_fabrica(void)
 {
     char motivo[160];
-    ht_maquetar();
     g_ht_disp_npool = 0;
     g_ht_disp_estado = 0;
+    if (g_ht_tema == HT_TEMA_N2H) { ht_maquetar_n2h(); return; }   /* ★ la de Ñ2Hock: sin disposición */
+    ht_maquetar();
     if (HT_DISPOSICION_HORNEADA[0]) {
         if (!ht_disp_aplicar_texto(HT_DISPOSICION_HORNEADA, lstrlenA(HT_DISPOSICION_HORNEADA), motivo)) {
             static int dicho = 0;
@@ -1576,6 +1929,7 @@ static void ht_maquetar_todo(void)
     char motivo[160], ruta[MAX_PATH];
     DWORD firma = 2166136261u;
     ht_maquetar_fabrica();
+    if (g_ht_tema == HT_TEMA_N2H) return;           /* el archivo del editor es de la maqueta de dos columnas */
     lstrcpyA(ruta, g_carpeta);
     lstrcatA(ruta, HT_DISP_ARCHIVO);
     HANDLE h = CreateFileA(ruta, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
@@ -1699,8 +2053,20 @@ static void ht_pintar_el(int i, int pase)
 {
     HT_EL *e = &g_el[i];
     int hov = i == g_ht_hover;
-    if (e->oculto) return;
+    if (e->oculto || !ht_en_pag(e->pag)) return;
     switch (e->tipo) {
+    case E_PESTANA: {                                   /* ★ 19-nov: la pestaña de Ñ2Hock */
+        int sel = e->ref == g_ht_pag;
+        if (pase == 0) {
+            if (sel) {
+                ht_caja(e->x, e->y, e->w, e->h + 1, 0, HT_C_TARJETA, HT_C_BORDE, 1);
+                ht_caja(e->x + 1, e->y + e->h - 1, e->w - 2, 3, 0, HT_C_TARJETA, HT_C_TARJETA, 0);
+                ht_caja(e->x, e->y, e->w, 2, 0, HT_C_ROSA, HT_C_ROSA, 0);
+            } else ht_caja(e->x, e->y + 3, e->w, e->h - 3, 0, hov ? HT_C_HUECO : HT_C_MUERTO, HT_C_BORDE, 1);
+        } else ht_texto(e->x, e->y + (sel ? 1 : 3), e->w, e->h - (sel ? 1 : 3), e->texto, F_CHICO,
+                        sel ? HT_C_TEXTO : hov ? HT_C_SUAVE : HT_C_GRIS, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        break;
+    }
     case E_TITULO:
         if (pase == 1) {
             SIZE t, t2;
@@ -1855,17 +2221,28 @@ static void ht_pintar(HDC dc)
     }
     /* ── capa doble: las formas ── */
     ht_caja(0, 0, W, H, 0, HT_C_FONDO, HT_C_FONDO, 0);
-    ht_caja(0, 0, W, 52, 0, HT_C_CABEZA, HT_C_CABEZA, 0);
+    if (g_tm->cabecera != 4) ht_caja(0, 0, W, 52, 0, HT_C_CABEZA, HT_C_CABEZA, 0);
     if (g_tm->tira)
         for (int i = 0; i < 64; i++) {                       /* la tirita de arriba: rosa -> celeste */
             int r = 0xff + (0x8f - 0xff) * i / 63, g = 0x7a + (0xe7 - 0x7a) * i / 63, b = 0xb8 + (0xff - 0xb8) * i / 63;
             int x0 = W * i / 64, x1 = W * (i + 1) / 64;
             ht_caja(x0, 0, x1 - x0 + 1, 3, 0, RGB(r, g, b), RGB(r, g, b), 0);
         }
-    ht_caja(0, 52, W, 1, 0, g_tm->cabecera == 2 ? HT_C_CELESTE : HT_C_BORDE, g_tm->cabecera == 2 ? HT_C_CELESTE : HT_C_BORDE, 0);
+    if (g_tm->cabecera != 4)
+        ht_caja(0, 52, W, 1, 0, g_tm->cabecera == 2 ? HT_C_CELESTE : HT_C_BORDE, g_tm->cabecera == 2 ? HT_C_CELESTE : HT_C_BORDE, 0);
+    if (g_ht_pag_y1 > g_ht_pag_y0)                       /* ★ el panel de las pestañas (tema Ñ2Hock) */
+        ht_caja(8, g_ht_pag_y0, W - 16, g_ht_pag_y1 - g_ht_pag_y0, 0, HT_C_TARJETA, HT_C_BORDE, 1);
     for (int c = 0; c < g_ncarta; c++) {
         HT_CARTA *k = &g_carta[c];
-        if (k->oculto) continue;
+        if (k->oculto || !ht_en_pag(k->pag)) continue;
+        if (g_tm->cabecera == 4) {                       /* ★ un GroupBox: marco fino y el título lo corta */
+            SIZE t = { 0, 0 };
+            SelectObject(g_ht_dc1, g_ht_f[F_CARTA]);
+            GetTextExtentPoint32W(g_ht_dc1, k->titulo, lstrlenW(k->titulo), &t);
+            ht_caja(k->x, k->y + 7, k->w, k->h - 7, 0, HT_C_TARJETA, HT_C_BORDE, 1);
+            ht_caja(k->x + 6, k->y, t.cx + 8, 14, 0, HT_C_TARJETA, HT_C_TARJETA, 0);
+            continue;
+        }
         ht_caja(k->x, k->y, k->w, k->h, g_tm->radio, HT_C_TARJETA, g_tm->grosor ? HT_C_BORDE : HT_C_TARJETA, g_tm->grosor);
         if (g_tm->cabecera == 0) ht_caja(k->x + HT_PAD, k->y + 13, 3, 11, 1, HT_C_ROSA, HT_C_ROSA, 0);
         if (g_tm->cabecera == 2) {
@@ -1884,7 +2261,11 @@ static void ht_pintar(HDC dc)
     SetBkMode(g_ht_dc1, TRANSPARENT);
     for (int c = 0; c < g_ncarta; c++) {
         HT_CARTA *k = &g_carta[c];
-        if (k->oculto) continue;
+        if (k->oculto || !ht_en_pag(k->pag)) continue;
+        if (g_tm->cabecera == 4) {
+            ht_texto(k->x + 10, k->y, k->w - 20, 14, k->titulo, F_CARTA, HT_C_ROSA, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            continue;
+        }
         int dx = g_tm->cabecera == 0 ? 10 : g_tm->cabecera == 2 ? 12 : 0;
         COLORREF ct = g_tm->cabecera == 0 ? HT_C_TEXTO : g_tm->cabecera == 2 ? HT_C_CELESTE : HT_C_ROSA;
         SetTextCharacterExtra(g_ht_dc1, g_tm->espaciado);
@@ -1894,7 +2275,7 @@ static void ht_pintar(HDC dc)
     }
     for (int i = 0; i < g_ntx; i++) {
         HT_TX *t = &g_tx[i];
-        if (t->oculto) continue;
+        if (t->oculto || !ht_en_pag(t->pag)) continue;
         ht_texto(t->x, t->y, t->w, t->h, t->texto, t->fuente, t->color, t->fmt);
     }
     for (int i = 0; i < g_nel; i++) ht_pintar_el(i, 1);
@@ -1969,7 +2350,14 @@ static void ht_globo_mostrar(int i)
 }
 
 /* ── 7.6 · prender / apagar, mostrar, el reloj ──────────────────────────────── */
-static void ht_refrescar(void) { if (g_ht_ven) InvalidateRect(g_ht_ven, NULL, FALSE); }
+static volatile int g_n2h_activa = 0;           /* ★ 19-nov: la ventana es la de Ñ2Hock (n2h_ventana.c) */
+#define WM_N2H_SYNC (WM_APP + 7)
+static void ht_refrescar(void)
+{
+    if (!g_ht_ven) return;
+    if (g_n2h_activa) PostMessageW(g_ht_ven, WM_N2H_SYNC, 0, 0);   /* los controles, en su hilo */
+    else InvalidateRect(g_ht_ven, NULL, FALSE);
+}
 
 static void ht_pedir_guardar(void) { g_ht_guardar_en = (int)GetTickCount() + 400; if (!g_ht_guardar_en) g_ht_guardar_en = 1; }
 
@@ -1978,7 +2366,7 @@ static void ht_cambiar(int i, int valor)
 {
     HT_OP *o = &g_op[i];
     if (!o->permitida || o->rota) return;
-    if (i == O_HOTKEYS && !valor) return;           /* los atajos no se apagan (la pastilla es un aviso) */
+    if (i == O_HOTKEYS && !valor && !g_n2h_activa) return;   /* (en la ventana vieja la pastilla era un aviso) */
     if (valor && o->pareja >= 0 && g_op[o->pareja].quiere) {
         g_op[o->pareja].quiere = 0;
         ht_aplicar(o->pareja);                      /* ⚠ primero se saca la pareja: tocan los mismos sitios */
@@ -2057,6 +2445,7 @@ static void ht_acomodar(void)
 /* rehace la maqueta (fábrica + archivo de disposición) y, si cambió el tamaño, la ventana */
 static void ht_rehacer(void)
 {
+    if (g_n2h_activa) { ht_refrescar(); return; }   /* la de Ñ2Hock no se rehace */
     int w0 = g_ht_w, h0 = g_ht_h;
     ht_maquetar_todo();
     g_ht_hover = -1;
@@ -2159,9 +2548,9 @@ static void ht_tick(void)
     int far_m = ht_recien(g_ht_tk_far_menos), far_p = ht_recien(g_ht_tk_far_mas);
     int alf_m = ht_recien(g_ht_tk_alfa_menos), alf_p = ht_recien(g_ht_tk_alfa_mas);
     if (sirve && (far_m || far_p) && g_op[O_FAR].quiere) {
-        g_ht_far_pct += far_p ? 10 : -10;
-        if (g_ht_far_pct < 50) g_ht_far_pct = 50;
-        if (g_ht_far_pct > 300) g_ht_far_pct = 300;
+        g_ht_far_n2h += far_p ? 1 : -1;               /* ★ 19-nov: medio punto de Far, como Ñ2Hock */
+        if (g_ht_far_n2h < 2) g_ht_far_n2h = 2;
+        if (g_ht_far_n2h > 44) g_ht_far_n2h = 44;
         ht_far_aplicar(); ht_refrescar(); ht_pedir_guardar();
     }
     if (sirve && (alf_m || alf_p) && g_op[O_OPACIDAD].quiere) {
@@ -2182,7 +2571,7 @@ static int ht_donde(int x, int y)
 {
     for (int i = g_nel - 1; i >= 0; i--) {
         HT_EL *e = &g_el[i];
-        if (e->tipo == E_VALOR || e->tipo == E_TITULO || e->tipo == E_AVISO || e->oculto) continue;
+        if (e->tipo == E_VALOR || e->tipo == E_TITULO || e->tipo == E_AVISO || e->oculto || !ht_en_pag(e->pag)) continue;
         if (e->tipo == E_PILL && e->ref == O_HOTKEYS) continue;   /* el aviso verde: ni clic ni globito */
         if (x >= e->x && x < e->x + e->w && y >= e->y && y < e->y + e->h) return i;
     }
@@ -2197,7 +2586,7 @@ static int ht_el_vivo(int i)
     case E_TECLA: return ht_tecla_viva(e->ref);
     case E_SLIDER: { int o = e->ref ? O_FAR : O_OPACIDAD; return g_op[o].permitida && !g_op[o].rota; }
     case E_BOTON: return e->ref != 2 || !g_op[O_TECLADO].rota;
-    case E_CERRAR: return 1;
+    case E_CERRAR: case E_PESTANA: return 1;
     }
     return 0;
 }
@@ -2290,7 +2679,7 @@ static void ht_clic(int i, int x)
     case E_BOTON:
         if (e->ref == 1) { ht_apagar_todo(); ht_avisar(HT_C_CELESTE, 3000, L"Todo apagado: el juego quedó de fábrica"); }
         else if (e->ref == 3) {
-            ht_tema_poner(g_ht_tema % 4 + 1);
+            ht_tema_poner(g_ht_tema % HT_N_TEMAS + 1);
             ht_avisar(HT_C_CELESTE, 3000, L"Tema %d: %s (queda guardado en el ini)", g_ht_tema, g_tm->nombre);
             ht_pedir_guardar();
         }
@@ -2298,6 +2687,9 @@ static void ht_clic(int i, int x)
         break;
     case E_CERRAR:
         ht_mostrar(0);
+        break;
+    case E_PESTANA:                                     /* ★ 19-nov: cambiar de pestaña */
+        if (g_ht_pag != e->ref) { g_ht_pag = e->ref; g_ht_hover = -1; ht_globo_ocultar(); }
         break;
     }
     ht_refrescar();
@@ -2471,7 +2863,7 @@ static void ht_dwm(void)
 /* cambiar de tema EN VIVO (el botón TEMA): fuentes, maqueta (la densidad cambia el alto) y capas */
 static void ht_tema_poner(int n)
 {
-    if (n < 1 || n > 4) n = 1;
+    if (n < 1 || n > HT_N_TEMAS) n = 1;
     g_ht_tema = n;
     g_tm = &HT_TEMAS[n - 1];
     if (!g_ht_ven) return;
@@ -2483,8 +2875,19 @@ static void ht_tema_poner(int n)
     ht_refrescar();
 }
 
+#include "n2h_entreno.c"                        /* ★ 19-nov: el motor de Entreno / Tramos de Ñ2Hock (velocidad, bucle A/B, anticaída) */
+#include "n2h_chat.c"                           /* ★ 19-nov: el Chat de Ñ2Hock (lectura del chat del juego) */
+#include "n2h_ventana.c"                         /* ★ 19-nov: la ventana de Ñ2Hock, hecha de cero */
+
 static void ht_armar_ventana(void)
 {
+    /* ★ 19-nov (anonimo03: «hazlo todo desde 0»): la ventana es la de Ñ2Hock con controles de Windows.
+     *   La dibujada a mano (los temas 1–5) queda en el código, sin usar; `[herramienta] ventana=vieja` la trae. */
+    {
+        char v[16];
+        GetPrivateProfileStringA("herramienta", "ventana", "n2hock", v, sizeof(v), g_ht_ini);
+        if (lstrcmpiA(v, "vieja")) { n2_armar(); if (g_ht_ven) return; }
+    }
     WNDCLASSEXW wc;
     ZeroMemory(&wc, sizeof(wc));
     wc.cbSize = sizeof(wc);
@@ -2499,7 +2902,7 @@ static void ht_armar_ventana(void)
     wc.lpszClassName = L"R2beatToolAyuda";
     RegisterClassExW(&wc);
 
-    g_tm = &HT_TEMAS[(g_ht_tema >= 1 && g_ht_tema <= 4 ? g_ht_tema : 1) - 1];
+    g_tm = &HT_TEMAS[(g_ht_tema >= 1 && g_ht_tema <= HT_N_TEMAS ? g_ht_tema : 1) - 1];
     ht_fuentes();
     {
         wchar_t n[32];
@@ -2582,6 +2985,7 @@ static void herramienta_iniciar(void)
         g_ht_f_modelo = (HT_FMODELO)HT_VA(HT_F_MODELO);
         g_ht_tabla_mod = (void **)HT_VA(HT_TABLA_MOD);
     }      /* el que carga la dll; lo corrige el gancho */
+    g_calc_despues_de_dibujar = ht_por_cuadro;      /* ★ 19-nov: AutoFar y el cartel del Far (§ 5b) */
 
     /* el aviso del launcher: SIEMPRE, aunque hoy esté apagada (así se puede prender en vivo) */
     wchar_t nombre[64];
