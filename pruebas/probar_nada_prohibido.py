@@ -24,7 +24,7 @@ import tempfile
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 BINARIOS_PERMITIDOS = {"exe/d3d9.dll", "despliegue/ejemplo.env",   # (el .env de ejemplo, sin claves)
-                       "exe/antitrampa_pantalla.bmp"}             # ★ 18-nov: la pantalla del antitrampa, hecha por nosotros (Benja: «que el bmp entre»)
+                       "exe/antitrampa_pantalla.bmp"}             # ★ 18-nov: la pantalla del antitrampa, hecha por nosotros (se pidió que el bmp entre)
 TIPOS = (".pak", ".exe", ".dll", ".db", ".db-wal", ".db-shm", ".sqlite", ".sqlite3", ".bin", ".dak", ".key",
          ".pem", ".ogg", ".mp3", ".wav", ".dds", ".tga", ".bmp", ".png", ".jpg", ".jpeg", ".gif", ".zip",
          ".rar", ".7z", ".env")

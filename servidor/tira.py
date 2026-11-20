@@ -209,7 +209,7 @@ def guardar_panel(filas, quien="", ahora=None):
             except (TypeError, ValueError):
                 hasta = 0
             if hasta <= ahora:
-                return f"fila {i}: poné «siempre» o un vencimiento en el futuro", None
+                return f"fila {i}: ponga «siempre» o un vencimiento en el futuro", None
         id_ = f.get("id")
         limpias.append((int(id_) if isinstance(id_, int) or (isinstance(id_, str) and id_.isdigit()) else None,
                         texto, hasta, bool(f.get("activo", True))))

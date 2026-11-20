@@ -52,6 +52,7 @@ Buscá tu tarea en la primera tabla y abrí sólo lo que dice.
 | el PICKER de la sala: preferidas, «Mi record», popularidad, Aleatorio/TOP 20/NUEVOS 20 | `picker.py` + `documentacion/PICKER_SISTEMA.md` | `PICKER_*` en `ajustes.py`; el modo vive en `salas.SELECCION_SALA` |
 | la PRESENTACIÓN PERSONAL y el cartel «¿Desea escribirla ahora?» (`FF94`, la letra del `FF03`) | `presentacion.py` + `documentacion/PRESENTACION_PERSONAL.md` | `PRESENTACION_*` en `ajustes.py` |
 | ★ el LAUNCHER NUEVO (26-oct): su API (`/api/launcher/…`: entrar, personajes, ruleta, girar, público) · la RULETA (monedas gorila → Rcoin o ropa de Halloween, la paga el server al personaje elegido) · lo que muestra y se edita en el panel (noticias, torneo, supporters, la tabla de la ruleta) | `launcher_api.py` · `ruleta.py` (+ `ruleta_ropa.json`) · `launcher_contenido.py` | `pruebas/probar_ruleta_launcher.py` · `documentacion/LAUNCHER_NUEVO.md` |
+| ★ los TORNEOS del launcher (20-nov, fase 1): torneos Solo / Pareja / Círculo, la votación de la hora (un voto por cuenta), la inscripción (un personaje por cuenta), la LLAVE fija con libres, resultados y reinicios cargados por el staff; `/api/launcher/torneos…` y la puerta del Coordinador `/api/interno/torneos` | `torneos.py` (+ las rutas en `launcher_api.py` y `api_web.py`) | `pruebas/probar_torneos.py` · `documentacion/TORNEOS.md` |
 | hasta 4 PERSONAJES por cuenta (la landing web y el selector del launcher): listar, crear, entrar con uno (o «a crear»: la creación nativa), borrar y las A/B/C de la creación (`FFF1`…`FFF5` del LoginServer); la tabla `cuenta_personajes` | `cuenta_personajes.py` | `pruebas/probar_cuenta_personajes.py` · `documentacion/SELECTOR_PERSONAJE.md` · repo Fuente `documentacion/LANDING.md` |
 | guardar/leer personajes | `basedatos.py` | `chars_db.json` |
 | el cifrado, los sobres `FF55`/`FF4E` | `cifrado.py` | |
@@ -81,6 +82,7 @@ circulo_tienda la tienda del círculo (FFD9), su inventario (FFD7/FFDA) y la mar
 api_web        la API de la web (HTTP en 127.0.0.1, su hilo): lecturas + lo de la web, siempre por las funciones del juego
 panel_admin    el PANEL: todo /api/admin/*; escucha el chat público y la IP (`oir`, desde lobby) y escribe en SU panel.db;
                mide el TIEMPO DE JUEGO (`actividad`), anota la BITÁCORA (`carreras_log`, `sesiones`, `campanas`), los REPORTES de cada FF28 con sus marcas de pillo (`reportes`) y los PERMISOS de cada GM (`permisos`)
+torneos        ★ 20-nov los TORNEOS (fase 1): `torneos`, `torneo_votos`, `torneo_inscritos`, `torneo_cruces` en datos.db; la llave (siembra, libres, resultado, reiniciar); la usan launcher_api y la puerta del Coordinador (/api/interno/torneos, ficha interna)
 launcher_api   ★ /api/launcher/* (dentro de api_web, con `Authorization: Bearer`): la cuenta, sus personajes, la ruleta
 portero        ★ PROCESO APARTE (no lo importa lobby): cuentas de R2Beat → pases firmados para EDA; datos.db sólo lectura
 firma_ed25519  la firma Ed25519 (RFC 8032) en Python puro, para el portero
@@ -88,6 +90,7 @@ pase           ★ comprueba el pase de Cuenta Eñeños (firma, `aud`, vencimien
 enlazar_cuentas  ★ PASO ÚNICO del día del reemplazo (`python -m servidor.enlazar_cuentas`): le pide a Cuenta Eñeños el Eñeños ID de cada cuenta y lo anota en `users.enenos_id`
 ruleta         la RULETA del launcher: monedas gorila → Rcoin o ropa (ruleta_ropa.json); `ruleta_giros` en datos.db
 launcher_contenido  lo que muestra el launcher (noticias, torneo, supporters, la tabla de la ruleta): tabla `launcher_contenido`
+contenido_interno   ★ 20-nov: la puerta del COORDINADOR Eñeños (/api/interno/contenido, con la ficha interna): edita noticias, asistencia, ruleta y tira con las mismas reglas del panel viejo · ★ fase C: /api/interno/panel/<ruta> = el panel viejo entero, como actor externo (panel_admin.con_externo)
 respaldo       el RESPALDO DIARIO de datos.db + panel.db (copia de SQLite, se abre y se cuenta, gzip, rota); lo arranca api_web
 npc_charla     NPCs para la prueba de carga de la charla: entran/caminan/hablan/se van por los caminos de verdad (⛔ local)
 charla         la SALA DE CONVERSACIÓN compartida (tipos 5..10) y la del CÍRCULO (12, una por círculo): estancias, lista armada una vez, FF0E, FF23, FF08
