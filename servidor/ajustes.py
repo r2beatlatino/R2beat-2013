@@ -5478,6 +5478,11 @@ ANTITRAMPA_EXE_MD5 = {"7b8626647231e715d3f2fe33eebe2c46",   # el de la receta (h
 #   un salto en +0x1AEDD4 (va 0x005AEDD4) → «sala_automatica». «Auto Relevo» engancha +0x105340, donde ya está el gancho
 #   del relevo de nuestra dll (Ñ2Hock no lo pisa); si algo lo pisa → «relevo_automatico».
 ANTITRAMPA_GANCHOS = {0x005080B5: "automatico", 0x005AEDD4: "sala", 0x00505340: "relevo"}   # va -> nombre
+#   ★ 19-nov: módulos con nombre «de trampa» que NO lo son (empiezan así, sin mayúsculas). El motor de práctica
+#   de Ñ2Hock (Entreno: velocidad, tramo A/B) se carga como ToolBitPracticeEngine_<hash>.dll: la dll vieja lo
+#   manda como «modulo=» por el «toolbit», y expulsaba a quien practicara. Queda sólo registrado.
+ANTITRAMPA_MODULOS_PERMITIDOS = ("toolbitpracticeengine",)
+ANTITRAMPA_REGLAS["modulo_permitido"] = "registrar"
 ANTITRAMPA_REGLAS["juego_automatico"] = "expulsar"
 ANTITRAMPA_REGLAS["sala_automatica"] = "expulsar"
 ANTITRAMPA_REGLAS["relevo_automatico"] = "expulsar"

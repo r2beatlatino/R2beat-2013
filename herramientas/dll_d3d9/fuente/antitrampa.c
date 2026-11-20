@@ -302,6 +302,10 @@ static void at_revisar_modulos(void)
         char nombre[MAX_MODULE_NAME32 + 1];
         lstrcpynA(nombre, m.szModule, sizeof(nombre));
         CharLowerA(nombre);
+        /* ★ 19-nov: el motor de práctica de Ñ2Hock («Entreno»: velocidad, tramo A/B) se carga como
+         *   ToolBitPracticeEngine_<hash>.dll — tiene «toolbit» en el nombre pero NO es el ToolBit de trampas.
+         *   Con Ñ2Hock abierto por el juego para todos, contarlo expulsaba a quien practicara. */
+        if (at_busca(nombre, "toolbitpracticeengine")) continue;
         for (int i = 0; i < (int)(sizeof(AT_MODULOS) / sizeof(AT_MODULOS[0])); i++) {
             if (!at_busca(nombre, AT_MODULOS[i])) continue;
             if (at_busca(g_at_modulos_vistos, nombre)) break;
