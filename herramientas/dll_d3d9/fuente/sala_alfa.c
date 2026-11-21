@@ -122,18 +122,27 @@ static HRESULT WINAPI sa_dibujar_idx(void *dev, DWORD tipo, INT base, UINT minim
  *   esos lugares (cambia de función de dibujo según el estado). ⇒ si la tabla ya estaba anotada, se ACTUALIZAN sus
  *   originales con lo que Direct3D puso ahora (no una entrada nueva: la vieja podría ser la versión equivocada). */
 static long g_sa_reenganches = 0;
+/* ★ 21-nov · UN SOLO ESCRITOR A LA VEZ en las tablas. MEDIDO con DXVK (su tabla es de sólo lectura): cuando dos
+ *   hilos enganchan la misma página a la vez, uno la vuelve a dejar de sólo lectura (VirtualProtect «viejo») justo
+ *   antes de que el otro escriba ⇒ 0xC0000005. Todo módulo que escriba la tabla tiene que tomar este candado. */
+static volatile LONG g_sa_candado_vt = 0;
+static void sa_candado_tomar(void) { while (InterlockedCompareExchange(&g_sa_candado_vt, 1, 0) != 0) Sleep(0); }
+static void sa_candado_soltar(void) { InterlockedExchange(&g_sa_candado_vt, 0); }
 
 static void sa_enganchar_tabla(void **vt)
 {
     if (!vt) return;
     void *p81 = vt[SA_DRAWPRIMITIVE], *p82 = vt[SA_DRAWINDEXED];
     if (p81 == (void *)sa_dibujar && p82 == (void *)sa_dibujar_idx) return;
+    sa_candado_tomar();
+    p81 = vt[SA_DRAWPRIMITIVE]; p82 = vt[SA_DRAWINDEXED];      /* ★ 21-nov: releídos con el candado */
+    if (p81 == (void *)sa_dibujar && p82 == (void *)sa_dibujar_idx) { sa_candado_soltar(); return; }
     DWORD viejo = 0;
-    if (!VirtualProtect(&vt[SA_DRAWPRIMITIVE], 2 * sizeof(void *), PAGE_EXECUTE_READWRITE, &viejo)) return;
+    if (!VirtualProtect(&vt[SA_DRAWPRIMITIVE], 2 * sizeof(void *), PAGE_EXECUTE_READWRITE, &viejo)) { sa_candado_soltar(); return; }
     LONG i = 0;
     while (i < g_sa_ntablas && g_sa_tablas[i].vt != vt) i++;
     int nueva = (i == g_sa_ntablas);
-    if (nueva && i >= SA_TABLAS) { VirtualProtect(&vt[SA_DRAWPRIMITIVE], 2 * sizeof(void *), viejo, &viejo); return; }
+    if (nueva && i >= SA_TABLAS) { VirtualProtect(&vt[SA_DRAWPRIMITIVE], 2 * sizeof(void *), viejo, &viejo); sa_candado_soltar(); return; }
     g_sa_tablas[i].vt = vt;
     if (p81 != (void *)sa_dibujar) g_sa_tablas[i].real81 = (SA_DIBUJAR)p81;
     if (p82 != (void *)sa_dibujar_idx) g_sa_tablas[i].real82 = (SA_DIBUJAR_IDX)p82;
@@ -141,6 +150,7 @@ static void sa_enganchar_tabla(void **vt)
     vt[SA_DRAWPRIMITIVE] = (void *)sa_dibujar;
     vt[SA_DRAWINDEXED] = (void *)sa_dibujar_idx;
     VirtualProtect(&vt[SA_DRAWPRIMITIVE], 2 * sizeof(void *), viejo, &viejo);
+    sa_candado_soltar();
     if (nueva)
         apuntar("  [sala_alfa] ★ enganchada la tabla %p del dispositivo que dibuja (DrawPrimitive 81, DrawIndexedPrimitive 82)",
                 (void *)vt);
