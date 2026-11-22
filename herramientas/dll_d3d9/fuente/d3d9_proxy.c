@@ -49,7 +49,7 @@
 
 #include <windows.h>
 #include <stdarg.h>
-#include "antitrampa_envoltura.h"   /* ★ 18-nov: ANTES que todo módulo: lo que escribimos en el exe queda anotado */
+#include "antitrampa_envoltura.h"   /* ★ 18-nov (PR #1 del repo público): ANTES que todo módulo: lo que escribimos en el exe queda anotado */
 
 /* ── el layout de D3DPRESENT_PARAMETERS, a mano ───────────────────────────
  * Se escribe aca en vez de incluir <d3d9.h> para no arrastrar el SDK entero.
@@ -2612,6 +2612,8 @@ static int escribir_bytes(DWORD va, const BYTE *espera, const BYTE *nuevo, int n
 #include "sala_alfa.c"            /* ★ 02-nov: las piezas con alfa de las escenas traídas se ven (la sala Parque 2026) */
 #include "estrellas.c"            /* ★ 05-nov: (157) más de 10★: la 2.ª fila, «x 10.5 … x 13» en el picker, el sorteo como 10★ (ESTRELLAS_EXTRA.md) */
 #include "campanas.c"             /* ★ 06-nov: (160) 778/783 entran a la lista de campanas del exe + su cartel (CAMPANAS_PLUS_NUEVAS.md) */
+#include "isla_hora.c"            /* ★ 17-nov: la isla de DÍA o de NOCHE según la hora de la PC (ISLA_DIA_Y_NOCHE.md) */
+#include "isla_fx.c"               /* ★ 17-nov: la capa 4 de la isla: nuestros sombreadores (APAGADA de fábrica; después de sala_alfa.c e isla_hora.c) */
 
 /* ── ★★ el refresco del monitor donde esta la ventana ─────────────────────── */
 static int hz_del_monitor(HWND h)
@@ -2882,6 +2884,12 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD razon, LPVOID reservado)
     campanas_iniciar();
     /* ★ 06-nov: (161) el chart del FF57 en una caja de 64 KB: entran los de más de 4096 B. [chart_grande] activo=0 lo apaga. */
     chart_grande_iniciar();
+    /* ★ 17-nov: la isla del lobby de día o de noche por la hora de la PC (FindFirst/NextFileA por la IAT).
+     *   ANTES del WinMain: el juego monta los paks en 0x407180. [isla_hora] activo=0 lo apaga. */
+    isla_hora_iniciar();
+    /* ★ 17-nov: la capa 4 de la isla (mar, aurora, luces, nieve, brillo). DESPUÉS de isla_hora (usa la hora que eligió).
+     *   [isla_fx] activo=0 (de fábrica) no engancha nada. */
+    isla_fx_iniciar();
 
     apuntar("modo de pantalla: %s",
             g_cambiar_real ? "enganchado (el 16 -> 32 esta cubierto)"

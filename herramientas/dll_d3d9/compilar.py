@@ -3,6 +3,7 @@
 r"""compilar — arma nuestra `d3d9.dll` desde `herramientas/dll_d3d9/fuente/`.
 
     python herramientas/dll_d3d9/compilar.py              # compila y dice si da IGUAL a exe/d3d9.dll
+    python herramientas/dll_d3d9/compilar.py --igual      # lo mismo, y sale con 2 si NO da igual (lo usa GitHub)
 
 Hace falta **Zig 0.16.0** (https://ziglang.org/download/): en el PATH, o con la variable `ZIG`
 apuntando al `zig.exe`. La receta es determinista: el mismo fuente da el mismo archivo, byte a byte.
@@ -21,7 +22,7 @@ import tempfile
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(os.path.dirname(AQUI))
 FUENTE = os.path.join(AQUI, "fuente")
-PUBLICADA = os.path.join(RAIZ, "exe", "d3d9.dll")
+PUBLICADA = os.environ.get("DLL_PUBLICADA") or os.path.join(RAIZ, "exe", "d3d9.dll")   # (la variable: el revés de la prueba)
 
 
 def main():
@@ -52,6 +53,13 @@ def main():
     if os.path.isfile(PUBLICADA):
         igual = md5 == hashlib.md5(open(PUBLICADA, "rb").read()).hexdigest()
         print("  exe/d3d9.dll: %s" % ("IGUAL ✅" if igual else "DISTINTA (¿cambió el fuente? copiala a exe/)"))
+        if not igual and "--igual" in sys.argv:
+            # ★ 21-nov: el server de PRUEBA reparte la `exe/d3d9.dll` de develop SÓLO si esta prueba dio verde en
+            #   GitHub: así la dll que llega a los jugadores es la que sale del fuente, no un archivo armado aparte.
+            return 2
+    elif "--igual" in sys.argv:
+        print("⛔ no está %s" % PUBLICADA)
+        return 2
     return 0
 
 

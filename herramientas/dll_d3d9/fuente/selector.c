@@ -1090,16 +1090,102 @@ typedef void (TCK *SP_W_PERSP)(void *w, float fov, float aspecto, float cerca, f
 typedef void (TCK *SP_C_CAMARA)(void *c, int n);
 typedef void (TCK *SP_G_MODELO)(void *g, void *modelo, int a, int b, int c);
 
+/* ★ turno 19 (17-nov, isla de Navidad) · LA CÁMARA DEL FONDO, con perillas. anonimo03: «el problema es la CÁMARA: que se
+ *   mueva más abajo u otra perspectiva y el agujero ya no se verá». Medido en el exe:
+ *     [0x9314D4] = las cámaras del juego: un vector de casilleros de 0x6C B en +0x4C..+0x50, cada uno
+ *                  +0x00 el OJO (x, y, z) · +0x0C la MIRA · +0x18 el ARRIBA (0x643C20 / 0x643D40 los escriben);
+ *     0x644050(n) = guarda n en +0x58 y arma la vista de ese casillero (0x643AF0: LookAt -> el dispositivo, vt+0x60(2)).
+ *   ⇒ [selector] isla_camara = el casillero (10 = el de la creación) · isla_ojo / isla_mira = «x, y, z» fijos (en vez
+ *     de los del casillero) · isla_ojo_dy / isla_mira_dy = subir (+) o bajar (−) el ojo y la mira · isla_fov = el campo
+ *     VERTICAL en grados (0 = el del juego, 45). Se pisa el casillero SÓLO para armar la vista y se devuelve igual: la
+ *     animación del juego (intro / intro_loop) sigue escribiéndolo como siempre. La 1.ª vez se anota la cámara real. */
+static int g_sp_isla_cam = 10, g_sp_isla_fov = 0, g_sp_isla_ojo_dy = 0, g_sp_isla_mira_dy = 0;
+static int g_sp_isla_hay_ojo = 0, g_sp_isla_hay_mira = 0, g_sp_isla_anotada = 0;
+static float g_sp_isla_ojo[3], g_sp_isla_mira[3];
+
+/* ★ turno 20 · EL COLOR DE FONDO. Con la cámara baja se ven en el horizonte los dos bordes del plano del mar
+ *   (`Plane01`, ±17.354 / ±16.162) y detrás no hay nada: queda el color con que se LIMPIA la pantalla (negro = la cuña).
+ *   ⇒ se limpia con el color del horizonte: [selector] isla_fondo = RRGGBB de noche (el índigo del mar lejano, medido en
+ *   las capturas: mar 152544 · cielo de abajo 343768 ⇒ 1C2A50) · isla_fondo_dia = de día (entre el agua del borde,
+ *   2A748E, y el cielo de abajo, CEE6F1 ⇒ A9D2E4). Noche o día: lo que eligió isla_hora (fx_es_de_noche, en isla_fx.c). */
+static DWORD g_sp_fondo_noche = 0x1C2A50, g_sp_fondo_dia = 0xA9D2E4;
+static int g_sp_fondo_hora = -1;                           /* −1 sin mirar · 0 día · 1 noche */
+static int fx_es_de_noche(void);                           /* isla_fx.c (va después en d3d9_proxy.c) */
+
+static int sp_hex(const char *s, DWORD *c)                 /* «RRGGBB» (con o sin #) -> 1 si son 6 cifras */
+{
+    DWORD v = 0; int n = 0;
+    while (*s == ' ' || *s == '#') s++;
+    for (; *s && n < 6; s++, n++) {
+        int d = (*s >= '0' && *s <= '9') ? *s - '0' : (*s >= 'a' && *s <= 'f') ? *s - 'a' + 10 :
+                (*s >= 'A' && *s <= 'F') ? *s - 'A' + 10 : -1;
+        if (d < 0) return 0;
+        v = v * 16 + (DWORD)d;
+    }
+    if (n != 6) return 0;
+    *c = v;
+    return 1;
+}
+
+static int sp_tres(const char *s, float *v)                /* «x, y, z» (enteros, con signo) -> 1 si están los tres */
+{
+    int n = 0;
+    while (*s && n < 3) {
+        while (*s == ' ' || *s == ',' || *s == '\t') s++;
+        int neg = 0, dig = 0; long x = 0;
+        if (*s == '-' || *s == '+') { neg = *s == '-'; s++; }
+        while (*s >= '0' && *s <= '9') { x = x * 10 + (*s - '0'); s++; dig = 1; }
+        if (*s == '.') { s++; while (*s >= '0' && *s <= '9') s++; }
+        if (!dig) return 0;
+        v[n++] = (float)(neg ? -x : x);
+    }
+    return n == 3;
+}
+
 static void sp_isla(void *self)
 {
     void *w = *(void **)SPV(0x931498), *cam = *(void **)SPV(0x9314D4), *g = *(void **)SPV(0x93149C);
     void *isla = *(void **)((BYTE *)self + 0xF8);
     if (!w || !cam || !g) return;
     void **vt = *(void ***)w;
-    ((SP_W_LIMPIAR)vt[0x0C / 4])(w, 3, 0xFF000000);
+    if (g_sp_fondo_hora < 0) {
+        g_sp_fondo_hora = fx_es_de_noche();
+        apuntar("  [selector] fondo de la isla: %06X (%s)", g_sp_fondo_hora ? g_sp_fondo_noche : g_sp_fondo_dia,
+                g_sp_fondo_hora ? "noche" : "día");
+    }
+    ((SP_W_LIMPIAR)vt[0x0C / 4])(w, 3, 0xFF000000 | (g_sp_fondo_hora ? g_sp_fondo_noche : g_sp_fondo_dia));
     ((SP_W_NADA)vt[0x28 / 4])(w);
-    ((SP_C_CAMARA)SPV(0x644050))(cam, 10);
-    ((SP_W_PERSP)vt[0x24 / 4])(w, *(float *)SPV(0x904E98), *(float *)((BYTE *)w + 0xC), 1.0f, *(float *)SPV(0x878B5C));
+    BYTE *c0 = *(BYTE **)((BYTE *)cam + 0x4C), *c1 = *(BYTE **)((BYTE *)cam + 0x50);
+    int cuantas = (c0 && c1 > c0) ? (int)((c1 - c0) / 0x6C) : 0;
+    int n = g_sp_isla_cam;
+    float *k = (n >= 0 && n < cuantas) ? (float *)(c0 + n * 0x6C) : NULL;
+    if (!k || (k[0] == k[3] && k[1] == k[4] && k[2] == k[5])) {     /* casillero que no existe o sin armar: el 10 */
+        n = 10;
+        k = n < cuantas ? (float *)(c0 + n * 0x6C) : NULL;
+    }
+    float guarda[6];
+    int toca = k && (g_sp_isla_hay_ojo || g_sp_isla_hay_mira || g_sp_isla_ojo_dy || g_sp_isla_mira_dy);
+    if (toca) {
+        CopyMemory(guarda, k, sizeof(guarda));
+        if (g_sp_isla_hay_ojo) CopyMemory(k, g_sp_isla_ojo, 12);
+        if (g_sp_isla_hay_mira) CopyMemory(k + 3, g_sp_isla_mira, 12);
+        k[1] += (float)g_sp_isla_ojo_dy;
+        k[4] += (float)g_sp_isla_mira_dy;
+    }
+    float fov = g_sp_isla_fov > 0 ? (float)g_sp_isla_fov * 0.017453293f : *(float *)SPV(0x904E98);
+    if (!g_sp_isla_anotada && k) {
+        g_sp_isla_anotada = 1;
+        apuntar("  [selector] cámara del fondo: casillero %d de %d · ojo (%d, %d, %d) · mira (%d, %d, %d) · fov %d° · lejos %d%s",
+                n, cuantas, (int)k[0], (int)k[1], (int)k[2], (int)k[3], (int)k[4], (int)k[5],
+                (int)(fov * 57.29578f + 0.5f), (int)*(float *)SPV(0x878B5C),
+                toca ? " (con las perillas isla_*)" : "");
+        if (toca)
+            apuntar("  [selector]   la del juego era ojo (%d, %d, %d) · mira (%d, %d, %d)", (int)guarda[0], (int)guarda[1],
+                    (int)guarda[2], (int)guarda[3], (int)guarda[4], (int)guarda[5]);
+    }
+    ((SP_C_CAMARA)SPV(0x644050))(cam, k ? n : 10);
+    if (toca) CopyMemory(k, guarda, sizeof(guarda));               /* el casillero vuelve como estaba */
+    ((SP_W_PERSP)vt[0x24 / 4])(w, fov, *(float *)((BYTE *)w + 0xC), 1.0f, *(float *)SPV(0x878B5C));
     if (isla) (*(SP_G_MODELO *)((BYTE *)g + 0x13C))(g, isla, 0xFF, 3, 1);
 }
 
@@ -1563,6 +1649,26 @@ static void selector_iniciar(void)
     g_sp_pet_vel = (float)(int)GetPrivateProfileIntA("selector", "mascota_vel", 10, ini) / 10.0f;
     g_sp_pet_paso = (int)GetPrivateProfileIntA("selector", "mascota_paso", 1, ini);
     g_sp_pet_dibujo = (int)GetPrivateProfileIntA("selector", "mascota_dibujo", 1, ini);
+    g_sp_isla_cam = (int)GetPrivateProfileIntA("selector", "isla_camara", 10, ini);          /* ★ turno 19 */
+    g_sp_isla_fov = (int)GetPrivateProfileIntA("selector", "isla_fov", 36, ini);     /* ★ 18-nov: la cámara A de fábrica (el ini del jugador no llega) */
+    g_sp_isla_ojo_dy = (int)GetPrivateProfileIntA("selector", "isla_ojo_dy", -800, ini);
+    g_sp_isla_mira_dy = (int)GetPrivateProfileIntA("selector", "isla_mira_dy", -300, ini);
+    if (g_sp_isla_fov < 0 || g_sp_isla_fov > 120) g_sp_isla_fov = 0;
+    {
+        char v[96];
+        GetPrivateProfileStringA("selector", "isla_ojo", "", v, sizeof(v), ini);
+        g_sp_isla_hay_ojo = sp_tres(v, g_sp_isla_ojo);
+        GetPrivateProfileStringA("selector", "isla_mira", "", v, sizeof(v), ini);
+        g_sp_isla_hay_mira = sp_tres(v, g_sp_isla_mira);
+        GetPrivateProfileStringA("selector", "isla_fondo", "", v, sizeof(v), ini);          /* ★ turno 20 */
+        if (v[0] && !sp_hex(v, &g_sp_fondo_noche)) apuntar("  [selector] ⚠ isla_fondo=%s no es RRGGBB", v);
+        GetPrivateProfileStringA("selector", "isla_fondo_dia", "", v, sizeof(v), ini);
+        if (v[0] && !sp_hex(v, &g_sp_fondo_dia)) apuntar("  [selector] ⚠ isla_fondo_dia=%s no es RRGGBB", v);
+    }
+    if (g_sp_isla_cam != 10 || g_sp_isla_fov || g_sp_isla_ojo_dy || g_sp_isla_mira_dy || g_sp_isla_hay_ojo || g_sp_isla_hay_mira)
+        apuntar("  [selector] cámara del fondo con perillas: casillero %d · fov %d · ojo_dy %d · mira_dy %d · ojo %s · mira %s",
+                g_sp_isla_cam, g_sp_isla_fov, g_sp_isla_ojo_dy, g_sp_isla_mira_dy, g_sp_isla_hay_ojo ? "fijo" : "-",
+                g_sp_isla_hay_mira ? "fija" : "-");
     if (!sp_linea_de_comandos()) { apuntar("  [selector] sin sesión en la línea de comandos: sin selector"); return; }
     /* la vtable de cCharSelect: tiene que ser la de siempre */
     DWORD *vt = (DWORD *)SPV(0x87893C);
