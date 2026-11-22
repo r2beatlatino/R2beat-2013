@@ -389,8 +389,6 @@ static const char HT_DISPOSICION_HORNEADA[] =
     "w=172\n"
     "h=24\n"
     "oculto=1\n"
-    /* ★ 19-nov, a mano (hornear.py no está en el repo): AutoFar ocupa el lugar del cartel «todavía no
-     *   está hecho», y el indicador del Far va al lado de Ocultar Nombres */
     "[op.autofar]\n"
     "x=180\n"
     "y=192\n"
