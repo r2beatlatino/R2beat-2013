@@ -1809,8 +1809,11 @@ static const wchar_t *ht_disp_texto(const wchar_t *v)
 static int ht_disp_aplicar_texto(const char *txt, int largo, char *motivo)    /* motivo: 160 */
 {
     static HT_EL el0[HT_MAX_EL];
-    static HT_CARTA ca0[6];
-    static HT_TX tx0[20];
+    /* ⛔ 21-nov: del MISMO tamaño que g_carta / g_tx (eran 6 y 20; desde el Ñ2Hock son 14 y 40): la copia de abajo
+     *   desbordaba y pisaba lo de al lado (el aviso del compilador, «336 en 144» y «1280 en 640»). Medido en el banco:
+     *   un archivo de disposición roto dejaba sin texto la pastilla de F12 y el botón del tema. */
+    static HT_CARTA ca0[sizeof(g_carta) / sizeof(g_carta[0])];
+    static HT_TX tx0[sizeof(g_tx) / sizeof(g_tx[0])];
     int w0 = g_ht_w, h0 = g_ht_h, npool0 = g_ht_disp_npool, ok = 1, linea = 0, hay_ventana = 0;
     int clase = -9, idx = -1, piezas = 0;
     CopyMemory(el0, g_el, sizeof(g_el)); CopyMemory(ca0, g_carta, sizeof(g_carta)); CopyMemory(tx0, g_tx, sizeof(g_tx));
