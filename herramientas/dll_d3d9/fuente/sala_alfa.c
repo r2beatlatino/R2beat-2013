@@ -122,9 +122,9 @@ static HRESULT WINAPI sa_dibujar_idx(void *dev, DWORD tipo, INT base, UINT minim
  *   esos lugares (cambia de función de dibujo según el estado). ⇒ si la tabla ya estaba anotada, se ACTUALIZAN sus
  *   originales con lo que Direct3D puso ahora (no una entrada nueva: la vieja podría ser la versión equivocada). */
 static long g_sa_reenganches = 0;
-/* ★ 21-nov · UN SOLO ESCRITOR A LA VEZ en las tablas. MEDIDO con DXVK (su tabla es de sólo lectura): cuando dos
- *   hilos enganchan la misma página a la vez, uno la vuelve a dejar de sólo lectura (VirtualProtect «viejo») justo
- *   antes de que el otro escriba ⇒ 0xC0000005. Todo módulo que escriba la tabla tiene que tomar este candado. */
+/* ★ 21-nov · UN SOLO ESCRITOR A LA VEZ en las tablas (sala_alfa + isla_fx: fx_escribir). MEDIDO con DXVK: el vigía
+ *   rápido de isla_fx y el hilo de dibujo escribían la misma página a la vez; uno la volvía a dejar de sólo lectura
+ *   (VirtualProtect «viejo») justo antes de que el otro escribiera ⇒ 0xC0000005 escribiendo la entrada 77. */
 static volatile LONG g_sa_candado_vt = 0;
 static void sa_candado_tomar(void) { while (InterlockedCompareExchange(&g_sa_candado_vt, 1, 0) != 0) Sleep(0); }
 static void sa_candado_soltar(void) { InterlockedExchange(&g_sa_candado_vt, 0); }

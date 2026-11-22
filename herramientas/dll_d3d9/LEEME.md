@@ -24,5 +24,17 @@ La dll compilada y qué hace cada `.ini`: [`exe/LEEME.md`](../../exe/LEEME.md).
 - `[antitrampa] activo=0` en `d3d9_proxy.ini` lo apaga (el server lo nota: no llega el «hola»).
 - Prueba sin el juego (Windows, Zig o llvm-mingw): `python herramientas/dll_d3d9/probar_antitrampa.py`.
 
-⚠ Si cambiás el fuente, en el mismo PR va la `exe/d3d9.dll` recompilada con `compilar.py` (las
-pruebas de GitHub no tienen Zig ni el juego: no la pueden armar ni probar).
+## Cómo llega tu dll al server de prueba (sola, como EDA)
+
+1. Cambiás el fuente y, **en el mismo PR**, va la `exe/d3d9.dll` recompilada con `compilar.py` (Zig **0.16.0**).
+2. GitHub la vuelve a compilar desde el fuente (la prueba `dll`) y tiene que dar **exacto** la `exe/d3d9.dll` del
+   PR, byte a byte. Si no da igual, la prueba sale en rojo: o el fuente cambió y la dll no, o la dll no salió de ese
+   fuente. ⚠ Tiene que ser Zig 0.16.0: otra versión compila, pero da otros bytes.
+3. Cuando se fusiona a `develop`, en unos 5 minutos el server de prueba arma una lista nueva del cliente que cambia
+   **sólo la dll** (la de `exe/`, y sólo si la prueba `dll` de ese commit está en verde en GitHub). El launcher,
+   con «Servidor de prueba» marcado, la baja al tocar JUGAR. Prod no se toca: prod sale de `master`.
+4. Si algo salió mal: en el launcher, «Subir archivos» → volver a una versión anterior de la lista de prueba
+   (se guardan la actual y 5 más). O un PR que lo arregle.
+
+⚠ Lo que se fusiona en `develop` llega a la PC de todos los que juegan en el server de prueba. La prueba `dll`
+asegura que es el fuente que se ve en el PR; lo que hace ese fuente lo tiene que mirar quien fusiona.
