@@ -415,6 +415,21 @@ def crear_cuenta_interna(usuario, pass_sha256_upper, timeout=2.0):
     }, timeout=timeout)
 
 
+def avisar_antitrampa_interno(enenos_id, regla, detalle="", nick="", juego_id=None, timeout=3.0):
+    """POST `/cuentas/interno/antitrampa` `{enenos_id, juego, regla, detalle, nick}` ->
+    `{estado, datos: {ok, faltas, escalon, baneada}, error, codigo}`."""
+    u_int = _uid_positivo(enenos_id)
+    if u_int is None:
+        return _cuenta_invalida()
+    return _pedido_interno("POST", "/interno/antitrampa", {
+        "enenos_id": u_int,
+        "juego": str(juego_id or juego()).strip(),
+        "regla": str(regla or "").strip(),
+        "detalle": str(detalle or ""),
+        "nick": str(nick or ""),
+    }, timeout=timeout)
+
+
 def limpiar_usados():
     """Vacía la memoria de pases ya usados (para pruebas)."""
     with _lock:

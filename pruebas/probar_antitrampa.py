@@ -409,6 +409,160 @@ def probar_catalogo():
     ok(len(cat["escalera"]) == antitrampa.ANTITRAMPA_BANEO_EN, "y la escalera llega al baneo")
 
 
+def probar_coordinador():
+    print("con pases y Coordinador (el server avisa; el Coordinador cuenta y banea):")
+    import urllib.error
+    from servidor import almacen, basedatos, pase, salas
+
+    class TimerYa:
+        def __init__(self, s, f, args):
+            self.f, self.args, self.daemon = f, args, True
+
+        def start(self):
+            self.f(*self.args)
+
+    class FakeResp:
+        def __init__(self, status, data):
+            self.status = status
+            self._raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
+
+        def read(self):
+            return self._raw
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    antitrampa._avisar_gms = lambda texto: None
+    antitrampa.threading.Timer = TimerYa
+    urlopen_orig = pase.urllib.request.urlopen
+    claves_env = ("R2_LOGIN", "R2_CUENTAS_URL", "R2_CUENTAS_FICHA_INTERNA", "R2_PASE_JUEGO")
+    env_prev = {k: os.environ.get(k) for k in claves_env}
+    pedidos = []
+    modo_http = {"caido": False, "faltas": {}}
+
+    def fake_urlopen(req, timeout=None):
+        cuerpo = json.loads((req.data or b"{}").decode("utf-8"))
+        cabs = {k.lower(): v for k, v in req.header_items()}
+        pedidos.append({"url": req.full_url, "metodo": req.get_method(), "cabs": cabs,
+                        "cuerpo": cuerpo, "timeout": timeout})
+        if modo_http["caido"]:
+            raise urllib.error.URLError("coordinador caído")
+        clave = (cuerpo["enenos_id"], cuerpo["juego"])
+        n = modo_http["faltas"].get(clave, 0) + 1
+        modo_http["faltas"][clave] = n
+        esc = "baneo" if n >= 3 else ("advertencia" if n == 2 else "expulsado")
+        return FakeResp(200, {"ok": True, "faltas": n, "escalon": esc, "baneada": n >= 3})
+
+    try:
+        pase.urllib.request.urlopen = fake_urlopen
+        # Creamos una cuenta vieja sin enenos_id antes de activar R2_LOGIN=pase
+        os.environ.pop("R2_LOGIN", None)
+        usn_vieja, _ = basedatos.cuenta_crear("vieja_sin_eid", "C" * 64)
+        usn_sin_pase, _ = basedatos.cuenta_crear("uid_10001368", "D" * 64)
+
+        os.environ.update(
+            R2_LOGIN="pase",
+            R2_CUENTAS_URL="http://coordinador.prueba",
+            R2_CUENTAS_FICHA_INTERNA="ficha-prueba-at",
+            R2_PASE_JUEGO="r2beat2013-prueba",
+        )
+        usn_pase, nombre_pase = almacen.asegurar_cuenta_uid(10001366)
+        basedatos.db_save_uno(usn_pase, {"char_id": 130900, "nick": "PaseNick", "gender": 0, "parts": []})
+        ok(usn_pase is not None and nombre_pase == "uid_10001366", "creo cuenta de pase (uid_10001366)")
+
+        textos, anuncios_pub = [], []
+        for vez in range(1, 4):
+            c = jugador(usn_pase)
+            otro = jugador(6199)
+            salas.CONEXIONES.update({usn_pase: c, 6199: otro})
+            try:
+                antitrampa.al_ff59(c, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+            finally:
+                salas.CONEXIONES.pop(usn_pase, None)
+                salas.CONEXIONES.pop(6199, None)
+            textos.append(" ".join(n for _cmd, n in c.enviados))
+            anuncios_pub.append(" ".join(n for _cmd, n in otro.enviados))
+            ok(c.conn.cerrado, f"con pase ({vez}.ª): sigue echando de la partida")
+            ph = almacen.conectar().execute("SELECT pass_hash FROM users WHERE username=?",
+                                            (nombre_pase,)).fetchone()["pass_hash"]
+            ok(not str(ph or "").startswith("BANNED:"),
+               f"con pase ({vez}.ª): NO escribe BANNED: en users.pass_hash local")
+            f_loc = almacen.conectar().execute("SELECT faltas FROM antitrampa_faltas WHERE username=?",
+                                               (nombre_pase,)).fetchone()
+            ok(f_loc is None, f"con pase ({vez}.ª): NO suma en antitrampa_faltas local")
+
+        ok(len(pedidos) == 3 and all(p["metodo"] == "POST" and p["url"].endswith("/interno/antitrampa")
+                                     and p["cabs"].get("x-r2") == "1"
+                                     and p["cabs"].get("x-ficha-interna") == "ficha-prueba-at"
+                                     and p["timeout"] == 3.0
+                                     and p["cuerpo"]["enenos_id"] == 10001366
+                                     and p["cuerpo"]["juego"] == "r2beat2013-prueba"
+                                     and p["cuerpo"]["regla"] == "juego_automatico"
+                                     and p["cuerpo"]["nick"] == "PaseNick"
+                                     and p["cuerpo"]["detalle"]
+                                     for p in pedidos),
+           "mandó 3 POST internos con ficha, timeout 3 s, enenos_id, juego, regla, detalle y nick")
+        ok("expulsado" in textos[0] and "ADVERTENCIA" not in textos[0] and "BANEADA" not in textos[0],
+           "con pase (1.ª): aviso de expulsión")
+        ok("ADVERTENCIA" in textos[1] and "baneada para siempre" in textos[1],
+           "con pase (2.ª): aviso de advertencia")
+        ok("BANEADA PERMANENTEMENTE" in textos[2] and "baneado permanentemente" in anuncios_pub[2],
+           "con pase (3.ª): respuesta «baneada» del Coordinador arma el aviso y anuncio de baneo")
+
+        # Coordinador caído: sólo expulsar, nunca banear localmente ni sumar en base local
+        modo_http["caido"] = True
+        usn_caido, nombre_caido = almacen.asegurar_cuenta_uid(10001367)
+        textos_c = []
+        for vez in range(1, 4):
+            c = jugador(usn_caido)
+            salas.CONEXIONES[usn_caido] = c
+            try:
+                antitrampa.al_ff59(c, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+            finally:
+                salas.CONEXIONES.pop(usn_caido, None)
+            textos_c.append(" ".join(n for _cmd, n in c.enviados))
+            ph = almacen.conectar().execute("SELECT pass_hash FROM users WHERE username=?",
+                                            (nombre_caido,)).fetchone()["pass_hash"]
+            ok(c.conn.cerrado and not str(ph or "").startswith("BANNED:"),
+               f"Coordinador caído ({vez}.ª): expulsa pero NUNCA escribe BANNED: localmente")
+        ok(all("expulsado" in t and "ADVERTENCIA" not in t and "BANEADA" not in t for t in textos_c),
+           "Coordinador caído: trata cada falta como 1.ª (sólo expulsar)")
+        ok(almacen.conectar().execute("SELECT 1 FROM antitrampa_faltas WHERE username=?",
+                                      (nombre_caido,)).fetchone() is None,
+           "Coordinador caído: tampoco suma en antitrampa_faltas local")
+
+        # Revés 1: cuenta vieja sin uid_ ni enenos_id en modo pase -> mantiene baneo local
+        modo_http["caido"] = False
+        n_ped_antes = len(pedidos)
+        for _ in range(3):
+            c = jugador(usn_vieja)
+            antitrampa.al_ff59(c, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+        ph_v = almacen.conectar().execute("SELECT pass_hash FROM users WHERE username='vieja_sin_eid'").fetchone()["pass_hash"]
+        ok(len(pedidos) == n_ped_antes and ph_v.startswith("BANNED:"),
+           "revés: cuenta vieja sin uid_/enenos_id sigue con el baneo local (sin avisar al Coordinador)")
+
+        # Revés 2: sin pases (R2_LOGIN vacío) -> baneo local de siempre (BANNED:), sin HTTP
+        os.environ["R2_LOGIN"] = ""
+        n_ped_antes = len(pedidos)
+        for _ in range(3):
+            c = jugador(usn_sin_pase)
+            antitrampa.al_ff59(c, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+        ph_l = almacen.conectar().execute("SELECT pass_hash FROM users WHERE username='uid_10001368'").fetchone()["pass_hash"]
+        f_l = almacen.conectar().execute("SELECT faltas FROM antitrampa_faltas WHERE username='uid_10001368'").fetchone()
+        ok(len(pedidos) == n_ped_antes and ph_l.startswith("BANNED:") and f_l and int(f_l["faltas"]) == 3,
+           "revés: sin pases (R2_LOGIN vacío) mantiene el baneo local (BANNED:) y no manda HTTP")
+    finally:
+        pase.urllib.request.urlopen = urlopen_orig
+        for k, v in env_prev.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 def main():
     try:
         probar_catalogo()
@@ -417,6 +571,7 @@ def main():
         probar_ff3d()
         probar_cliente()
         probar_farmeo()
+        probar_coordinador()
         probar_cartel()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)

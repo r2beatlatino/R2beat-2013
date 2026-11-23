@@ -242,9 +242,64 @@ def fue_expulsado(st):
     return bool(_EXPULSADOS.get(getattr(st, "usn", None)))
 
 
-def _escalon(usn, regla):
-    """★ 19-nov — LA ESCALERA (anonimo03): suma la falta a la CUENTA y dice qué toca.
+def _usa_coordinador():
+    """True cuando el server usa pases y tiene configurados `R2_CUENTAS_URL` y `R2_CUENTAS_FICHA_INTERNA`."""
+    from . import pase
+    return (pase.modo_pase()
+            and bool((os.environ.get("R2_CUENTAS_URL") or "").strip())
+            and bool((os.environ.get("R2_CUENTAS_FICHA_INTERNA") or "").strip()))
+
+
+def _enenos_id_de_cuenta(cuenta):
+    """El Eñeños ID de esa cuenta (`users.enenos_id`, o extraído de `uid_<id>`), o None si es local vieja."""
+    if not cuenta:
+        return None
+    try:
+        from . import almacen
+        eid = almacen.enenos_id_de_cuenta(cuenta)
+        if isinstance(eid, int) and not isinstance(eid, bool) and eid > 0:
+            return eid
+    except Exception:                         # noqa: BLE001
+        pass
+    s = str(cuenta)
+    if s.startswith("uid_") and s[4:].isdigit():
+        n = int(s[4:])
+        if n > 0:
+            return n
+    return None
+
+
+def _escalon(usn, regla, detalle="", nick=""):
+    """★ 19-nov — LA ESCALERA: suma la falta a la CUENTA y dice qué toca.
+    Con pases y Coordinador configurado, sólo AVISA a Cuenta Eñeños (él cuenta las faltas y banea en `baneos`);
+    sin pases o en cuentas viejas sin Eñeños ID, cuenta y banea en la base local como siempre.
     -> (faltas, cuenta, baneada). Sin base o sin cuenta cuenta como la primera."""
+    if _usa_coordinador():
+        try:
+            from . import almacen
+            cuenta, _ = almacen.cuenta_de_uid(usn)
+        except Exception as e:                # noqa: BLE001
+            log("TRAMP", f"  ⚠ no pude buscar la cuenta de usn={usn}: {e!r}")
+            return 1, None, False
+        eid = _enenos_id_de_cuenta(cuenta)
+        if eid is not None:
+            from . import pase
+            try:
+                res = pase.avisar_antitrampa_interno(eid, regla, detalle=detalle, nick=nick, timeout=3.0)
+            except Exception as e:            # noqa: BLE001
+                log("TRAMP", f"  ⚠ no pude avisar al Coordinador (usn={usn}, eid={eid}): {e!r}")
+                return 1, cuenta, False
+            if res.get("estado") != "ok" or not isinstance(res.get("datos"), dict):
+                log("TRAMP", f"  ⚠ no pude avisar al Coordinador (usn={usn}, eid={eid}): "
+                             f"{res.get('error') or res.get('codigo')}")
+                return 1, cuenta, False
+            d = res["datos"]
+            try:
+                faltas = max(1, int(d.get("faltas") or 1))
+            except (TypeError, ValueError):
+                faltas = 1
+            baneada = bool(d.get("baneada")) or d.get("escalon") == "baneo"
+            return faltas, cuenta, baneada
     try:
         from . import almacen
         cuenta, n = almacen.antitrampa_sumar_falta(usn, regla)
@@ -266,7 +321,8 @@ def _escalon(usn, regla):
 def _expulsar(st, usn, nick, regla, detalle):
     """Aviso al jugador, anuncio y fuera. El cierre va un segundo después: que le lleguen los avisos.
     ★ 19-nov — la escalera, por cuenta: 1.ª falta = fuera · 2.ª = fuera con ADVERTENCIA · 3.ª = baneo permanente
-    (`BANNED:`). El bloqueo por tiempo (`ANTITRAMPA_BLOQUEO_S`) queda en 0: la carrera de esta sesión no cobra igual."""
+    (en el Coordinador cuando el server usa pases; `BANNED:` local en servidores sin pases). El bloqueo por tiempo
+    (`ANTITRAMPA_BLOQUEO_S`) queda en 0: la carrera de esta sesión no cobra igual."""
     # ★ UNA falta por sesión del juego (de «hola» a «hola»): con dos funciones prendidas llegan dos ganchos en el mismo
     #   segundo (medido 19-nov: automático + sala ⇒ 1.ª y 2.ª juntas). Lo que llegue después sólo vuelve a cerrar.
     with _cuentas_lock:
@@ -277,7 +333,7 @@ def _expulsar(st, usn, nick, regla, detalle):
         log("TRAMP", f"  ⛔ usn={usn}: {regla} en la misma sesión ya expulsada: no suma otra falta, sólo cierra")
         _cerrar_luego(st, usn, regla)
         return
-    faltas, cuenta, baneada = _escalon(usn, regla) if usn else (1, None, False)
+    faltas, cuenta, baneada = _escalon(usn, regla, detalle=detalle, nick=nick) if usn else (1, None, False)
     if usn:
         _EXPULSADOS[usn] = faltas
         if ANTITRAMPA_BLOQUEO_S:
