@@ -130,12 +130,19 @@ Las acciones se cambian en `ANTITRAMPA_REGLAS` (`ajustes.py`), una por regla.
 | 2.ª | Expulsado con **advertencia** | «ADVERTENCIA: fuiste expulsado por el antitrampa (`regla`) por 2.ª vez. La próxima, tu cuenta queda baneada para siempre.» | igual |
 | 3.ª (`ANTITRAMPA_BANEO_EN`) | **Baneo permanente** | «… Es la 3.ª vez: tu cuenta quedó BANEADA PERMANENTEMENTE.» | «`nick` ha sido baneado permanentemente por usar trampas en el cliente.» |
 
-- Las faltas son de la **cuenta** (no del personaje: crear otro no las limpia) y se guardan en la base.
+- **Con pases (`R2_LOGIN=pase`) + Coordinador (`R2_CUENTAS_URL` y `R2_CUENTAS_FICHA_INTERNA`):** el servidor del juego
+  **no** suma faltas en su `datos.db` ni escribe `BANNED:` en `users.pass_hash`. Sólo detecta, expulsa de la partida y
+  avisa al Coordinador (`POST /cuentas/interno/antitrampa`, timeout 3 s) con `{enenos_id, juego, regla, detalle, nick}`.
+  La escalera la decide y guarda el **Coordinador** (`antitrampa_faltas` y `baneos` en `portero.db`, regida por
+  `R2_ANTITRAMPA_BANEO_EN`): el baneo queda en un solo lugar, se ve en el panel del Coordinador con motivo y autor
+  `antitrampa`, y desbanear desde ahí reinicia las faltas a 0. Si el Coordinador no contesta, el juego sólo expulsa
+  (como 1.ª falta) y **nunca** banea localmente.
+- **Sin pases (servidor local o cuentas viejas sin Eñeños ID):** las faltas se guardan en la base local (`antitrampa_faltas`)
+  y en `ANTITRAMPA_BANEO_EN` se marca `BANNED:` en `users.pass_hash`, como antes (`ANTITRAMPA_BANEO_EN = 0` = nunca banea).
 - **Una falta por sesión del juego** (de que se abre a que se cierra): con dos funciones prendidas llegan
   dos ganchos en el mismo segundo y cuentan como una.
 - Sin bloqueo por tiempo: `ANTITRAMPA_BLOQUEO_S = 0` (con `600`, 10 min sin poder entrar, como antes).
   Lo que queda de esa sesión no cobra; al volver a abrir el juego limpio, sí.
-- `ANTITRAMPA_BANEO_EN = 0` = nunca banea.
 
 ## 7. Dónde quedan los datos
 
