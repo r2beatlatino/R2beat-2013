@@ -284,6 +284,26 @@ def antitrampa_sumar_falta(uid, regla):
         return cuenta, int(n)
 
 
+# ★ 24-nov · cuánto tarda cada canción, aprendido de las llegadas LIMPIAS (antitrampa: «llegada_anticipada»).
+def antitrampa_llegadas(cancion, n):
+    """Los `frame` de las últimas `n` llegadas limpias de `cancion` (la más nueva primero)."""
+    with _lock:
+        c = conectar()
+        return [int(r["frame"]) for r in c.execute(
+            "SELECT frame FROM antitrampa_llegadas WHERE cancion = ? ORDER BY id DESC LIMIT ?", (int(cancion), int(n)))]
+
+
+def antitrampa_anotar_llegada(cancion, frame, guardar=200):
+    """Una llegada limpia más de `cancion`. Por canción quedan las últimas `guardar`."""
+    with _lock:
+        c = conectar()
+        c.execute("INSERT INTO antitrampa_llegadas (cancion, frame, cuando) VALUES (?, ?, datetime('now', 'localtime'))",
+                  (int(cancion), int(frame)))
+        c.execute("DELETE FROM antitrampa_llegadas WHERE cancion = ? AND id NOT IN (SELECT id FROM antitrampa_llegadas "
+                  "WHERE cancion = ? ORDER BY id DESC LIMIT ?)", (int(cancion), int(cancion), int(guardar)))
+        c.commit()
+
+
 def banear_cuenta(usuario):
     """`BANNED:` delante del `pass_hash` (como siempre: todo login la rechaza; se deshace sacándolo). True si cambió."""
     with _lock:

@@ -76,6 +76,20 @@ def probar_reglas():
     ok(m(7200, 900, 95, 80, 600, 50.0, coop=True) == [], "cooperativo: ni combo ni reloj")
     ok(m(0xFFFFFFFF, 500, 95, 80, 600, 10.0) == [], "frame sin meta (relevo cerrado) no juzga el reloj")
     ok(m(7200, 500, 95, 80, 600, None) == [], "sin GO conocido no juzga el reloj")
+    # ★ 24-nov · lo del laboratorio
+    ok(reglas(m(7200, 500, 100, 80, 600, 121.0, milesimas=5)) == ["precision_imposible"], "100.005 % es imposible")
+    ok(reglas(m(7200, 500, 95, 80, 600, 121.0, milesimas=1000)) == ["precision_imposible"], "milésimas 1000")
+    ok(m(7200, 500, 100, 80, 600, 121.0, milesimas=0) == [], "revés: 100.000 exacto no marca")
+    ok(m(7200, 500, 99, 80, 600, 121.0, milesimas=999) == [], "revés: 99.999 no marca")
+    ok(reglas(m(7200, 500, 101, 80, 600, 121.0, milesimas=5)) == ["porcentaje_imposible"],
+       "pd 101: una sola marca (porcentaje), no dos")
+    normales = [7200, 7300, 7150, 7400, 7250]
+    ok(reglas(m(3000, 200, 95, 80, 600, 51.0, llegadas=normales)) == ["llegada_anticipada"],
+       "llegó en 50 s una canción que tarda 121 s (simular llegada)")
+    ok(m(6600, 500, 95, 80, 600, 111.0, llegadas=normales) == [], "revés: 110 s sobre 121 s es una carrera rápida, no marca")
+    ok(m(3000, 200, 95, 80, 600, 51.0, llegadas=normales[:4]) == [], "con menos de 5 llegadas guardadas no se juzga")
+    ok(m(3000, 200, 95, 80, 600, 51.0, llegadas=normales, relevo=True) == [], "relevo: la llegada no se juzga")
+    ok(m(0xFFFFFFFF, 200, 95, 80, 600, 51.0, llegadas=normales) == [], "sin meta (no llegó) no es llegada anticipada")
 
 
 def probar_juzgar():
@@ -409,6 +423,35 @@ def probar_catalogo():
     ok(len(cat["escalera"]) == antitrampa.ANTITRAMPA_BANEO_EN, "y la escalera llega al baneo")
 
 
+def probar_llegadas():
+    print("la duración de cada canción se aprende de las llegadas limpias:")
+    notas.combo_total_de = lambda cancion: 600
+    c = Conn()
+    antitrampa.al_ff59(c, f"USN:{c.usn} TIME:x SERVER:y\nR2AT v=1 exe={EXE_BUENO} previo=0")
+    antes = len(marcas_guardadas())
+    for i, fr in enumerate((7200, 7300, 7150, 7400, 7250)):
+        c.at_ultimo = None
+        antitrampa.marcar_salida(c, ahora=5000.0 + i * 1000)
+        antitrampa.juzgar_cartel(c, fr, 500, 95, 80, 4242, ahora=5000.0 + i * 1000 + fr / 60 + 1)
+    ok(len(marcas_guardadas()) == antes, "cinco llegadas limpias no marcan nada")
+    from servidor import almacen
+    ok(len(almacen.antitrampa_llegadas(4242, 30)) == 5, "y quedan guardadas para esa canción")
+    c.at_ultimo = None
+    antitrampa.marcar_salida(c, ahora=20000.0)
+    antitrampa.juzgar_cartel(c, 3000, 200, 95, 80, 4242, ahora=20051.0)
+    ok(marcas_guardadas()[-1]["regla"] == "llegada_anticipada", "la sexta, en 50 s, es llegada anticipada")
+    ok(len(almacen.antitrampa_llegadas(4242, 30)) == 5, "y una llegada marcada no se guarda como normal")
+    antitrampa.al_ff59(c, f"USN:{c.usn} TIME:x SERVER:y\nR2AT gancho=resultado va=0x00501458 bytes=E9_00_00_00_00_90_90_90")
+    ok(marcas_guardadas()[-1]["regla"] == "resultado_alterado", "el gancho «resultado» del lab es resultado_alterado")
+    antitrampa.al_ff59(c, f"USN:{c.usn} TIME:x SERVER:y\nR2AT codigo=0x005060B5 paginas=1 bytes=90_90_90_90_90_90")
+    ok(marcas_guardadas()[-1]["regla"] == "juego_automatico", "una dll vieja: la dirección de las largas A es juego_automatico")
+    antitrampa.al_ff59(c, f"USN:{c.usn} TIME:x SERVER:y\nR2AT manija=candy0503.exe acceso=0x1FFFFF")
+    ok(marcas_guardadas()[-1]["regla"] == "manija_escritura", "Candy con el juego abierto para escribir: manija_escritura")
+    antitrampa.al_ff59(c, f"USN:{c.usn} TIME:x SERVER:y\nR2AT proceso=notas.exe firma=producto_candy")
+    ok(marcas_guardadas()[-1]["regla"] == "proceso_prohibido" and "producto_candy" in marcas_guardadas()[-1]["detalle"],
+       "Candy renombrado lo caza la firma: proceso_prohibido")
+
+
 def main():
     try:
         probar_catalogo()
@@ -418,6 +461,7 @@ def main():
         probar_cliente()
         probar_farmeo()
         probar_cartel()
+        probar_llegadas()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)
     if FALLAS:

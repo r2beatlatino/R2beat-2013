@@ -307,6 +307,10 @@ CREATE TABLE IF NOT EXISTS movimientos_personajes (
 CREATE TABLE IF NOT EXISTS antitrampa_faltas (
     username TEXT PRIMARY KEY, faltas INTEGER NOT NULL DEFAULT 0, ultima_regla TEXT, ultima TEXT);
 
+CREATE TABLE IF NOT EXISTS antitrampa_llegadas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, cancion INTEGER NOT NULL, frame INTEGER NOT NULL, cuando TEXT);
+CREATE INDEX IF NOT EXISTS ix_at_llegadas ON antitrampa_llegadas(cancion, id);
+
 CREATE INDEX IF NOT EXISTS ix_inv_uid   ON inventory(uid);
 CREATE INDEX IF NOT EXISTS ix_chars_nk  ON chars(nickname);
 -- ★ 29-sep (optimización para el VPS, `documentacion/BANCO_VPS.md` §5): `wear` NO tenía índice, y cada

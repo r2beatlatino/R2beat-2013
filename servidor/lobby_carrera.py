@@ -765,9 +765,12 @@ def h_21_ff28(st, cmd, data):
         _cancion_at = (CARRERAS.get(_rid_at) or {}).get("cancion") if _rid_at is not None else None
     _cancion_at = (_cancion_at or (seleccion_de(_rid_at)["cancion"] if _rid_at is not None else 0)
                    or getattr(st, "room_song", DEFAULT_ROOM_SONG))
+    # ★ 24-nov: el antitrampa mira las milésimas CRUDAS (las de arriba se ponen en 0 si vienen fuera de rango)
+    _ms_crudas28 = (struct.unpack_from("<H", data, FF28_C2S_OFF_MILESIMAS)[0]
+                    if len(data) >= FF28_C2S_OFF_MILESIMAS + 2 else 0)
     _retener28 = antitrampa.juzgar_cartel(st, frame, combo, pd, star, _cancion_at,
                                           relevo=bool(getattr(st, "room_mode", 0) & MODE_RELEVO),
-                                          coop=bool(getattr(st, "room_colab", False)))
+                                          coop=bool(getattr(st, "room_colab", False)), milesimas=_ms_crudas28)
     # plausibilidad (guía CBT anti-cheat capa 1): pd y star son PORCENTAJES -> tope 100.
     if pd > 100:   pd = 100
     if star > 100: star = 100
