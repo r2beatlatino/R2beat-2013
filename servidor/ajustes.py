@@ -5485,6 +5485,35 @@ ANTITRAMPA_MODULOS_PERMITIDOS = ("toolbitpracticeengine",)
 ANTITRAMPA_REGLAS["modulo_permitido"] = "registrar"
 ANTITRAMPA_REGLAS["juego_automatico"] = "expulsar"
 ANTITRAMPA_REGLAS["sala_automatica"] = "expulsar"
+# ── ★ 24-nov · LO QUE ENSEÑÓ EL LABORATORIO (INFORME_LABORATORIO.md, R2AutoRouteLab2013) ─────────────────────
+#   El cliente ORIGINA la precisión, el combo y el tiempo del FF28, y puede anunciar la llegada sin correr. Además del
+#   «gancho=automatico» de Ñ2Hock, el lab juega solo por otras rutas y reescribe el resultado. La dll ahora vigila esas
+#   direcciones (antitrampa.c, g_at_ganchos) y acá se reconocen por nombre o por dirección:
+ANTITRAMPA_GANCHOS.update({
+    0x0050A170: "tick_meta",       # el tick de la meta: «Automático Normal» y «Simular llegada» (FUN_0050a170)
+    0x00509130: "auto_normal",     # el auxiliar del «Automático Normal»
+    0x005003D0: "pd0",             # la consulta de estado del ítem: «Automático PD0 silencioso» devuelve 0x19 activo
+    0x005060B5: "larga_a",         # 0F 85 DC 00 00 00 -> 6 NOP: las largas A se juegan solas
+    0x005064F6: "larga_b",         # 0F 85 E2 00 00 00 -> 6 NOP: las largas B
+    0x0050CAB6: "item_auto",       # el activador del ítem 1000659 (evento 0xDC, estado 0x19)
+    0x00501458: "resultado",       # el FF28 de la sala: precisión / combo personalizados
+    0x005C887B: "resultado_solo",  # el resultado de Juego Solo (FF3A sub 3)
+})
+ANTITRAMPA_REGLAS.update({
+    "resultado_alterado":  "expulsar",   # el armado del FF28 (o del de Juego Solo) reescrito en el cliente
+    "precision_imposible": "retener",    # milésimas > 999, o 100 % con milésimas (100.000 es el tope)
+    # ⏳ "avisar" hasta medirlo en prod: la duración «normal» la aprende el server de las llegadas limpias.
+    "llegada_anticipada":  "avisar",     # llegó a la meta mucho antes de lo que tarda esa canción (llegada simulada)
+    # ★ 24-nov · INFORME_DEFENSA_CANDY0503.md: Candy no se inyecta, escribe la memoria del juego desde AFUERA.
+    # ⏳ "registrar" hasta ver qué aparece en los limpios (el que lanzó el juego, overlays): después, "avisar" o más.
+    "manija_escritura":    "registrar",  # un programa tiene abierto el juego con permiso de escribir su memoria
+})
+#   Llegada anticipada: frame < mediana de las últimas HISTORIA llegadas limpias de ESA canción × FACTOR, con al menos
+#   MUESTRAS llegadas guardadas. «Simular llegada» dispara la meta en cualquier momento: el tiempo declarado cuadra con
+#   el reloj del server (no hay reloj_rapido ni reloj_lento), lo que no cuadra es lo poco que duró.
+ANTITRAMPA_LLEGADA_MUESTRAS = 5
+ANTITRAMPA_LLEGADA_HISTORIA = 30
+ANTITRAMPA_LLEGADA_FACTOR = 0.75
 ANTITRAMPA_REGLAS["relevo_automatico"] = "expulsar"
 
 # ── ★ ANTITRAMPA DEL FARMEO (`antitrampa.py`, «señales de farmeo») ─────────────────────────────────────

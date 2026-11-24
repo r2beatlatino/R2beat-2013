@@ -215,6 +215,15 @@ static struct { DWORD rva; const char *nombre; BYTE visto; } g_at_ganchos[] = {
                                            *   canción» comparten este salto (8B 0D D4 14 93 00 -> E9 …) */
     { 0x105340, "relevo", 0 },            /* «Auto Relevo»: ahí va NUESTRO gancho del relevo (relevo12.c, la copia ya lo
                                            *   tiene); Ñ2Hock no lo pisa, pero si otro programa lo hace, salta */
+    /* ★ 24-nov · las rutas de R2AutoRouteLab2013 (INFORME_LABORATORIO.md §4-5). Ninguna la toca nuestra dll. */
+    { 0x10A170, "tick_meta", 0 },         /* el tick de la meta: «Automático Normal» y «Simular llegada» */
+    { 0x109130, "auto_normal", 0 },       /* el auxiliar del «Automático Normal» */
+    { 0x1003D0, "pd0", 0 },               /* la consulta de estado del ítem: «Automático PD0 silencioso» */
+    { 0x1060B5, "larga_a", 0 },           /* 0F 85 DC 00 00 00 -> NOP: largas A solas */
+    { 0x1064F6, "larga_b", 0 },           /* 0F 85 E2 00 00 00 -> NOP: largas B solas */
+    { 0x10CAB6, "item_auto", 0 },         /* el activador del ítem 1000659 (evento 0xDC, estado 0x19) */
+    { 0x101458, "resultado", 0 },         /* el armado del FF28: precisión / combo personalizados */
+    { 0x1C887B, "resultado_solo", 0 },    /* el resultado de Juego Solo */
 };
 
 static void at_revisar_ganchos(void)
@@ -439,6 +448,8 @@ static void at_revisar_hilos(void)
 /* 8 · PROCESOS de trampas abiertos al mismo tiempo que el juego (cada uno una vez) */
 static const char *const AT_PROCESOS[] = {
     "cheatengine", "toolbit", "r2tr.exe", "gearnt", "speedgear", "speederxp", "artmoney", "wpepro", "x32dbg", "ollydbg",
+    "candy",            /* ★ 24-nov: Candy0503.exe («一颗糖», INFORME_DEFENSA_CANDY0503.md); renombrado lo caza la firma (8b) */
+    "r2autoroutelab",   /* ★ 24-nov: el laboratorio R2AutoRouteLab2013 (INFORME_LABORATORIO.md) */
 };
 static char g_at_procesos_vistos[512];
 
@@ -465,6 +476,192 @@ static void at_revisar_procesos(void)
         }
     }
     CloseHandle(snap);
+}
+
+
+/* 8b · ★ 24-nov · LOS PROGRAMAS EXTERNOS (INFORME_DEFENSA_CANDY0503.md: «Candy / 一颗糖», «运行版无需注入游戏»).
+ *   Candy (y R2AutoRouteLab2013) NO se inyectan: abren el juego con OpenProcess y escriben su memoria desde afuera
+ *   (WriteProcessMemory / VirtualProtectEx). Dos miradas que no dependen de que el programa se llame igual:
+ *     · LA FIRMA: el exe de cada proceso nuevo — su VersionInfo (ProductName «Candy», FileDescription «Candy - …») o,
+ *       si el tamaño coincide, su md5 contra AT_MD5_PROHIBIDOS. Se informa «proceso=<nombre> firma=<cuál>».
+ *     · LAS MANIJAS: quién tiene abierto ESTE proceso con permiso de escribir su memoria o de crearle hilos
+ *       (NtQuerySystemInformation: la tabla de handles del sistema). Se informa «manija=<exe> acceso=0x…» una vez por
+ *       programa. ⚠ El sistema (csrss, lsass…) siempre la tiene, y el que lanzó el juego puede conservarla: por eso el
+ *       server sólo la REGISTRA (regla `manija_escritura`) hasta medir qué aparece en los jugadores limpios. */
+static const char *g_at_md5_prohibidos[4] = { "09f983f84a55e77a4b4c5c0fe5bcf79f" /* Candy0503.exe */ };
+static const DWORD AT_TAM_PROHIBIDOS[] = { 1077248 };                    /* para no calcular md5 de cada exe */
+static DWORD g_at_pids_firma[512]; static int g_at_npids_firma;
+static int g_at_firma_cualquier_tam = 0;                                   /* la prueba: md5 de todo tamaño */
+
+static int at_firma_version(const wchar_t *ruta, char *cual, int n)
+{
+    typedef DWORD (WINAPI *TAM)(LPCWSTR, LPDWORD);
+    typedef BOOL (WINAPI *INFO)(LPCWSTR, DWORD, DWORD, LPVOID);
+    typedef BOOL (WINAPI *VALOR)(LPCVOID, LPCWSTR, LPVOID *, PUINT);
+    static TAM tam_f; static INFO info_f; static VALOR valor_f; static int cargado;
+    if (!cargado) {
+        HMODULE v = LoadLibraryA("version.dll");
+        tam_f = v ? (TAM)(void *)GetProcAddress(v, "GetFileVersionInfoSizeW") : NULL;
+        info_f = v ? (INFO)(void *)GetProcAddress(v, "GetFileVersionInfoW") : NULL;
+        valor_f = v ? (VALOR)(void *)GetProcAddress(v, "VerQueryValueW") : NULL;
+        cargado = 1;
+    }
+    if (!tam_f || !info_f || !valor_f) return 0;
+    DWORD nada = 0, t = tam_f(ruta, &nada);
+    if (!t || t > 1u << 20) return 0;
+    BYTE *b = (BYTE *)HeapAlloc(GetProcessHeap(), 0, t);
+    if (!b) return 0;
+    int hallado = 0;
+    if (info_f(ruta, 0, t, b)) {
+        struct { WORD idioma, pagina; } *tr = NULL;
+        UINT ltr = 0;
+        if (valor_f(b, L"\\VarFileInfo\\Translation", (LPVOID *)&tr, &ltr) && ltr >= 4) {
+            for (UINT k = 0; k < ltr / 4 && !hallado; k++) {
+                static const wchar_t *CAMPO[2] = { L"ProductName", L"FileDescription" };
+                for (int c = 0; c < 2 && !hallado; c++) {
+                    wchar_t q[80], *v = NULL;
+                    UINT lv = 0;
+                    wsprintfW(q, L"\\StringFileInfo\\%04x%04x\\%s", tr[k].idioma, tr[k].pagina, CAMPO[c]);
+                    if (!valor_f(b, q, (LPVOID *)&v, &lv) || !v || !lv) continue;
+                    /* «Candy» o «Candy - …» (el FileDescription de la muestra 0503) */
+                    if (v[0] == L'C' && v[1] == L'a' && v[2] == L'n' && v[3] == L'd' && v[4] == L'y' && (v[5] == 0 || v[5] == L' ')) {
+                        lstrcpynA(cual, c == 0 ? "producto_candy" : "descripcion_candy", n);
+                        hallado = 1;
+                    }
+                }
+            }
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, b);
+    return hallado;
+}
+
+static int at_firma_md5(const wchar_t *ruta, char *cual, int n)
+{
+    WIN32_FILE_ATTRIBUTE_DATA d;
+    if (!GetFileAttributesExW(ruta, GetFileExInfoStandard, &d) || d.nFileSizeHigh) return 0;
+    int tam_ok = g_at_firma_cualquier_tam;
+    for (int i = 0; i < (int)(sizeof(AT_TAM_PROHIBIDOS) / sizeof(AT_TAM_PROHIBIDOS[0])); i++)
+        tam_ok |= d.nFileSizeLow == AT_TAM_PROHIBIDOS[i];
+    if (!tam_ok || d.nFileSizeLow > 64u << 20) return 0;
+    char ruta_a[MAX_PATH * 2];
+    if (!WideCharToMultiByte(CP_ACP, 0, ruta, -1, ruta_a, sizeof(ruta_a), NULL, NULL)) return 0;
+    DWORD tam = 0;
+    BYTE *b = at_leer_archivo(ruta_a, &tam);
+    if (!b) return 0;
+    char guardado[33];
+    lstrcpyA(guardado, g_at_md5);                       /* at_md5 escribe en g_at_md5 (el del juego): se devuelve */
+    at_md5(b, tam);
+    HeapFree(GetProcessHeap(), 0, b);
+    int hallado = 0;
+    for (int i = 0; i < 4 && g_at_md5_prohibidos[i]; i++)
+        if (!lstrcmpiA(g_at_md5, g_at_md5_prohibidos[i])) { wsprintfA(cual, "md5_%.8s", g_at_md5); hallado = 1; }
+    lstrcpyA(g_at_md5, guardado);
+    return hallado;
+}
+
+static void at_revisar_firmas(void)
+{
+    typedef BOOL (WINAPI *QFPIN)(HANDLE, DWORD, LPWSTR, PDWORD);
+    static QFPIN qf;
+    if (!qf) qf = (QFPIN)(void *)GetProcAddress(GetModuleHandleA("kernel32.dll"), "QueryFullProcessImageNameW");
+    if (!qf) return;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return;
+    PROCESSENTRY32 p;
+    p.dwSize = sizeof(p);
+    for (BOOL ok = Process32First(snap, &p); ok; ok = Process32Next(snap, &p)) {
+        if (p.th32ProcessID <= 4 || p.th32ProcessID == GetCurrentProcessId()) continue;
+        int visto = 0;
+        for (int i = 0; i < g_at_npids_firma; i++) visto |= g_at_pids_firma[i] == p.th32ProcessID;
+        if (visto) continue;
+        if (g_at_npids_firma < (int)(sizeof(g_at_pids_firma) / sizeof(g_at_pids_firma[0])))
+            g_at_pids_firma[g_at_npids_firma++] = p.th32ProcessID;
+        else g_at_npids_firma = 0;                                            /* se llenó: se empieza de nuevo */
+        HANDLE h = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, FALSE, p.th32ProcessID);
+        if (!h) continue;
+        wchar_t ruta[MAX_PATH];
+        DWORD n = MAX_PATH;
+        BOOL hay = qf(h, 0, ruta, &n);
+        CloseHandle(h);
+        if (!hay) continue;
+        char cual[32];
+        if (!at_firma_version(ruta, cual, sizeof(cual)) && !at_firma_md5(ruta, cual, sizeof(cual))) continue;
+        char nombre[MAX_PATH];
+        lstrcpynA(nombre, p.szExeFile, sizeof(nombre));
+        CharLowerA(nombre);
+        for (char *c = nombre; *c; c++) if (*c == ' ' || *c == '=') *c = '_';
+        at_encolar("R2AT proceso=%s firma=%s", nombre, cual);
+    }
+    CloseHandle(snap);
+}
+
+/* las manijas: la tabla de handles del sistema (SystemExtendedHandleInformation = 64; en WOW64 la de 16 no alcanza) */
+typedef struct { PVOID objeto; ULONG_PTR pid; ULONG_PTR manija; ULONG acceso; USHORT traza, tipo; ULONG atributos, reservado; } AT_MANIJA;
+typedef struct { ULONG_PTR cuantas, reservado; AT_MANIJA m[1]; } AT_MANIJAS;
+#define AT_ESCRIBE (0x0020 /* VM_WRITE */ | 0x0002 /* CREATE_THREAD */)
+static const char *const AT_MANIJAS_SISTEMA[] = { "csrss.exe", "lsass.exe", "svchost.exe", "services.exe", "wininit.exe",
+                                                  "smss.exe", "system", "msmpeng.exe", "audiodg.exe", "wmiprvse.exe",
+                                                  "conhost.exe" /* la consola de un programa de consola */ };
+static char g_at_manijas_vistas[512];
+
+/* devuelve cuántos programas nuevos se informaron. `objetivo` = el pid vigilado (el juego; la prueba usa otro) */
+static int at_revisar_manijas_de(DWORD objetivo)
+{
+    typedef LONG (WINAPI *NTQSI)(ULONG, PVOID, ULONG, PULONG);
+    static NTQSI nt;
+    if (!nt) nt = (NTQSI)(void *)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQuerySystemInformation");
+    if (!nt) return 0;
+    HANDLE yo = OpenProcess(0x1000, FALSE, objetivo);         /* una manija NUESTRA al objetivo: da su objeto */
+    if (!yo) return 0;
+    ULONG tam = 1u << 20, dev = 0;
+    AT_MANIJAS *t = NULL;
+    LONG r;
+    for (int i = 0; i < 6; i++) {
+        t = (AT_MANIJAS *)VirtualAlloc(NULL, tam, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!t) break;
+        r = nt(64, t, tam, &dev);
+        if (r == 0) break;
+        VirtualFree(t, 0, MEM_RELEASE); t = NULL;
+        if (r != (LONG)0xC0000004 /* INFO_LENGTH_MISMATCH */) break;
+        tam = dev > tam ? dev + (1u << 16) : tam * 2;
+    }
+    int nuevos = 0;
+    if (t) {
+        PVOID obj = NULL;
+        ULONG_PTR mio = GetCurrentProcessId();
+        for (ULONG_PTR i = 0; i < t->cuantas; i++)
+            if (t->m[i].pid == mio && t->m[i].manija == (ULONG_PTR)yo) { obj = t->m[i].objeto; break; }
+        if (obj) {
+            HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            for (ULONG_PTR i = 0; i < t->cuantas; i++) {
+                AT_MANIJA *m = &t->m[i];
+                if (m->objeto != obj || !(m->acceso & AT_ESCRIBE) || m->pid == objetivo || m->pid <= 4) continue;
+                if (m->pid == mio && objetivo == mio) continue;
+                char nombre[MAX_PATH] = "?";
+                if (snap != INVALID_HANDLE_VALUE) {
+                    PROCESSENTRY32 p; p.dwSize = sizeof(p);
+                    for (BOOL ok = Process32First(snap, &p); ok; ok = Process32Next(snap, &p))
+                        if (p.th32ProcessID == (DWORD)m->pid) { lstrcpynA(nombre, p.szExeFile, sizeof(nombre)); break; }
+                }
+                CharLowerA(nombre);
+                int sistema = 0;
+                for (int k = 0; k < (int)(sizeof(AT_MANIJAS_SISTEMA) / sizeof(AT_MANIJAS_SISTEMA[0])); k++)
+                    sistema |= !lstrcmpA(nombre, AT_MANIJAS_SISTEMA[k]);
+                if (sistema || at_busca(g_at_manijas_vistas, nombre)) continue;
+                if (lstrlenA(g_at_manijas_vistas) + lstrlenA(nombre) + 2 < (int)sizeof(g_at_manijas_vistas)) {
+                    lstrcatA(g_at_manijas_vistas, nombre); lstrcatA(g_at_manijas_vistas, "|");
+                }
+                for (char *c = nombre; *c; c++) if (*c == ' ' || *c == '=') *c = '_';
+                at_encolar("R2AT manija=%s acceso=0x%X", nombre, (unsigned)m->acceso);
+                nuevos++;
+            }
+            if (snap != INVALID_HANDLE_VALUE) CloseHandle(snap);
+        }
+        VirtualFree(t, 0, MEM_RELEASE);
+    }
+    CloseHandle(yo);
+    return nuevos;
 }
 
 /* 9 · LA PANTALLA «Sistema de Prevención de Hackeo»: mientras arranca el juego, la imagen, «Verificando el juego… N %» y la barra, sin
@@ -705,7 +902,8 @@ static DWORD WINAPI at_hilo(LPVOID nada)
         at_revisar_teclas();
         if (vuelta % 2 == 0) at_revisar_hilos();
         if (vuelta % 3 == 0) at_revisar_modulos();
-        if (vuelta % 6 == 0) { at_revisar_memoria(); at_revisar_procesos(); }
+        if (vuelta % 6 == 0) { at_revisar_memoria(); at_revisar_procesos(); at_revisar_firmas(); }
+        if (vuelta % 6 == 3) at_revisar_manijas_de(GetCurrentProcessId());   /* ★ 24-nov: quién escribe nuestra memoria */
         if (!depurador && IsDebuggerPresent()) { depurador = 1; at_encolar("R2AT depurador=1"); }
     }
     return 0;

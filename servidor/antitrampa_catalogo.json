@@ -1,54 +1,418 @@
 {
   "_doc": "Catálogo del antitrampa para el panel web (ANTITRAMPA.md). Las acciones VIGENTES están en ajustes.ANTITRAMPA_REGLAS; acá va la acción por defecto. probar_antitrampa.py comprueba que las reglas coincidan con las del código.",
   "acciones": [
-    {"id": "apagado",   "nombre": "Apagada",   "orden": 0, "descripcion": "No hace nada (ni se anota)."},
-    {"id": "registrar", "nombre": "Registrar", "orden": 1, "descripcion": "Sólo queda en antitrampa.jsonl."},
-    {"id": "avisar",    "nombre": "Avisar",    "orden": 2, "descripcion": "Se anota y se avisa a los GM conectados."},
-    {"id": "retener",   "nombre": "Retener",   "orden": 3, "descripcion": "Se anota, se avisa y esa carrera no paga EXP ni Rcoin."},
-    {"id": "expulsar",  "nombre": "Expulsar",  "orden": 4, "descripcion": "Escalera: 1.ª fuera, 2.ª fuera con advertencia, 3.ª baneo permanente."}
+    {
+      "id": "apagado",
+      "nombre": "Apagada",
+      "orden": 0,
+      "descripcion": "No hace nada (ni se anota)."
+    },
+    {
+      "id": "registrar",
+      "nombre": "Registrar",
+      "orden": 1,
+      "descripcion": "Sólo queda en antitrampa.jsonl."
+    },
+    {
+      "id": "avisar",
+      "nombre": "Avisar",
+      "orden": 2,
+      "descripcion": "Se anota y se avisa a los GM conectados."
+    },
+    {
+      "id": "retener",
+      "nombre": "Retener",
+      "orden": 3,
+      "descripcion": "Se anota, se avisa y esa carrera no paga EXP ni Rcoin."
+    },
+    {
+      "id": "expulsar",
+      "nombre": "Expulsar",
+      "orden": 4,
+      "descripcion": "Escalera: 1.ª fuera, 2.ª fuera con advertencia, 3.ª baneo permanente."
+    }
   ],
   "origenes": [
-    {"id": "dll",    "nombre": "Cliente (dll)",     "descripcion": "La manda la d3d9.dll por FF59 (renglón R2AT)."},
-    {"id": "cartel", "nombre": "Fin de carrera",    "descripcion": "El servidor la ve en el cartel FF28."},
-    {"id": "farmeo", "nombre": "Comportamiento",    "descripcion": "El servidor la ve en varias carreras seguidas."}
+    {
+      "id": "dll",
+      "nombre": "Cliente (dll)",
+      "descripcion": "La manda la d3d9.dll por FF59 (renglón R2AT)."
+    },
+    {
+      "id": "cartel",
+      "nombre": "Fin de carrera",
+      "descripcion": "El servidor la ve en el cartel FF28."
+    },
+    {
+      "id": "farmeo",
+      "nombre": "Comportamiento",
+      "descripcion": "El servidor la ve en varias carreras seguidas."
+    }
   ],
   "escalera": [
-    {"falta": 1, "id": "expulsion",   "nombre": "Expulsión",          "mensaje": "Fuiste expulsado por el antitrampa ({regla})."},
-    {"falta": 2, "id": "advertencia", "nombre": "Expulsión con advertencia", "mensaje": "ADVERTENCIA: fuiste expulsado por el antitrampa ({regla}) por 2.ª vez. La próxima, tu cuenta queda baneada para siempre."},
-    {"falta": 3, "id": "baneo",       "nombre": "Baneo permanente",   "mensaje": "Fuiste expulsado por el antitrampa ({regla}). Es la 3.ª vez: tu cuenta quedó BANEADA PERMANENTEMENTE."}
+    {
+      "falta": 1,
+      "id": "expulsion",
+      "nombre": "Expulsión",
+      "mensaje": "Fuiste expulsado por el antitrampa ({regla})."
+    },
+    {
+      "falta": 2,
+      "id": "advertencia",
+      "nombre": "Expulsión con advertencia",
+      "mensaje": "ADVERTENCIA: fuiste expulsado por el antitrampa ({regla}) por 2.ª vez. La próxima, tu cuenta queda baneada para siempre."
+    },
+    {
+      "falta": 3,
+      "id": "baneo",
+      "nombre": "Baneo permanente",
+      "mensaje": "Fuiste expulsado por el antitrampa ({regla}). Es la 3.ª vez: tu cuenta quedó BANEADA PERMANENTEMENTE."
+    }
   ],
   "ganchos": [
-    {"id": "automatico", "va": "0x005080B5", "regla": "juego_automatico",  "funciones": ["Juego automático", "Azar", "Precisión"]},
-    {"id": "sala",       "va": "0x005AEDD4", "regla": "sala_automatica",   "funciones": ["Auto Listo / Inicio", "Anfitrión: al azar", "Misma canción"]},
-    {"id": "relevo",     "va": "0x00505340", "regla": "relevo_automatico", "funciones": ["Auto Relevo"]}
+    {
+      "id": "automatico",
+      "va": "0x005080B5",
+      "regla": "juego_automatico",
+      "funciones": [
+        "Juego automático",
+        "Azar",
+        "Precisión"
+      ]
+    },
+    {
+      "id": "sala",
+      "va": "0x005AEDD4",
+      "regla": "sala_automatica",
+      "funciones": [
+        "Auto Listo / Inicio",
+        "Anfitrión: al azar",
+        "Misma canción"
+      ]
+    },
+    {
+      "id": "relevo",
+      "va": "0x00505340",
+      "regla": "relevo_automatico",
+      "funciones": [
+        "Auto Relevo"
+      ]
+    },
+    {
+      "id": "tick_meta",
+      "va": "0x0050A170",
+      "regla": "juego_automatico",
+      "funciones": [
+        "Automático Normal (lab)",
+        "Simular llegada (lab)"
+      ]
+    },
+    {
+      "id": "auto_normal",
+      "va": "0x00509130",
+      "regla": "juego_automatico",
+      "funciones": [
+        "Automático Normal (lab, auxiliar)"
+      ]
+    },
+    {
+      "id": "pd0",
+      "va": "0x005003D0",
+      "regla": "juego_automatico",
+      "funciones": [
+        "Automático PD0 silencioso (lab)"
+      ]
+    },
+    {
+      "id": "larga_a",
+      "va": "0x005060B5",
+      "regla": "juego_automatico",
+      "funciones": [
+        "Automático largas A (lab)"
+      ]
+    },
+    {
+      "id": "larga_b",
+      "va": "0x005064F6",
+      "regla": "juego_automatico",
+      "funciones": [
+        "Automático largas B (lab)"
+      ]
+    },
+    {
+      "id": "item_auto",
+      "va": "0x0050CAB6",
+      "regla": "juego_automatico",
+      "funciones": [
+        "Activador del ítem automático 1000659 (lab)"
+      ]
+    },
+    {
+      "id": "resultado",
+      "va": "0x00501458",
+      "regla": "resultado_alterado",
+      "funciones": [
+        "Precisión personalizada (lab)",
+        "Combo personalizado (lab)"
+      ]
+    },
+    {
+      "id": "resultado_solo",
+      "va": "0x005C887B",
+      "regla": "resultado_alterado",
+      "funciones": [
+        "Precisión personalizada en Juego Solo (lab)"
+      ]
+    }
   ],
   "reglas": [
-    {"id": "juego_automatico",     "accion": "expulsar",  "origen": "dll",    "gravedad": 4, "nombre": "Juego automático",          "descripcion": "El «juego automático» de Ñ2Hock/ToolBit (gancho automatico)."},
-    {"id": "sala_automatica",      "accion": "expulsar",  "origen": "dll",    "gravedad": 4, "nombre": "Sala automática",           "descripcion": "Auto Listo / Inicio, Anfitrión al azar o Misma canción (gancho sala)."},
-    {"id": "relevo_automatico",    "accion": "expulsar",  "origen": "dll",    "gravedad": 4, "nombre": "Relevo automático",         "descripcion": "Alguien pisó el gancho del relevo (Auto Relevo)."},
-    {"id": "modulo_prohibido",     "accion": "expulsar",  "origen": "dll",    "gravedad": 4, "nombre": "Módulo de trampas",         "descripcion": "Tiene cargado un módulo de trampas (ToolBit, R2Mods, Cheat Engine…)."},
-    {"id": "proceso_prohibido",    "accion": "expulsar",  "origen": "dll",    "gravedad": 4, "nombre": "Programa de trampas",       "descripcion": "Tiene abierto un programa de trampas."},
-    {"id": "farmeo",               "accion": "expulsar",  "origen": "farmeo", "gravedad": 4, "nombre": "Farmeo",                    "descripcion": "Dos o más señales de farmeo distintas en la misma sesión."},
-    {"id": "combo_imposible",      "accion": "retener",   "origen": "cartel", "gravedad": 3, "nombre": "Combo imposible",           "descripcion": "Más combo que notas tiene la canción."},
-    {"id": "porcentaje_imposible", "accion": "retener",   "origen": "cartel", "gravedad": 3, "nombre": "Porcentaje imposible",      "descripcion": "PD o estrellas por encima de 100."},
-    {"id": "codigo_modificado",    "accion": "avisar",    "origen": "dll",    "gravedad": 2, "nombre": "Código modificado",         "descripcion": "El exe fue tocado desde afuera (otros parches de Ñ2Hock: far, teclado…)."},
-    {"id": "codigo_previo",        "accion": "avisar",    "origen": "dll",    "gravedad": 2, "nombre": "Exe tocado al abrir",       "descripcion": "El exe ya estaba tocado antes de que arrancara la dll."},
-    {"id": "reloj_rapido",         "accion": "avisar",    "origen": "cartel", "gravedad": 2, "nombre": "Reloj rápido",              "descripcion": "El reloj del juego corrió más que el tiempo real desde el GO (speedhack)."},
-    {"id": "reloj_lento",          "accion": "avisar",    "origen": "cartel", "gravedad": 2, "nombre": "Reloj lento",               "descripcion": "El reloj del juego corrió bastante menos que el tiempo real."},
-    {"id": "animaciones_tocadas",  "accion": "avisar",    "origen": "cartel", "gravedad": 2, "nombre": "Animaciones tocadas",       "descripcion": "Las animaciones de tropezar no coinciden con las del server."},
-    {"id": "teclas_inyectadas",    "accion": "avisar",    "origen": "dll",    "gravedad": 2, "nombre": "Teclas inyectadas",         "descripcion": "Teclas mandadas por un programa (cuenta como señal de farmeo)."},
-    {"id": "hilo_ajeno",           "accion": "avisar",    "origen": "dll",    "gravedad": 2, "nombre": "Hilo ajeno",                "descripcion": "Un hilo del juego arranca en código inyectado."},
-    {"id": "listo_automatico",     "accion": "avisar",    "origen": "farmeo", "gravedad": 2, "nombre": "Listo automático",          "descripcion": "«Listo»/«Iniciar» siempre al mismo instante tras la carrera."},
-    {"id": "carreras_sin_hablar",  "accion": "avisar",    "origen": "farmeo", "gravedad": 1, "nombre": "Carreras sin hablar",       "descripcion": "Muchas carreras seguidas sin una línea de chat."},
-    {"id": "misma_cancion",        "accion": "avisar",    "origen": "farmeo", "gravedad": 1, "nombre": "Misma canción",             "descripcion": "La misma canción muchas veces seguidas."},
-    {"id": "campanas_automaticas", "accion": "avisar",    "origen": "farmeo", "gravedad": 2, "nombre": "Campanas automáticas",      "descripcion": "Tocó campana en cada ronda, muchas rondas seguidas."},
-    {"id": "combo_repetido",       "accion": "avisar",    "origen": "farmeo", "gravedad": 2, "nombre": "Combo repetido",            "descripcion": "El mismo combo en canciones distintas (fallar a propósito al llegar a N)."},
-    {"id": "precision_constante",  "accion": "avisar",    "origen": "farmeo", "gravedad": 2, "nombre": "Precisión constante",       "descripcion": "La misma precisión en canciones de niveles muy distintos."},
-    {"id": "modulo_permitido",     "accion": "registrar", "origen": "dll",    "gravedad": 0, "nombre": "Módulo permitido",          "descripcion": "Un módulo con nombre «de trampa» que no lo es: el motor de práctica de Ñ2Hock (ToolBitPracticeEngine)."},
-    {"id": "exe_desconocido",     "accion": "registrar", "origen": "dll",    "gravedad": 1, "nombre": "Exe desconocido",           "descripcion": "El R2Beat.exe no es uno de los aceptados."},
-    {"id": "memoria_ajena",        "accion": "registrar", "origen": "dll",    "gravedad": 1, "nombre": "Memoria ajena",             "descripcion": "Hay código inyectado (Ñ2Hock lo tiene siempre)."},
-    {"id": "depurador",            "accion": "registrar", "origen": "dll",    "gravedad": 1, "nombre": "Depurador",                 "descripcion": "Un depurador pegado al juego."},
-    {"id": "sin_antitrampa",       "accion": "registrar", "origen": "cartel", "gravedad": 1, "nombre": "Sin antitrampa",            "descripcion": "Terminó una carrera sin que su dll mandara el «hola»."},
-    {"id": "expulsa_espectadores", "accion": "registrar", "origen": "farmeo", "gravedad": 1, "nombre": "Echa espectadores",         "descripcion": "El anfitrión echa espectadores en serie."}
+    {
+      "id": "juego_automatico",
+      "accion": "expulsar",
+      "origen": "dll",
+      "gravedad": 4,
+      "nombre": "Juego automático",
+      "descripcion": "El «juego automático» de Ñ2Hock/ToolBit (gancho automatico)."
+    },
+    {
+      "id": "sala_automatica",
+      "accion": "expulsar",
+      "origen": "dll",
+      "gravedad": 4,
+      "nombre": "Sala automática",
+      "descripcion": "Auto Listo / Inicio, Anfitrión al azar o Misma canción (gancho sala)."
+    },
+    {
+      "id": "relevo_automatico",
+      "accion": "expulsar",
+      "origen": "dll",
+      "gravedad": 4,
+      "nombre": "Relevo automático",
+      "descripcion": "Alguien pisó el gancho del relevo (Auto Relevo)."
+    },
+    {
+      "id": "modulo_prohibido",
+      "accion": "expulsar",
+      "origen": "dll",
+      "gravedad": 4,
+      "nombre": "Módulo de trampas",
+      "descripcion": "Tiene cargado un módulo de trampas (ToolBit, R2Mods, Cheat Engine…)."
+    },
+    {
+      "id": "proceso_prohibido",
+      "accion": "expulsar",
+      "origen": "dll",
+      "gravedad": 4,
+      "nombre": "Programa de trampas",
+      "descripcion": "Tiene abierto un programa de trampas."
+    },
+    {
+      "id": "farmeo",
+      "accion": "expulsar",
+      "origen": "farmeo",
+      "gravedad": 4,
+      "nombre": "Farmeo",
+      "descripcion": "Dos o más señales de farmeo distintas en la misma sesión."
+    },
+    {
+      "id": "combo_imposible",
+      "accion": "retener",
+      "origen": "cartel",
+      "gravedad": 3,
+      "nombre": "Combo imposible",
+      "descripcion": "Más combo que notas tiene la canción."
+    },
+    {
+      "id": "porcentaje_imposible",
+      "accion": "retener",
+      "origen": "cartel",
+      "gravedad": 3,
+      "nombre": "Porcentaje imposible",
+      "descripcion": "PD o estrellas por encima de 100."
+    },
+    {
+      "id": "codigo_modificado",
+      "accion": "avisar",
+      "origen": "dll",
+      "gravedad": 2,
+      "nombre": "Código modificado",
+      "descripcion": "El exe fue tocado desde afuera (otros parches de Ñ2Hock: far, teclado…)."
+    },
+    {
+      "id": "codigo_previo",
+      "accion": "avisar",
+      "origen": "dll",
+      "gravedad": 2,
+      "nombre": "Exe tocado al abrir",
+      "descripcion": "El exe ya estaba tocado antes de que arrancara la dll."
+    },
+    {
+      "id": "reloj_rapido",
+      "accion": "avisar",
+      "origen": "cartel",
+      "gravedad": 2,
+      "nombre": "Reloj rápido",
+      "descripcion": "El reloj del juego corrió más que el tiempo real desde el GO (speedhack)."
+    },
+    {
+      "id": "reloj_lento",
+      "accion": "avisar",
+      "origen": "cartel",
+      "gravedad": 2,
+      "nombre": "Reloj lento",
+      "descripcion": "El reloj del juego corrió bastante menos que el tiempo real."
+    },
+    {
+      "id": "animaciones_tocadas",
+      "accion": "avisar",
+      "origen": "cartel",
+      "gravedad": 2,
+      "nombre": "Animaciones tocadas",
+      "descripcion": "Las animaciones de tropezar no coinciden con las del server."
+    },
+    {
+      "id": "teclas_inyectadas",
+      "accion": "avisar",
+      "origen": "dll",
+      "gravedad": 2,
+      "nombre": "Teclas inyectadas",
+      "descripcion": "Teclas mandadas por un programa (cuenta como señal de farmeo)."
+    },
+    {
+      "id": "hilo_ajeno",
+      "accion": "avisar",
+      "origen": "dll",
+      "gravedad": 2,
+      "nombre": "Hilo ajeno",
+      "descripcion": "Un hilo del juego arranca en código inyectado."
+    },
+    {
+      "id": "listo_automatico",
+      "accion": "avisar",
+      "origen": "farmeo",
+      "gravedad": 2,
+      "nombre": "Listo automático",
+      "descripcion": "«Listo»/«Iniciar» siempre al mismo instante tras la carrera."
+    },
+    {
+      "id": "carreras_sin_hablar",
+      "accion": "avisar",
+      "origen": "farmeo",
+      "gravedad": 1,
+      "nombre": "Carreras sin hablar",
+      "descripcion": "Muchas carreras seguidas sin una línea de chat."
+    },
+    {
+      "id": "misma_cancion",
+      "accion": "avisar",
+      "origen": "farmeo",
+      "gravedad": 1,
+      "nombre": "Misma canción",
+      "descripcion": "La misma canción muchas veces seguidas."
+    },
+    {
+      "id": "campanas_automaticas",
+      "accion": "avisar",
+      "origen": "farmeo",
+      "gravedad": 2,
+      "nombre": "Campanas automáticas",
+      "descripcion": "Tocó campana en cada ronda, muchas rondas seguidas."
+    },
+    {
+      "id": "combo_repetido",
+      "accion": "avisar",
+      "origen": "farmeo",
+      "gravedad": 2,
+      "nombre": "Combo repetido",
+      "descripcion": "El mismo combo en canciones distintas (fallar a propósito al llegar a N)."
+    },
+    {
+      "id": "precision_constante",
+      "accion": "avisar",
+      "origen": "farmeo",
+      "gravedad": 2,
+      "nombre": "Precisión constante",
+      "descripcion": "La misma precisión en canciones de niveles muy distintos."
+    },
+    {
+      "id": "modulo_permitido",
+      "accion": "registrar",
+      "origen": "dll",
+      "gravedad": 0,
+      "nombre": "Módulo permitido",
+      "descripcion": "Un módulo con nombre «de trampa» que no lo es: el motor de práctica de Ñ2Hock (ToolBitPracticeEngine)."
+    },
+    {
+      "id": "exe_desconocido",
+      "accion": "registrar",
+      "origen": "dll",
+      "gravedad": 1,
+      "nombre": "Exe desconocido",
+      "descripcion": "El R2Beat.exe no es uno de los aceptados."
+    },
+    {
+      "id": "memoria_ajena",
+      "accion": "registrar",
+      "origen": "dll",
+      "gravedad": 1,
+      "nombre": "Memoria ajena",
+      "descripcion": "Hay código inyectado (Ñ2Hock lo tiene siempre)."
+    },
+    {
+      "id": "depurador",
+      "accion": "registrar",
+      "origen": "dll",
+      "gravedad": 1,
+      "nombre": "Depurador",
+      "descripcion": "Un depurador pegado al juego."
+    },
+    {
+      "id": "sin_antitrampa",
+      "accion": "registrar",
+      "origen": "cartel",
+      "gravedad": 1,
+      "nombre": "Sin antitrampa",
+      "descripcion": "Terminó una carrera sin que su dll mandara el «hola»."
+    },
+    {
+      "id": "expulsa_espectadores",
+      "accion": "registrar",
+      "origen": "farmeo",
+      "gravedad": 1,
+      "nombre": "Echa espectadores",
+      "descripcion": "El anfitrión echa espectadores en serie."
+    },
+    {
+      "id": "resultado_alterado",
+      "accion": "expulsar",
+      "origen": "dll",
+      "gravedad": 4,
+      "nombre": "Resultado alterado",
+      "descripcion": "El armado del resultado (FF28 o el de Juego Solo) reescrito en el cliente: precisión o combo personalizados."
+    },
+    {
+      "id": "precision_imposible",
+      "accion": "retener",
+      "origen": "cartel",
+      "gravedad": 3,
+      "nombre": "Precisión imposible",
+      "descripcion": "Milésimas mayores que 999, o 100 % con milésimas (el tope es 100.000)."
+    },
+    {
+      "id": "llegada_anticipada",
+      "accion": "avisar",
+      "origen": "cartel",
+      "gravedad": 2,
+      "nombre": "Llegada anticipada",
+      "descripcion": "Llegó a la meta mucho antes de lo que tarda esa canción (menos del 75 % de la mediana de sus llegadas limpias): «Simular llegada»."
+    },
+    {
+      "id": "manija_escritura",
+      "accion": "registrar",
+      "origen": "dll",
+      "gravedad": 1,
+      "nombre": "Manija de escritura",
+      "descripcion": "Un programa tiene abierto el juego con permiso de escribir su memoria o crearle hilos (así trabajan Candy y R2AutoRouteLab, sin inyectarse). El sistema no cuenta."
+    }
   ]
 }
