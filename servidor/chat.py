@@ -1509,6 +1509,21 @@ def comando_chat(st, texto):
         return [f"FF0C.{_campo} = {_val} (0x{_val:X}) - lista re-emitida",
                 "mirá el icono del slot: si NO cambio, ese campo no lo dibuja"]
 
+    if c == "sanciones":
+        # ★ 24-nov · `.sanciones` — el antitrampa SILENCIOSO (`ANTITRAMPA_SILENCIOSO`): lo detectado no se expulsa al
+        #   instante, queda pendiente y se sanciona EN TANDA, cuando un GM lo decide.
+        #     .sanciones                  quién tiene detecciones pendientes
+        #     .sanciones aplicar [ya]     la escalera a todos los que ya esperaron ANTITRAMPA_TANDA_DEMORA_H (o a todos)
+        #     .sanciones perdonar <apodo> descartar las suyas (falso positivo)
+        from . import antitrampa as _at
+        _quien = f"usn {getattr(st, 'usn', None)}"
+        _sub = args[0].lower() if args else ""
+        if _sub == "aplicar":
+            return _at.sancionar_tanda(_quien, ya=len(args) > 1 and args[1].lower() == "ya")
+        if _sub == "perdonar" and len(args) > 1:
+            return _at.perdonar_pendientes(" ".join(args[1:]), _quien)
+        return _at.resumen_pendientes()
+
     if c in ("ayuda", "help", "?"):
         # ═══════════════════════════════════════════════════════════════════════════════════════
         # ★★★★★ LA AYUDA MUESTRA LO QUE **VOS** PODÉS USAR, NO LA LISTA ENTERA (2026-09-15)
@@ -1552,6 +1567,7 @@ def comando_chat(st, texto):
             ("gm", "record", ".circulo eco [nivel|exp|dinero|marca N]   ver/editar la economia de tu circulo"),
             ("gm", "gm",    ".gm | .gm recargar      la puerta de GM"),
             ("gm", "campana", ".campana [sub] [tipo] [rcoin]   SONDA del cartel de la campana"),
+            ("gm", "sanciones", ".sanciones | .sanciones aplicar [ya] | .sanciones perdonar <apodo>   antitrampa en tanda"),
             # ★ 04-oct: el STREAMER (`streamers.txt`) ve SÓLO sus dos. Al GM no se le listan: ya tiene los suyos
             ("--STREAMER--", "--STREAMER--", "--- streamer ---"),
             ("streamer", "anuncio", ".anuncio <texto>        aviso a TODO el server, por el chat"),

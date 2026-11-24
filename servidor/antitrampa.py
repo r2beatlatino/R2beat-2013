@@ -52,6 +52,8 @@ from .ajustes import (
     ANTITRAMPA_RELOJ_MARGEN_S,
     ANTITRAMPA_RELOJ_TOLERANCIA,
     ANTITRAMPA_SIN_HABLAR,
+    ANTITRAMPA_SILENCIOSO,
+    ANTITRAMPA_TANDA_DEMORA_H,
 )
 from .registro import log
 
@@ -367,20 +369,55 @@ def _escalon(usn, regla, detalle="", nick=""):
 
 
 def _expulsar(st, usn, nick, regla, detalle):
-    """Aviso al jugador, anuncio y fuera. El cierre va un segundo después: que le lleguen los avisos.
-    ★ 19-nov — la escalera, por cuenta: 1.ª falta = fuera · 2.ª = fuera con ADVERTENCIA · 3.ª = baneo permanente
-    (en el Coordinador cuando el server usa pases; `BANNED:` local en servidores sin pases). El bloqueo por tiempo
-    (`ANTITRAMPA_BLOQUEO_S`) queda en 0: la carrera de esta sesión no cobra igual."""
+    """Lo que hace una regla «expulsar».
+    ★ 24-nov — con `ANTITRAMPA_SILENCIOSO` (de fábrica) NO expulsa: retiene el premio en silencio y deja la detección
+    pendiente para la tanda de un GM (`_detener_en_silencio`). Sin él, la expulsión al instante de siempre."""
     # ★ UNA falta por sesión del juego (de «hola» a «hola»): con dos funciones prendidas llegan dos ganchos en el mismo
     #   segundo (medido 19-nov: automático + sala ⇒ 1.ª y 2.ª juntas). Lo que llegue después sólo vuelve a cerrar.
     with _cuentas_lock:
         sesion = _CUENTAS.setdefault(usn, {"hola": True, "retener": False, "sin_hola_avisado": False}) if usn else {}
         ya = sesion.get("expulsado")
         sesion["expulsado"] = True
+        reglas = sesion.setdefault("reglas_pendientes", set())
+        nueva = regla not in reglas
+        reglas.add(regla)
+    if ANTITRAMPA_SILENCIOSO and usn:
+        if ya and not nueva:
+            log("TRAMP", f"  🤫 usn={usn}: {regla} otra vez en la misma sesión: ya está pendiente")
+            return
+        _detener_en_silencio(usn, nick, regla, detalle)
+        return
     if ya:
         log("TRAMP", f"  ⛔ usn={usn}: {regla} en la misma sesión ya expulsada: no suma otra falta, sólo cierra")
         _cerrar_luego(st, usn, regla)
         return
+    _sancionar(st, usn, nick, regla, detalle)
+
+
+def _detener_en_silencio(usn, nick, regla, detalle):
+    """★ 24-nov — EL MODO SILENCIOSO: el jugador no se entera de nada. Lo que quede de esta sesión no cobra (ni exp,
+    ni Rcoin, ni récord, ni medallas, ni misiones: `retenido`), los GM conectados lo ven y la detección queda en
+    `antitrampa_pendientes` hasta la tanda (`sancionar_tanda`, `.sanciones aplicar`)."""
+    with _cuentas_lock:
+        _CUENTAS.setdefault(usn, {"hola": True, "retener": False, "sin_hola_avisado": False})["retener"] = True
+    pid = None
+    try:
+        from . import almacen
+        pid, _ = almacen.antitrampa_dejar_pendiente(usn, regla, detalle=detalle, nick=nick)
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude dejar pendiente la detección de usn={usn}: {e!r}")
+    log("TRAMP", f"  🤫 usn={usn} {nick!r}: {regla} DETECTADO en silencio (pendiente #{pid}, premio retenido)")
+    _avisar_gms(f"ANTITRAMPA {regla}: {nick or usn} detectado en silencio (premio retenido, "
+                f"sancion pendiente #{pid}) — {detalle}")
+
+
+def _sancionar(st, usn, nick, regla, detalle, otros_usns=()):
+    """Aviso al jugador, anuncio y fuera. El cierre va un segundo después: que le lleguen los avisos.
+    ★ 19-nov — la escalera, por cuenta: 1.ª falta = fuera · 2.ª = fuera con ADVERTENCIA · 3.ª = baneo permanente
+    (en el Coordinador cuando el server usa pases; `BANNED:` local en servidores sin pases). El bloqueo por tiempo
+    (`ANTITRAMPA_BLOQUEO_S`) queda en 0: la carrera de esta sesión no cobra igual.
+    ★ 24-nov — la usa también la tanda (`sancionar_tanda`), con `st=None`: si no está conectado, la falta se suma
+    igual y el baneo le cierra el login. -> (faltas, cuenta, baneada, qué)."""
     faltas, cuenta, baneada = _escalon(usn, regla, detalle=detalle, nick=nick) if usn else (1, None, False)
     if usn:
         _EXPULSADOS[usn] = faltas
@@ -403,20 +440,95 @@ def _expulsar(st, usn, nick, regla, detalle):
     _avisar_gms(f"ANTITRAMPA {regla}: {nick or usn} {que} — {detalle}")
     log("TRAMP", f"  ⛔ usn={usn} cuenta={cuenta!r}: {que}")
     anuncio = (ANTITRAMPA_ANUNCIO_BANEO if baneada else ANTITRAMPA_ANUNCIO).format(nick=nick or f"usn {usn}")
+    conns = []
     try:
         from .salas import CONEXIONES, avisar_a_uno
-        conn = CONEXIONES.get(usn) or st
-        avisar_a_uno(conn, al_jugador)
+        conns = [c for c in [CONEXIONES.get(usn) or st] + [CONEXIONES.get(u) for u in otros_usns] if c is not None]
+        for conn in conns:
+            avisar_a_uno(conn, al_jugador)
         if ANTITRAMPA_ANUNCIO_PUBLICO:
             for c in list(CONEXIONES.values()):
-                if c is not None and c is not conn:
+                if c is not None and c not in conns:
                     avisar_a_uno(c, anuncio)
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude avisar la expulsión de usn={usn}: {e!r}")
-        conn = st
-    t = threading.Timer(1.0, cerrar_conexion, args=(conn, f"expulsado por {regla}"))
-    t.daemon = True
-    t.start()
+        conns = [st] if st is not None else []
+    for conn in conns:
+        t = threading.Timer(1.0, cerrar_conexion, args=(conn, f"expulsado por {regla}"))
+        t.daemon = True
+        t.start()
+    return faltas, cuenta, baneada, que
+
+
+# ═══ ★ 24-nov · LA TANDA (antitrampa SILENCIOSO) ═══════════════════════════════════════════════════════════════════
+#   Las detecciones pendientes se sancionan juntas, cuando un GM lo decide (`.sanciones aplicar`), y sólo las que ya
+#   tienen `ANTITRAMPA_TANDA_DEMORA_H` horas: el tramposo no puede relacionar la sanción con lo que hizo. UNA falta de
+#   la escalera por cuenta y por tanda, junte las detecciones que junte (el detalle dice cuáles).
+def _agrupar(filas):
+    grupos = {}
+    for f in filas:
+        grupos.setdefault(f.get("cuenta") or f"usn {f['usn']}", []).append(f)
+    return grupos
+
+
+def resumen_pendientes():
+    """Las líneas de `.sanciones`: quién tiene detecciones pendientes y cuáles ya entran en la próxima tanda."""
+    from . import almacen
+    todas = almacen.antitrampa_pendientes(0)
+    if not todas:
+        return ["antitrampa: no hay detecciones pendientes"]
+    listas = {f["id"] for f in almacen.antitrampa_pendientes(ANTITRAMPA_TANDA_DEMORA_H)}
+    lineas = [f"antitrampa: {len(todas)} deteccion(es) pendiente(s) de {len(_agrupar(todas))} cuenta(s)"]
+    for clave, fs in _agrupar(todas).items():
+        reglas = sorted({f["regla"] for f in fs})
+        nick = next((f["nick"] for f in reversed(fs) if f.get("nick")), "") or clave
+        listo = "entra en la tanda" if any(f["id"] in listas for f in fs) else \
+            f"espera {ANTITRAMPA_TANDA_DEMORA_H}h"
+        lineas.append(f"- {nick} ({clave}): {len(fs)}x {', '.join(reglas)} desde {fs[0]['cuando']} - {listo}")
+    lineas.append(".sanciones aplicar [ya] | .sanciones perdonar <apodo>")
+    return lineas
+
+
+def sancionar_tanda(quien="", ya=False):
+    """Aplica la escalera a cada cuenta con detecciones pendientes (de más de `ANTITRAMPA_TANDA_DEMORA_H` horas, o
+    todas con `ya`). -> las líneas para el GM."""
+    from . import almacen
+    filas = almacen.antitrampa_pendientes(0 if ya else ANTITRAMPA_TANDA_DEMORA_H)
+    if not filas:
+        return ["antitrampa: no hay detecciones para sancionar" + ("" if ya else
+                f" (con mas de {ANTITRAMPA_TANDA_DEMORA_H}h; '.sanciones aplicar ya' no espera)")]
+    lineas = []
+    for clave, fs in _agrupar(filas).items():
+        reglas = sorted({f["regla"] for f in fs})
+        usns = list(dict.fromkeys(f["usn"] for f in reversed(fs)))      # el más reciente primero
+        nick = next((f["nick"] for f in reversed(fs) if f.get("nick")), "") or _nick(usns[0])
+        detalle = f"{len(fs)} deteccion(es): {', '.join(reglas)}"
+        try:
+            faltas, cuenta, baneada, que = _sancionar(None, usns[0], nick, reglas[0], detalle, otros_usns=usns[1:])
+        except Exception as e:                # noqa: BLE001
+            log("TRAMP", f"  ⚠ no pude sancionar {clave!r}: {e!r}")
+            lineas.append(f"- {nick}: ERROR ({e!r}), queda pendiente")
+            continue
+        almacen.antitrampa_resolver([f["id"] for f in fs], "sancionada", quien)
+        _guardar({"cuando": datetime.datetime.now().isoformat(timespec="seconds"), "regla": reglas[0],
+                  "accion": "sancion_en_tanda", "usn": usns[0], "nick": nick, "cuenta": cuenta, "faltas": faltas,
+                  "baneada": baneada, "quien": quien, "detalle": detalle})
+        lineas.append(f"- {nick or clave}: {que}")
+    log("TRAMP", f"  ⚖ tanda de sanciones de {quien!r}: {len(lineas)} cuenta(s)")
+    return [f"antitrampa: tanda aplicada a {len(lineas)} cuenta(s)"] + lineas
+
+
+def perdonar_pendientes(quien_es, quien=""):
+    """Descarta (falso positivo) las detecciones pendientes de ese apodo, usn o cuenta. -> las líneas para el GM."""
+    from . import almacen
+    q = str(quien_es).strip().lower()
+    fs = [f for f in almacen.antitrampa_pendientes(0)
+          if q in (str(f["usn"]), (f.get("nick") or "").lower(), (f.get("cuenta") or "").lower())]
+    if not fs:
+        return [f"antitrampa: {quien_es!r} no tiene detecciones pendientes"]
+    n = almacen.antitrampa_resolver([f["id"] for f in fs], "perdonada", quien)
+    log("TRAMP", f"  🕊 {quien!r} perdonó {n} detección(es) de {quien_es!r}")
+    return [f"antitrampa: {n} deteccion(es) de {quien_es} descartada(s)"]
 
 
 def _cerrar_luego(st, usn, regla):

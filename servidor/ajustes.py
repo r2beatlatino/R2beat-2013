@@ -1054,7 +1054,10 @@ COMANDOS_GM = ("rate", "rates", "gm",
                "autoplay",
                # ★ `.record` (2026-09-24): ver y EDITAR los contadores de las medallas, y la sonda
                #   del perfil. Edita la base: por eso es de GM. Ver `RECORD_Y_MEDALLAS`.
-               "record")
+               "record",
+               # ★ 24-nov · `.sanciones`: las detecciones del antitrampa silencioso, y aplicarlas en tanda.
+               #   Banea cuentas: por eso es de GM. Ver `ANTITRAMPA_SILENCIOSO`.
+               "sanciones")
 # ★★ 04-oct — LOS STREAMERS TAMBIÉN ANUNCIAN. anonimo03: *"que los streamers también puedan usar el comando
 #   .gm1 .anuncio"*. Son de `COMANDOS_GM` y se abren ADEMÁS a los de `streamers.txt` (el mismo archivo del
 #   panel, `panel_admin.streamers`). ⚠ Sólo esos DOS, a propósito: `.aviso` (mismo comando que `.anuncio`),
@@ -5543,6 +5546,17 @@ ANTITRAMPA_BANEO_EN = 3
 ANTITRAMPA_ANUNCIO_PUBLICO = True        # False = el anuncio de la expulsión va sólo a los GM
 ANTITRAMPA_ANUNCIO = "{nick} ha sido detectado por usar trampas en el cliente."
 ANTITRAMPA_ANUNCIO_BANEO = "{nick} ha sido baneado permanentemente por usar trampas en el cliente."
+# ★ 24-nov · EL MODO SILENCIOSO (idea de anonimo03: «que la DLL detecte y reporte, y las sanciones se gestionen
+#   desde el servidor»). Con True, «expulsar» NO echa a nadie ni le dice nada al jugador: le retiene el premio en
+#   silencio (ni exp, ni Rcoin, ni récord, ni medallas) desde ese momento hasta que cierre el juego, avisa a los GM
+#   conectados y deja la detección PENDIENTE (tabla `antitrampa_pendientes`). La escalera (expulsión, advertencia,
+#   baneo) y el anuncio público llegan después, EN TANDA, cuando un GM escribe `.sanciones aplicar`.
+#   ⇒ El tramposo no sabe qué lo delató ni cuándo: no puede probar casilla por casilla.
+#   False = como antes: expulsión y escalera al instante.
+ANTITRAMPA_SILENCIOSO = True
+#   La tanda sólo sanciona las detecciones con al menos estas horas: lo de hoy espera a la próxima (que la sanción
+#   no se pueda relacionar con lo que hizo hace un rato). `.sanciones aplicar ya` no espera.
+ANTITRAMPA_TANDA_DEMORA_H = 12
 #   Los umbrales de cada señal.
 ANTITRAMPA_LISTO_MUESTRAS = 8            # reacciones medidas (de la llegada al «listo»/«iniciar»)
 ANTITRAMPA_LISTO_DESVIO_S = 0.25         # una persona varía más que esto entre carrera y carrera

@@ -27,6 +27,9 @@ sys.path.insert(0, RAIZ)
 from servidor import antitrampa, notas          # noqa: E402
 
 FALLAS = []
+# ★ 24-nov: el server viene en modo SILENCIOSO (sanciona en tanda). Las pruebas de siempre son del modo de antes
+#   (expulsión al instante); el silencioso tiene la suya, `probar_silencioso`.
+antitrampa.ANTITRAMPA_SILENCIOSO = False
 EXE_BUENO = next(iter(antitrampa.ANTITRAMPA_EXE_MD5))
 
 
@@ -577,6 +580,64 @@ def probar_coordinador():
                 os.environ[k] = v
 
 
+def probar_silencioso():
+    print("el modo SILENCIOSO (24-nov): detecta, retiene en silencio y sanciona en tanda:")
+    from servidor import almacen, basedatos, salas
+
+    def pendientes(cuenta):
+        return almacen.conectar().execute("SELECT COUNT(*) FROM antitrampa_pendientes WHERE cuenta=? "
+                                          "AND estado='pendiente'", (cuenta,)).fetchone()[0]
+
+    def faltas(cuenta):
+        f = almacen.conectar().execute("SELECT faltas FROM antitrampa_faltas WHERE username=?", (cuenta,)).fetchone()
+        return f[0] if f else 0
+
+    antitrampa.ANTITRAMPA_SILENCIOSO = True
+    try:
+        usn, _m = basedatos.cuenta_crear("callado", "C" * 64)
+        c, otro = jugador(usn), jugador(6299)
+        salas.CONEXIONES.update({usn: c, 6299: otro})
+        try:
+            antitrampa.al_ff59(c, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+            ok(reglas_de(usn)[-1] == "juego_automatico", "la detección queda anotada")
+            ok(not c.conn.cerrado and not getattr(c, "cerrado", False), "no se le cierra la conexión")
+            ok(not c.enviados, "él no recibe ningún aviso")
+            ok(not otro.enviados, "los demás no ven ningún anuncio")
+            ok(antitrampa.juzgar_cartel(c, 7200, 300, 90, 50, 77) is True, "pero sus carreras ya no cobran")
+            ok(faltas("callado") == 0 and pendientes("callado") == 1, "no suma falta: queda UNA detección pendiente")
+            antitrampa.al_ff59(c, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+            ok(pendientes("callado") == 1, "la misma regla otra vez en la sesión no se repite")
+            antitrampa.al_ff59(c, "R2AT gancho=sala va=0x005AEDD4 bytes=E9_27_12_B4_00_90_6A_07")
+            ok(pendientes("callado") == 2, "otra regla en la misma sesión sí se anota (más evidencia)")
+            r = " ".join(antitrampa.resumen_pendientes())
+            ok("callado" in r and "juego_automatico" in r and "espera" in r, "`.sanciones` la lista, esperando la demora")
+            antitrampa.sancionar_tanda("prueba")
+            ok(pendientes("callado") == 2 and faltas("callado") == 0 and not c.conn.cerrado,
+               "revés: la tanda no sanciona lo de hace un rato")
+            almacen.conectar().execute("UPDATE antitrampa_pendientes SET cuando=datetime('now','localtime','-13 hours')")
+            almacen.conectar().commit()
+            lineas = antitrampa.sancionar_tanda("prueba")
+            ok(any("callado" in x or str(usn) in x for x in lineas), "con la demora cumplida entra en la tanda")
+            ok(faltas("callado") == 1, "dos detecciones en una tanda = UNA falta de la escalera")
+            ok(pendientes("callado") == 0, "y quedan como sancionadas")
+            ok(c.conn.cerrado, "si está conectado, ahí sí se lo saca")
+            ok(any("expulsado" in n for _cmd, n in c.enviados), "y ahí sí se le dice")
+            ok(any("detectado por usar trampas" in n for _cmd, n in otro.enviados), "y sale el anuncio público")
+        finally:
+            salas.CONEXIONES.pop(usn, None)
+            salas.CONEXIONES.pop(6299, None)
+        usn2, _m = basedatos.cuenta_crear("inocente", "D" * 64)
+        antitrampa.al_ff59(jugador(usn2), "R2AT proceso=cheatengine-i386.exe")
+        ok(pendientes("inocente") == 1, "otra detección pendiente")
+        ok("descartada" in " ".join(antitrampa.perdonar_pendientes(str(usn2), "prueba")), "`.sanciones perdonar` la descarta")
+        antitrampa.sancionar_tanda("prueba", ya=True)
+        ok(pendientes("inocente") == 0 and faltas("inocente") == 0, "revés: lo perdonado no se sanciona")
+        lineas = antitrampa.sancionar_tanda("prueba", ya=True)
+        ok("no hay detecciones" in lineas[0], "sin pendientes, la tanda no hace nada")
+    finally:
+        antitrampa.ANTITRAMPA_SILENCIOSO = False
+
+
 def probar_llegadas():
     print("la duración de cada canción se aprende de las llegadas limpias:")
     notas.combo_total_de = lambda cancion: 600
@@ -615,6 +676,7 @@ def main():
         probar_cliente()
         probar_farmeo()
         probar_coordinador()
+        probar_silencioso()
         probar_cartel()
         probar_llegadas()
     finally:

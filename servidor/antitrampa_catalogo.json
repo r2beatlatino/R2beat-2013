@@ -29,7 +29,7 @@
       "id": "expulsar",
       "nombre": "Expulsar",
       "orden": 4,
-      "descripcion": "Escalera: 1.ª fuera, 2.ª fuera con advertencia, 3.ª baneo permanente."
+      "descripcion": "Escalera: 1.ª fuera, 2.ª fuera con advertencia, 3.ª baneo permanente. Con ANTITRAMPA_SILENCIOSO (de fábrica) no es al instante: retiene en silencio y queda pendiente hasta la tanda de un GM (.sanciones aplicar)."
     }
   ],
   "origenes": [
@@ -414,5 +414,22 @@
       "nombre": "Manija de escritura",
       "descripcion": "Un programa tiene abierto el juego con permiso de escribir su memoria o crearle hilos (así trabajan Candy y R2AutoRouteLab, sin inyectarse). El sistema no cuenta."
     }
-  ]
+  ],
+  "silencioso": {
+    "ajuste": "ANTITRAMPA_SILENCIOSO",
+    "demora_ajuste": "ANTITRAMPA_TANDA_DEMORA_H",
+    "tabla": "antitrampa_pendientes",
+    "estados": [
+      "pendiente",
+      "sancionada",
+      "perdonada"
+    ],
+    "comandos": [
+      ".sanciones",
+      ".sanciones aplicar",
+      ".sanciones aplicar ya",
+      ".sanciones perdonar <apodo|usn|cuenta>"
+    ],
+    "descripcion": "Lo que expulsaría no echa a nadie al momento: el jugador no se entera, sus carreras dejan de cobrar y la detección queda pendiente. La escalera se aplica en tanda, una falta por cuenta."
+  }
 }

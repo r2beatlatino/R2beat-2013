@@ -310,6 +310,12 @@ CREATE TABLE IF NOT EXISTS antitrampa_faltas (
 CREATE TABLE IF NOT EXISTS antitrampa_llegadas (
     id INTEGER PRIMARY KEY AUTOINCREMENT, cancion INTEGER NOT NULL, frame INTEGER NOT NULL, cuando TEXT);
 CREATE INDEX IF NOT EXISTS ix_at_llegadas ON antitrampa_llegadas(cancion, id);
+-- ★ 24-nov (antitrampa SILENCIOSO): lo que antes expulsaba al instante queda acá, PENDIENTE, hasta que un GM aplica
+--   la tanda (`.sanciones aplicar`). `estado`: pendiente | sancionada | perdonada. Una fila por sesión del juego.
+CREATE TABLE IF NOT EXISTS antitrampa_pendientes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, usn INTEGER NOT NULL, cuenta TEXT, nick TEXT, regla TEXT NOT NULL,
+    detalle TEXT, cuando TEXT NOT NULL, estado TEXT NOT NULL DEFAULT 'pendiente', resuelta TEXT, quien TEXT);
+CREATE INDEX IF NOT EXISTS ix_at_pendientes ON antitrampa_pendientes(estado, cuando);
 
 CREATE INDEX IF NOT EXISTS ix_inv_uid   ON inventory(uid);
 CREATE INDEX IF NOT EXISTS ix_chars_nk  ON chars(nickname);

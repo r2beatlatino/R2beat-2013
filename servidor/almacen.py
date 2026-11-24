@@ -304,6 +304,42 @@ def antitrampa_anotar_llegada(cancion, frame, guardar=200):
         c.commit()
 
 
+# ★ 24-nov · EL ANTITRAMPA SILENCIOSO: lo que antes expulsaba al instante queda PENDIENTE hasta la tanda de un GM.
+def antitrampa_dejar_pendiente(usn, regla, detalle="", nick=""):
+    """Una detección más, pendiente de sanción. -> (id, cuenta)."""
+    with _lock:
+        c = conectar()
+        cuenta, _ = _ubicacion(c, usn)
+        cur = c.execute("INSERT INTO antitrampa_pendientes (usn, cuenta, nick, regla, detalle, cuando) "
+                        "VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))",
+                        (int(usn), cuenta, nick or "", regla, (detalle or "")[:500]))
+        c.commit()
+        return cur.lastrowid, cuenta
+
+
+def antitrampa_pendientes(demora_h=0):
+    """Las detecciones pendientes con al menos `demora_h` horas, la más vieja primero (filas como dict)."""
+    with _lock:
+        c = conectar()
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM antitrampa_pendientes WHERE estado = 'pendiente' "
+            "AND cuando <= datetime('now', 'localtime', ?) ORDER BY id", (f"-{float(demora_h)} hours",))]
+
+
+def antitrampa_resolver(ids, estado, quien=""):
+    """Marca esas detecciones como `sancionada` o `perdonada`. -> cuántas cambió."""
+    ids = [int(i) for i in ids]
+    if not ids:
+        return 0
+    with _lock:
+        c = conectar()
+        n = c.execute(f"UPDATE antitrampa_pendientes SET estado = ?, resuelta = datetime('now', 'localtime'), "
+                      f"quien = ? WHERE estado = 'pendiente' AND id IN ({','.join('?' * len(ids))})",
+                      (estado, str(quien), *ids)).rowcount
+        c.commit()
+        return n
+
+
 def banear_cuenta(usuario):
     """`BANNED:` delante del `pass_hash` (como siempre: todo login la rechaza; se deshace sacándolo). True si cambió."""
     with _lock:

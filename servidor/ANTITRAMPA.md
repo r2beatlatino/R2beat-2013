@@ -26,6 +26,9 @@ un panel web encima. El catálogo de reglas también está en JSON, listo para e
    (señales de farmeo).
 3. Cada cosa encontrada es una **regla** (§ 4) con una **acción** (§ 5). Todo queda anotado en
    `datos/antitrampa.jsonl` (§ 7), sea cual sea la acción.
+4. ★ 24-nov · **Modo silencioso** (`ANTITRAMPA_SILENCIOSO = True`, de fábrica, § 5b): lo que «expulsa» no echa a
+   nadie al momento. El jugador no se entera; sus carreras dejan de cobrar y la detección queda **pendiente**
+   hasta que un GM aplica la **tanda** de sanciones (`.sanciones aplicar`). Así el tramposo no sabe qué lo delató.
 
 ## 2. Qué revisa la dll
 
@@ -41,9 +44,10 @@ un panel web encima. El catálogo de reglas también está en JSON, listo para e
 | 8 | Procesos de trampas abiertos a la vez que el juego (§ 2.2) | 30 s | `R2AT proceso=<exe>` | `proceso_prohibido` |
 | 9 | Depurador pegado al juego | 5 s | `R2AT depurador=1` | `depurador` |
 
-**El cierre del juego.** Si la revisión 3 encuentra un gancho, la dll manda el aviso, espera a que salga
-(hasta 10 s), muestra el cartel «Ñ2-AntiCheat» y **cierra el juego** (a los 20 s como mucho, aunque
-nadie toque el cartel). `[antitrampa] cerrar=0` en `d3d9_proxy.ini` lo apaga.
+**El cierre del juego** (★ 24-nov: **apagado de fábrica**, por el modo silencioso: la dll sólo informa).
+Con `[antitrampa] cerrar=1` en `d3d9_proxy.ini`, si la revisión 3 encuentra un gancho, la dll manda el aviso,
+espera a que salga (hasta 10 s), muestra el cartel «Ñ2-AntiCheat» y **cierra el juego** (a los 20 s como mucho,
+aunque nadie toque el cartel).
 
 **La pantalla de prevención.** Al abrir el juego la dll muestra «Ñ2-AntiCheat · Verificando el juego… N %»
 abajo a la derecha (`antitrampa_pantalla.bmp` junto a la dll; `pantalla_centro=1` la centra,
@@ -147,7 +151,31 @@ Las acciones se cambian en `ANTITRAMPA_REGLAS` (`ajustes.py`), una por regla.
 | `registrar` | Sólo queda en `antitrampa.jsonl` |
 | `avisar` | Lo anterior + mensaje a los GM conectados |
 | `retener` | Lo anterior + esa carrera no paga EXP ni Rcoin (si es una regla de la dll, ninguna carrera de esa sesión) |
-| `expulsar` | Lo anterior + **la escalera** (§ 6): mensaje al jugador, anuncio público, se corta la conexión |
+| `expulsar` | Lo anterior + **la escalera** (§ 6): mensaje al jugador, anuncio público, se corta la conexión. ★ Con `ANTITRAMPA_SILENCIOSO` (de fábrica): nada de eso al momento, ver § 5b |
+
+### 5b. El modo silencioso y la tanda (24-nov-2026)
+
+Con `ANTITRAMPA_SILENCIOSO = True`, una regla `expulsar`:
+
+1. **No** echa al jugador, **no** le manda ningún mensaje y **no** sale ningún anuncio. La dll tampoco cierra
+   el juego (§ 2). El jugador no tiene forma de saber qué lo detectó, ni cuándo.
+2. Desde ese momento, hasta que cierre el juego, **ninguna carrera le paga** (ni EXP, ni Rcoin, ni récord, ni
+   medallas, ni misiones), igual que `retener`.
+3. Los GM conectados ven `ANTITRAMPA <regla>: <nick> detectado en silencio (premio retenido, sancion pendiente #N)`.
+4. Queda una fila en `antitrampa_pendientes` (§ 7.2c): una por regla distinta y por sesión del juego.
+5. **La tanda**: un GM escribe `.sanciones aplicar` y cada cuenta con detecciones de más de
+   `ANTITRAMPA_TANDA_DEMORA_H` horas (12) recibe **una** falta de la escalera (§ 6), junte las que junte. Si está
+   conectado, ahí sí se lo saca con su mensaje; el anuncio público sale en ese momento. Con el Coordinador, el
+   aviso al Coordinador también sale en la tanda.
+
+| Comando (GM) | Qué hace |
+|---|---|
+| `.sanciones` | Quién tiene detecciones pendientes, qué reglas, desde cuándo y si ya entran en la tanda |
+| `.sanciones aplicar` | La escalera a las que ya esperaron `ANTITRAMPA_TANDA_DEMORA_H` horas |
+| `.sanciones aplicar ya` | La escalera a todas, sin esperar |
+| `.sanciones perdonar <apodo\|usn\|cuenta>` | Descarta sus pendientes (falso positivo): no suman falta |
+
+Con `ANTITRAMPA_SILENCIOSO = False` vuelve la expulsión al instante de siempre.
 
 ## 6. La escalera (las expulsiones, por cuenta)
 
@@ -217,6 +245,24 @@ CREATE TABLE antitrampa_llegadas (
 Sólo entran las llegadas LIMPIAS (sin ninguna marca, carrera suelta, con meta y combo). Quedan las últimas
 200 por canción. Para el panel: `SELECT cancion, COUNT(*), AVG(frame)/60.0 AS segundos FROM antitrampa_llegadas GROUP BY cancion`.
 
+### 7.2c Tabla `antitrampa_pendientes` (modo silencioso, § 5b)
+
+```sql
+CREATE TABLE antitrampa_pendientes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usn INTEGER NOT NULL,               -- el personaje
+    cuenta TEXT,                        -- users.username (la escalera es por cuenta)
+    nick TEXT,
+    regla TEXT NOT NULL,
+    detalle TEXT,
+    cuando TEXT NOT NULL,               -- hora local de la detección
+    estado TEXT NOT NULL DEFAULT 'pendiente',   -- pendiente | sancionada | perdonada
+    resuelta TEXT,                      -- cuándo se aplicó la tanda o se perdonó
+    quien TEXT);                        -- qué GM ('usn N')
+```
+
+La tanda también deja una línea `"accion": "sancion_en_tanda"` en `antitrampa.jsonl` con `faltas` y `baneada`.
+
 ### 7.3 El baneo: `users.pass_hash`
 
 Una cuenta baneada tiene `BANNED:` delante de su `pass_hash` (la marca de siempre del servidor). Todo
@@ -241,6 +287,13 @@ UPDATE users SET pass_hash = 'BANNED:' || pass_hash
  WHERE username = :cuenta AND pass_hash NOT LIKE 'BANNED:%';
 ```
 
+```sql
+-- ★ modo silencioso: las detecciones que esperan la tanda, por cuenta
+SELECT cuenta, COUNT(*) AS detecciones, GROUP_CONCAT(DISTINCT regla) AS reglas, MIN(cuando) AS desde
+FROM antitrampa_pendientes WHERE estado = 'pendiente'
+GROUP BY cuenta ORDER BY desde;
+```
+
 Para el historial, leer `antitrampa.jsonl` línea por línea (filtrar por `usn`, `regla`, `accion` o fecha).
 `usn` → cuenta: `users.uid` (casillero 1) o `cuenta_personajes.uid` (casilleros 2–4).
 
@@ -253,6 +306,8 @@ GM y nunca mostrar `pass_hash`, sólo si empieza con `BANNED:`.
 |---|---|---|
 | `ANTITRAMPA` | `True` | prende o apaga todo |
 | `ANTITRAMPA_REGLAS` | § 4 | la acción de cada regla |
+| `ANTITRAMPA_SILENCIOSO` | `True` | ★ «expulsar» queda pendiente para la tanda (§ 5b); False = al instante |
+| `ANTITRAMPA_TANDA_DEMORA_H` | `12` | horas que espera una detección antes de entrar en la tanda |
 | `ANTITRAMPA_BANEO_EN` | `3` | en qué falta se banea (0 = nunca) |
 | `ANTITRAMPA_BLOQUEO_S` | `0` | segundos sin poder entrar tras una expulsión |
 | `ANTITRAMPA_ANUNCIO_PUBLICO` | `True` | el anuncio a todos (False = sólo a los GM) |
@@ -274,5 +329,5 @@ GM y nunca mostrar `pass_hash`, sólo si empieza con `BANNED:`.
 | `ANTITRAMPA_LENTO_FACTOR` / `_LENTO_MARGEN_S` | `0.85` / `8.0` | reloj lento |
 | `ANTITRAMPA_FF3D0_MIN` | `3` | animaciones tocadas |
 
-En la dll (`d3d9_proxy.ini`, sección `[antitrampa]`): `activo` (1), `cerrar` (1), `pantalla` (1),
+En la dll (`d3d9_proxy.ini`, sección `[antitrampa]`): `activo` (1), `cerrar` (★ 0: no cierra), `pantalla` (1),
 `pantalla_centro` (0).
