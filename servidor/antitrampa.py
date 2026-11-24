@@ -40,6 +40,9 @@ from .ajustes import (
     ANTITRAMPA_LENTO_MARGEN_S,
     ANTITRAMPA_LISTO_DESVIO_S,
     ANTITRAMPA_LISTO_MUESTRAS,
+    ANTITRAMPA_LLEGADA_FACTOR,
+    ANTITRAMPA_LLEGADA_HISTORIA,
+    ANTITRAMPA_LLEGADA_MUESTRAS,
     ANTITRAMPA_MODULOS_PERMITIDOS,
     ANTITRAMPA_MISMA_CANCION,
     ANTITRAMPA_PRECISION_CARRERAS,
@@ -67,15 +70,28 @@ def marcar_salida(conn, ahora=None):
     conn.at_go = time.monotonic() if ahora is None else ahora
 
 
-def marcas_del_cartel(frame, combo, pd, star, combo_total, transcurrido, relevo=False, coop=False):
+def marcas_del_cartel(frame, combo, pd, star, combo_total, transcurrido, relevo=False, coop=False,
+                      milesimas=0, llegadas=None):
     """Las reglas que rompe un reporte `FF28`. `[(regla, detalle), …]`; vacía si está limpio.
 
     `pd` y `star` son los bytes CRUDOS del paquete (antes del tope a 100). `transcurrido` = segundos
-    desde el GO según el server, o `None` si no se sabe. Función pura: no loguea ni avisa.
+    desde el GO según el server, o `None` si no se sabe. `milesimas` = las de la precisión (0..999).
+    `llegadas` = los frame de las últimas llegadas limpias de esa canción (o None). Función pura: no loguea ni avisa.
     """
     marcas = []
     if pd > 100 or star > 100:
         marcas.append(("porcentaje_imposible", f"pd={pd} star={star} (tope 100)"))
+    # ★ 24-nov (el laboratorio: «Precisión personalizada» escribe entero y milésimas): 100.000 es el tope.
+    elif milesimas > 999 or (pd == 100 and milesimas > 0):
+        marcas.append(("precision_imposible", f"precisión {pd}.{milesimas:03d} (tope 100.000)"))
+    # ★ 24-nov («Simular llegada»): la meta se dispara cuando el cliente quiere. El frame cuadra con el reloj del
+    #   server, pero la carrera duró mucho menos que las llegadas limpias de esa canción.
+    if (llegadas and len(llegadas) >= ANTITRAMPA_LLEGADA_MUESTRAS and frame not in (0, FRAME_SIN_META)
+            and not relevo and not coop):
+        normal = statistics.median(llegadas)
+        if frame < normal * ANTITRAMPA_LLEGADA_FACTOR:
+            marcas.append(("llegada_anticipada", f"llegó a la meta en {frame / FPS:.1f} s; esa canción suele tardar "
+                                                 f"{normal / FPS:.1f} s ({frame / max(normal, 1):.0%})"))
     if not coop and combo_total is not None and combo > combo_total:
         marcas.append(("combo_imposible", f"combo {combo} > {combo_total} notas del chart"))
     if transcurrido is not None and frame not in (0, FRAME_SIN_META) and not coop:
@@ -90,7 +106,7 @@ def marcas_del_cartel(frame, combo, pd, star, combo_total, transcurrido, relevo=
     return marcas
 
 
-def juzgar_cartel(st, frame, combo, pd, star, cancion, relevo=False, coop=False, ahora=None):
+def juzgar_cartel(st, frame, combo, pd, star, cancion, relevo=False, coop=False, ahora=None, milesimas=0):
     """Revisa el `FF28` de `st` y actúa según `ANTITRAMPA_REGLAS`. Devuelve True si hay que RETENER el premio."""
     if not ANTITRAMPA:
         return False
@@ -105,16 +121,40 @@ def juzgar_cartel(st, frame, combo, pd, star, cancion, relevo=False, coop=False,
         go = getattr(st, "at_go", None)
         st.at_go = None                       # el próximo FF28 sin GO nuevo no se compara con éste
         transcurrido = None if go is None else (time.monotonic() if ahora is None else ahora) - go
-        marcas = marcas_del_cartel(frame, combo, pd, star, combo_total, transcurrido, relevo, coop)
+        llegadas = _llegadas_de(cancion)
+        marcas = marcas_del_cartel(frame, combo, pd, star, combo_total, transcurrido, relevo, coop,
+                                   milesimas=milesimas, llegadas=llegadas)
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude revisar el FF28 de usn={getattr(st, 'usn', None)}: {e!r}")
         return retener
+    # una llegada limpia (sin ninguna marca, con meta real, carrera suelta) enseña cuánto tarda la canción
+    if not marcas and cancion and frame not in (0, FRAME_SIN_META) and not relevo and not coop and combo > 0:
+        _anotar_llegada(cancion, frame)
     for regla, detalle in marcas:
         retener |= anotar(st, regla, detalle, {"cancion": cancion, "frame": frame, "combo": combo,
                                                "pd": pd, "star": star}) in _QUE_RETIENEN
     retener |= _farmeo_al_cartel(st, cancion, combo, pd, ahora) in _QUE_RETIENEN
     st.at_ultimo = (clave, retener)
     return retener
+
+
+def _llegadas_de(cancion):
+    if not cancion:
+        return None
+    try:
+        from . import almacen
+        return almacen.antitrampa_llegadas(cancion, ANTITRAMPA_LLEGADA_HISTORIA)
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude leer las llegadas de la canción {cancion}: {e!r}")
+        return None
+
+
+def _anotar_llegada(cancion, frame):
+    try:
+        from . import almacen
+        almacen.antitrampa_anotar_llegada(cancion, frame)
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude guardar la llegada de la canción {cancion}: {e!r}")
 
 
 def _revisar_cuenta(st):
@@ -136,7 +176,11 @@ def _revisar_cuenta(st):
 
 
 # Los ganchos que reconocemos (la dll los informa con «gancho=<nombre>»): nombre -> regla.
-_GANCHOS = {"automatico": "juego_automatico", "sala": "sala_automatica", "relevo": "relevo_automatico"}
+_GANCHOS = {"automatico": "juego_automatico", "sala": "sala_automatica", "relevo": "relevo_automatico",
+            # ★ 24-nov: las rutas del laboratorio (INFORME_LABORATORIO.md §4-5)
+            "tick_meta": "juego_automatico", "auto_normal": "juego_automatico", "pd0": "juego_automatico",
+            "larga_a": "juego_automatico", "larga_b": "juego_automatico", "item_auto": "juego_automatico",
+            "resultado": "resultado_alterado", "resultado_solo": "resultado_alterado"}
 
 
 def _va(texto):
@@ -189,7 +233,11 @@ def al_ff59(st, texto):
     elif "hilo" in d:
         anotar(st, "hilo_ajeno", f"un hilo del juego arranca en memoria inyectada ({d['hilo']})", {})
     elif "proceso" in d:
-        anotar(st, "proceso_prohibido", f"tiene abierto {d['proceso']}", {})
+        firma = f" (firma {d['firma']})" if "firma" in d else ""
+        anotar(st, "proceso_prohibido", f"tiene abierto {d['proceso']}{firma}", {})
+    elif "manija" in d:                                    # ★ 24-nov: un programa con permiso de escribir el juego
+        anotar(st, "manija_escritura", f"{d['manija']} tiene abierto el juego con permiso de escribir su memoria "
+                                       f"(acceso {d.get('acceso', '?')})", {})
     else:
         log("TRAMP", f"  ? usn={st.usn}: renglón R2AT que no conozco: {m.group(0)!r}")
     return True

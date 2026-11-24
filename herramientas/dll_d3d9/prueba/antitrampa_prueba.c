@@ -92,6 +92,20 @@ int main(int argc, char **argv)
     wsprintfA(esperado, "gancho=automatico va=0x%08X bytes=E9_11_22_33_44", (DWORD)(g_ajeno + 100));
     ok(cola_tiene(esperado), "el gancho conocido se informa con nombre, al toque (sin esperar dos pasadas)");
     ok(g_at_cerrar_t0 != 0, "y el juego queda marcado para cerrarse (como RBit)");
+    {   /* ★ 24-nov · una ruta del laboratorio: las largas A con 6 NOP */
+        static const BYTE nops[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+        int k = -1;
+        for (int i = 0; i < (int)(sizeof(g_at_ganchos) / sizeof(g_at_ganchos[0])); i++)
+            if (!lstrcmpA(g_at_ganchos[i].nombre, "larga_a")) k = i;
+        ok(k > 0, "la dll vigila «larga_a» (las rutas del laboratorio)");
+        if (k > 0) {
+            g_at_ganchos[k].rva = (DWORD)(g_ajeno + 200) - 0x400000;
+            ok(escribir_por_fuera(g_ajeno + 200, nops, 6), "pongo los 6 NOP de las largas A, como el lab");
+            at_revisar_ganchos();
+            wsprintfA(esperado, "gancho=larga_a va=0x%08X bytes=90_90_90_90_90_90", (DWORD)(g_ajeno + 200));
+            ok(cola_tiene(esperado), "se informa como «larga_a»");
+        }
+    }
     at_revisar_codigo();
     ok(!cola_tiene("codigo="), "una sola pasada distinta todavía no se informa");
     at_revisar_codigo();
@@ -150,6 +164,29 @@ int main(int argc, char **argv)
         Sleep(300);
         at_revisar_procesos();
         ok(cola_tiene("proceso=cheatengine_prueba.exe"), "un proceso de trampas abierto se informa");
+        /* ★ 24-nov · los programas externos (Candy): nosotros tenemos al hijo abierto con permiso de escribir */
+        ok(!cola_tiene("manija="), "revés: antes de mirar las manijas no se informa ninguna");
+        ok(at_revisar_manijas_de(pi.dwProcessId) >= 1 && cola_tiene("manija=antitrampa_prueba.exe"),
+           "quien tiene abierto el proceso con permiso de escribir se informa (como Candy)");
+        ok(at_revisar_manijas_de(pi.dwProcessId) == 0, "y una sola vez por programa");
+        {   /* la firma por md5: renombrado no se escapa */
+            static char md5_hijo[33];
+            char guardado[33];
+            DWORD tam = 0;
+            BYTE *b = at_leer_archivo(argv[2], &tam);
+            lstrcpyA(guardado, g_at_md5);
+            if (b) { at_md5(b, tam); lstrcpyA(md5_hijo, g_at_md5); HeapFree(GetProcessHeap(), 0, b); }
+            lstrcpyA(g_at_md5, guardado);
+            at_revisar_firmas();
+            ok(!cola_tiene("firma="), "revés: sin la firma en la lista no se informa ningún exe");
+            g_at_npids_firma = 0;
+            g_at_md5_prohibidos[1] = md5_hijo;
+            g_at_firma_cualquier_tam = 1;
+            at_revisar_firmas();
+            ok(cola_tiene("proceso=cheatengine_prueba.exe firma=md5_"), "un exe con md5 prohibido se informa por su firma");
+            g_at_md5_prohibidos[1] = NULL;
+            g_at_firma_cualquier_tam = 0;
+        }
         TerminateProcess(pi.hProcess, 0);
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);

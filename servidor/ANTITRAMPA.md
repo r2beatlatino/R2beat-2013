@@ -56,10 +56,33 @@ abajo a la derecha (`antitrampa_pantalla.bmp` junto a la dll; `pantalla_centro=1
 | `automatico` | `0x005080B5` (R2Beat.exe+0x1080B5) | `6A 00 8D 44 24` | «Juego automático» (con Azar / Precisión) | `juego_automatico` |
 | `sala` | `0x005AEDD4` (+0x1AEDD4) | `8B 0D D4 14 93 00` | «Auto Listo / Inicio», «Anfitrión: al azar», «Misma canción» | `sala_automatica` |
 | `relevo` | `0x00505340` (+0x105340) | (el gancho de relevo de nuestra dll) | «Auto Relevo» — con nuestra dll Ñ2Hock no lo puede poner | `relevo_automatico` |
+| `tick_meta` | `0x0050A170` (+0x10A170) | (los de fábrica) | Lab: «Automático Normal» y «Simular llegada» | `juego_automatico` |
+| `auto_normal` | `0x00509130` (+0x109130) | (los de fábrica) | Lab: auxiliar del «Automático Normal» | `juego_automatico` |
+| `pd0` | `0x005003D0` (+0x1003D0) | (los de fábrica) | Lab: «Automático PD0 silencioso» (la consulta del ítem devuelve activo) | `juego_automatico` |
+| `larga_a` | `0x005060B5` (+0x1060B5) | `0F 85 DC 00 00 00` | Lab: las largas A se juegan solas (6 NOP) | `juego_automatico` |
+| `larga_b` | `0x005064F6` (+0x1064F6) | `0F 85 E2 00 00 00` | Lab: las largas B se juegan solas (6 NOP) | `juego_automatico` |
+| `item_auto` | `0x0050CAB6` (+0x10CAB6) | `FF 8E 34 03 00 00` | Lab: el activador del ítem automático 1000659 | `juego_automatico` |
+| `resultado` | `0x00501458` (+0x101458) | (los de fábrica) | Lab: «Precisión / Combo personalizados» en el FF28 | `resultado_alterado` |
+| `resultado_solo` | `0x005C887B` (+0x1C887B) | (los de fábrica) | Lab: precisión personalizada en Juego Solo | `resultado_alterado` |
+
+Las de «Lab» salen de `INFORME_LABORATORIO.md` (R2AutoRouteLab2013, 24-nov-2026). Ni nuestra dll ni las
+funciones permitidas de Ñ2Hock tocan esas direcciones: si cambian, es una trampa. La dll compara con los
+bytes que tenía el exe al cargarse.
 
 Con la casilla desmarcada los bytes vuelven a los originales: **usar Ñ2Hock sin sus funciones
 automáticas no se detecta como trampa**. Una dll vieja (sin `gancho=`) los manda como `codigo=` con esa
 misma dirección, y el server los reconoce igual (`ANTITRAMPA_GANCHOS` en `ajustes.py`).
+
+### 2.1b Programas externos (INFORME_DEFENSA_CANDY0503.md, 24-nov-2026)
+
+Candy («一颗糖», `Candy0503.exe`, md5 `09f983f84a55e77a4b4c5c0fe5bcf79f`) dice «no necesita inyectarse»: abre el
+juego y escribe su memoria desde afuera. La dll lo mira de tres formas:
+
+| Qué | Cada cuánto | Renglón | Regla |
+|---|---|---|---|
+| El nombre del proceso (`candy`, `r2autoroutelab` en la lista de § 2.2) | 30 s | `R2AT proceso=<exe>` | `proceso_prohibido` |
+| La firma del exe aunque lo renombren: VersionInfo `ProductName`/`FileDescription` «Candy…», o el md5 (sólo si el tamaño es el de una muestra conocida) | 30 s, una vez por proceso | `R2AT proceso=<exe> firma=<producto_candy\|descripcion_candy\|md5_xxxxxxxx>` | `proceso_prohibido` |
+| Quién tiene abierto el juego con permiso de **escribir** su memoria o **crearle hilos** (tabla de handles del sistema; csrss, lsass, svchost, Defender… no cuentan) | 30 s, una vez por programa | `R2AT manija=<exe> acceso=0x<permisos>` | `manija_escritura` |
 
 ### 2.2 Nombres que se buscan
 
@@ -85,11 +108,15 @@ valor). Los bytes van como hex separados por `_`: `E9_46_81_A9_03_90_90_6A`. El 
 | `juego_automatico` | expulsar | dll | El «juego automático» de Ñ2Hock/ToolBit (gancho `automatico`) |
 | `sala_automatica` | expulsar | dll | Auto Listo / Inicio, Anfitrión al azar o Misma canción (gancho `sala`) |
 | `relevo_automatico` | expulsar | dll | Alguien pisó el gancho del relevo (Auto Relevo) |
+| `resultado_alterado` | expulsar | dll | El armado del resultado (FF28 o Juego Solo) reescrito: precisión o combo personalizados |
 | `modulo_prohibido` | expulsar | dll | Tiene cargado un módulo de trampas (ToolBit, R2Mods, Cheat Engine…) |
 | `proceso_prohibido` | expulsar | dll | Tiene abierto un programa de trampas |
 | `farmeo` | expulsar | farmeo | Dos o más señales de farmeo distintas en la misma sesión (`ANTITRAMPA_FARMEO_SENALES`) |
 | `combo_imposible` | retener | cartel | Más combo que notas tiene la canción |
 | `porcentaje_imposible` | retener | cartel | PD o estrellas por encima de 100 |
+| `precision_imposible` | retener | cartel | Milésimas > 999, o 100 % con milésimas (el tope es 100.000) |
+| `manija_escritura` | registrar | dll | Un programa tiene abierto el juego con permiso de escribir su memoria (Candy, R2AutoRouteLab: no se inyectan). El sistema no cuenta |
+| `llegada_anticipada` | avisar | cartel | Llegó a la meta en menos del 75 % de lo que tarda esa canción (mediana de sus llegadas limpias): «Simular llegada» |
 | `codigo_modificado` | avisar | dll | El exe fue tocado desde afuera (otros parches de Ñ2Hock: far, teclado…) |
 | `codigo_previo` | avisar | dll | El exe ya estaba tocado antes de que arrancara la dll |
 | `reloj_rapido` | avisar | cartel | El reloj del juego corrió más que el tiempo real desde el GO (speedhack) |
@@ -177,6 +204,19 @@ CREATE TABLE antitrampa_faltas (
     ultima TEXT);                       -- cuándo (hora local, 'YYYY-MM-DD HH:MM:SS')
 ```
 
+### 7.2b Tabla `antitrampa_llegadas` (cuánto tarda cada canción)
+
+```sql
+CREATE TABLE antitrampa_llegadas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cancion INTEGER NOT NULL,           -- el id de la canción
+    frame INTEGER NOT NULL,             -- en qué cuadro llegó (60 por segundo)
+    cuando TEXT);                       -- hora local
+```
+
+Sólo entran las llegadas LIMPIAS (sin ninguna marca, carrera suelta, con meta y combo). Quedan las últimas
+200 por canción. Para el panel: `SELECT cancion, COUNT(*), AVG(frame)/60.0 AS segundos FROM antitrampa_llegadas GROUP BY cancion`.
+
 ### 7.3 El baneo: `users.pass_hash`
 
 Una cuenta baneada tiene `BANNED:` delante de su `pass_hash` (la marca de siempre del servidor). Todo
@@ -220,6 +260,9 @@ GM y nunca mostrar `pass_hash`, sólo si empieza con `BANNED:`.
 | `ANTITRAMPA_GANCHOS` | § 2.1 | dirección → nombre del gancho |
 | `ANTITRAMPA_EXE_MD5` | 2 md5 | los R2Beat.exe aceptados |
 | `ANTITRAMPA_FARMEO_SENALES` | `2` | señales distintas para «farmeo» |
+| `ANTITRAMPA_LLEGADA_MUESTRAS` | `5` | llegadas limpias guardadas antes de juzgar «llegada_anticipada» |
+| `ANTITRAMPA_LLEGADA_HISTORIA` | `30` | cuántas de las últimas se usan para la mediana |
+| `ANTITRAMPA_LLEGADA_FACTOR` | `0.75` | debajo de este tanto de la mediana, marca |
 | `ANTITRAMPA_LISTO_MUESTRAS` / `_LISTO_DESVIO_S` | `8` / `0.25` | listo automático |
 | `ANTITRAMPA_SIN_HABLAR` | `40` | carreras sin chat |
 | `ANTITRAMPA_MISMA_CANCION` | `15` | carreras con la misma canción |
