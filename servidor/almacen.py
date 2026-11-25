@@ -305,6 +305,21 @@ def antitrampa_llegadas(cancion, n, excluir=None):
         return [int(r["frame"]) for r in filas]
 
 
+def antitrampa_llegadas_filas(cancion, n, excluir=None):
+    """Como `antitrampa_llegadas` pero `[(frame, cuenta), …]`: hace falta saber de cuántas cuentas distintas sale la
+    vara (antitrampa: un alt solo no la puede fijar). `cuenta` es None en las llegadas viejas."""
+    with _lock:
+        c = conectar()
+        if excluir is None:
+            filas = c.execute("SELECT frame, cuenta FROM antitrampa_llegadas WHERE cancion = ? ORDER BY id DESC LIMIT ?",
+                              (int(cancion), int(n)))
+        else:
+            filas = c.execute("SELECT frame, cuenta FROM antitrampa_llegadas WHERE cancion = ? "
+                              "AND (cuenta IS NULL OR cuenta <> ?) ORDER BY id DESC LIMIT ?",
+                              (int(cancion), str(excluir), int(n)))
+        return [(int(r["frame"]), r["cuenta"]) for r in filas]
+
+
 def antitrampa_anotar_llegada(cancion, frame, cuenta=None, guardar=200):
     """Una llegada limpia más de `cancion`, con la cuenta de quién fue. Por canción quedan las últimas `guardar`."""
     with _lock:

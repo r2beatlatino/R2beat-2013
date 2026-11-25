@@ -5517,6 +5517,10 @@ ANTITRAMPA_REGLAS.update({
 ANTITRAMPA_LLEGADA_MUESTRAS = 5
 ANTITRAMPA_LLEGADA_HISTORIA = 30
 ANTITRAMPA_LLEGADA_FACTOR = 0.75
+#   La vara de una canción sólo es de fiar si la pusieron al menos CUENTAS cuentas DISTINTAS (sin contar al juzgado):
+#   si no, un alt solo podría sembrarla para su cuenta principal. Las llegadas viejas sin cuenta (NULL, de antes de
+#   guardarla) se aceptan como antes mientras no haya ninguna con cuenta; se van renovando solas.
+ANTITRAMPA_LLEGADA_CUENTAS = 2
 ANTITRAMPA_REGLAS["relevo_automatico"] = "expulsar"
 
 # ── ★ ANTITRAMPA DEL FARMEO (`antitrampa.py`, «señales de farmeo») ─────────────────────────────────────

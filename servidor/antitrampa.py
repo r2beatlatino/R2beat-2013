@@ -40,6 +40,7 @@ from .ajustes import (
     ANTITRAMPA_LENTO_MARGEN_S,
     ANTITRAMPA_LISTO_DESVIO_S,
     ANTITRAMPA_LISTO_MUESTRAS,
+    ANTITRAMPA_LLEGADA_CUENTAS,
     ANTITRAMPA_LLEGADA_FACTOR,
     ANTITRAMPA_LLEGADA_HISTORIA,
     ANTITRAMPA_LLEGADA_MUESTRAS,
@@ -151,12 +152,22 @@ def _cuenta_de(st):
         return None
 
 
+def vara_de_fiar(filas):
+    """De las llegadas `[(frame, cuenta), …]` (ya sin las del juzgado), los `frame` con los que se le puede juzgar, o
+    `[]` si la vara no es de fiar: con llegadas con cuenta, tienen que salir de al menos LLEGADA_CUENTAS cuentas
+    distintas (un alt solo no la fija). Sólo llegadas viejas sin cuenta: se aceptan como antes. Función pura."""
+    cuentas = {cuenta for _frame, cuenta in filas if cuenta}
+    if cuentas and len(cuentas) < ANTITRAMPA_LLEGADA_CUENTAS:
+        return []
+    return [frame for frame, _cuenta in filas]
+
+
 def _llegadas_de(cancion, excluir=None):
     if not cancion:
         return None
     try:
         from . import almacen
-        return almacen.antitrampa_llegadas(cancion, ANTITRAMPA_LLEGADA_HISTORIA, excluir=excluir)
+        return vara_de_fiar(almacen.antitrampa_llegadas_filas(cancion, ANTITRAMPA_LLEGADA_HISTORIA, excluir=excluir))
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude leer las llegadas de la canción {cancion}: {e!r}")
         return None

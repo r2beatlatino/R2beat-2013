@@ -675,16 +675,19 @@ def probar_mediana_envenenable():
     CANCION = 5555
     honesto_usn, honesto = almacen.asegurar_cuenta_uid(20000001)
     tramposo_usn, tramposo = almacen.asegurar_cuenta_uid(20000002)
-    # el honesto deja 5 llegadas limpias de ~120 s (7200 frames)
-    for f in (7200, 7250, 7180, 7300, 7220):
+    _otro_usn, otro = almacen.asegurar_cuenta_uid(20000003)
+    # dos jugadores honestos dejan 5 llegadas limpias de ~120 s (7200 frames): la vara sale de 2 cuentas distintas
+    for f in (7200, 7250, 7180):
         almacen.antitrampa_anotar_llegada(CANCION, f, cuenta=honesto)
+    for f in (7300, 7220):
+        almacen.antitrampa_anotar_llegada(CANCION, f, cuenta=otro)
     # el tramposo siembra 20 «llegadas» rápidas (3500) bajo SU cuenta para bajar la vara
     for _ in range(20):
         almacen.antitrampa_anotar_llegada(CANCION, 3500, cuenta=tramposo)
     ok(statistics.median(almacen.antitrampa_llegadas(CANCION, 30)) < 4000,
        "contando las suyas la mediana queda envenenada (<40 s) — así se colaba antes")
     suyas = almacen.antitrampa_llegadas(CANCION, 30, excluir=tramposo)
-    ok(len(suyas) == 5 and all(f >= 7000 for f in suyas), "al tramposo se le juzga solo con las 5 del honesto")
+    ok(len(suyas) == 5 and all(f >= 7000 for f in suyas), "al tramposo se le juzga solo con las 5 de los honestos")
     m = antitrampa.marcas_del_cartel(3600, 500, 90, 0, 2000, 60.0, llegadas=suyas)
     ok([r for r, _ in m] == ["llegada_anticipada"], "su llegada de 60 s se caza pese a las 20 que sembró")
     # end to end por juzgar_cartel: saca la cuenta del usn y excluye las del propio tramposo
@@ -705,7 +708,23 @@ def probar_mediana_envenenable():
     con = almacen.conectar()
     n_honesto = con.execute("SELECT COUNT(*) FROM antitrampa_llegadas WHERE cancion=? AND cuenta=?",
                             (CANCION, honesto)).fetchone()[0]
-    ok(n_honesto == 6, "la llegada nueva se guardó con la cuenta del honesto")
+    ok(n_honesto == 4, "la llegada nueva se guardó con la cuenta del honesto")
+
+    print("la vara sólo es de fiar si la pusieron varias cuentas distintas:")
+    v = antitrampa.vara_de_fiar
+    ok(v([(7200, "alt")] * 6) == [], "un alt solo, aunque deje 6 llegadas, no pone la vara")
+    ok(v([(7200, "a")] * 3 + [(7300, "b")] * 2) == [7200, 7200, 7200, 7300, 7300], "dos cuentas distintas sí")
+    ok(v([(7200, None)] * 5) == [7200] * 5, "sólo llegadas viejas sin cuenta: como antes")
+    ok(v([(7200, None)] * 4 + [(3500, "alt")]) == [], "un alt no se esconde detrás de las viejas")
+    # end to end: canción que sólo jugó UNA cuenta → no se juzga con esa vara (podría ser un alt del tramposo)
+    for f in (7200, 7250, 7180, 7300, 7220):
+        almacen.antitrampa_anotar_llegada(6666, f, cuenta=otro)
+    c3 = jugador(tramposo_usn)
+    antes = len(marcas_guardadas())
+    c3.at_ultimo = None
+    antitrampa.marcar_salida(c3, ahora=50000.0)
+    antitrampa.juzgar_cartel(c3, 3600, 500, 90, 0, 6666, ahora=50061.0)
+    ok(len(marcas_guardadas()) == antes, "con la vara de una sola cuenta no marca (el suelo del chart cubrirá esto)")
 
 
 def main():
