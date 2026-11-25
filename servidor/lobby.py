@@ -28,6 +28,7 @@ import threading
 import time                              # ⚠ lo usa el resumen por minuto del FF3D (handle_inner)
 from . import gacha
 from . import antitrampa
+from . import multicuenta                 # ★ 25-nov: tope de cuentas a la vez por IP (farmeo con varias cuentas)
 from . import autoplay_gm
 from . import nombre_publico             # ★ 14-nov: la IP que se anuncia en los canales, sacada del DNS (si hay nombre)
 from . import notas
@@ -1216,6 +1217,17 @@ def handle_lobby(conn, addr):
                         #   todavía apunta a la VIEJA y se la puede limpiar con sus propios datos.
                         #   Si se llamara después, el registro ya estaría pisado y estaríamos
                         #   limpiando la sala de la nueva. Ver `echar_sesion_anterior`.
+                        # ★ MULTICUENTA: tope de cuentas a la vez por IP (programas que abren varias para
+                        #   farmear). Va ANTES de echar y registrar: si no entra, no se toca la sesión de nadie.
+                        #   `reemplazada` hace que el `finally` de abajo no limpie nada compartido: esta
+                        #   conexión nunca se sentó ni se registró (y su `usn` podría ser de otra sesión).
+                        if multicuenta.rechazar_por_tope(st, _u):
+                            st.reemplazada = True
+                            try:
+                                conn.shutdown(socket.SHUT_RDWR)
+                            except OSError:
+                                pass
+                            return
                         echar_sesion_anterior(_u, st)
                         registrar_conexion(st)
                         # ★★★★★ Y ACÁ SE CIERRA EL LOGIN DE ESTE JUGADOR — LA SEÑAL, NO EL RELOJ.
