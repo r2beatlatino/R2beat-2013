@@ -27,6 +27,10 @@ sys.path.insert(0, RAIZ)
 from servidor import antitrampa, notas          # noqa: E402
 
 FALLAS = []
+# ★ 25-nov: el suelo del chart (llegada_imposible) se prueba aparte, en `probar_suelo_chart`. Acá queda APAGADO: los
+#   charts no están en el repo (en el CI no hay ninguno) y en una PC con charts las canciones de las pruebas de
+#   siempre (77+i, 4242…) tendrían suelo y darían distinto que en el CI.
+notas.duracion_minima_de = lambda cancion: None
 # ★ 24-nov: el server viene en modo SILENCIOSO (sanciona en tanda). Las pruebas de siempre son del modo de antes
 #   (expulsión al instante); el silencioso tiene la suya, `probar_silencioso`.
 antitrampa.ANTITRAMPA_SILENCIOSO = False
@@ -727,6 +731,51 @@ def probar_mediana_envenenable():
     ok(len(marcas_guardadas()) == antes, "con la vara de una sola cuenta no marca (el suelo del chart cubrirá esto)")
 
 
+def probar_suelo_chart():
+    print("el suelo del chart caza la llegada imposible aunque la canción no tenga historia:")
+    import zlib
+    from servidor import almacen
+
+    def chart(bpms, coords):
+        cab = struct.pack("<i", len(bpms)) + b"".join(struct.pack("<if", marca, bpm) for marca, bpm in bpms)
+        return cab + zlib.compress(b"".join(struct.pack("<HBBH", c, 1, 1, 0) for c in coords))
+
+    d = notas.duracion_minima_chart
+    ok(d(chart([(0, 120.0)], [12, 1440, 2880])) == 120.0, "2880 doceavos a 120 BPM = 240 pulsos = 120 s")
+    ok(d(chart([(0, 120.0), (100, 240.0)], [2880])) == 60.0, "con varios BPM se usa el más rápido (lo más corto)")
+    ok(d(b"\x00\x01") is None and d(chart([(0, 120.0)], [])) is None, "un chart roto o sin notas no da suelo")
+    m = antitrampa.marcas_del_cartel
+    ok(reglas(m(600, 200, 95, 80, 600, 10.0, duracion_min=120.0)) == ["llegada_imposible"],
+       "llegar en 10 s a una canción de 120 s es imposible (simular llegada)")
+    ok(reglas(m(600, 200, 95, 80, 600, 10.0, llegadas=[7200] * 5, duracion_min=120.0)) == ["llegada_imposible"],
+       "si es imposible no se suma también la anticipada (una sola marca)")
+    ok(m(4200, 500, 95, 80, 600, 70.0, duracion_min=120.0) == [], "revés: 70 s sobre 120 s es rápida, no imposible")
+    ok(m(600, 200, 95, 80, 600, 10.0, relevo=True, duracion_min=120.0) == [], "relevo: no se juzga")
+    ok(m(600, 200, 95, 80, 600, 10.0, coop=True, duracion_min=120.0) == [], "cooperativo: no se juzga")
+    ok(m(600, 200, 95, 80, 600, 10.0, duracion_min=None) == [], "sin chart conocido (ni historia) no hay suelo")
+    ok(m(0xFFFFFFFF, 200, 95, 80, 600, 10.0, duracion_min=120.0) == [], "sin meta (no llegó) no es llegada imposible")
+    # end to end: canción SIN historia, con suelo de 120 s
+    antes_dur = notas.duracion_minima_de
+    notas.duracion_minima_de = lambda cancion: 120.0 if cancion == 7777 else None
+    try:
+        usn, _cuenta = almacen.asegurar_cuenta_uid(20000009)
+        c = jugador(usn)
+        antes = len(marcas_guardadas())
+        c.at_ultimo = None
+        antitrampa.marcar_salida(c, ahora=60000.0)
+        antitrampa.juzgar_cartel(c, 600, 200, 95, 80, 7777, ahora=60011.0)
+        ok(len(marcas_guardadas()) == antes + 1 and marcas_guardadas()[-1]["regla"] == "llegada_imposible",
+           "por juzgar_cartel: llegada de 10 s en una canción nueva queda marcada")
+        ok(len(almacen.antitrampa_llegadas(7777, 30)) == 0, "y no se guarda como llegada normal")
+        c.at_ultimo = None
+        antitrampa.marcar_salida(c, ahora=70000.0)
+        retener = antitrampa.juzgar_cartel(c, 6900, 500, 95, 80, 7777, ahora=70000.0 + 6900 / 60 + 1)
+        ok(not retener and len(marcas_guardadas()) == antes + 1, "revés: una llegada normal de 115 s no marca")
+        ok(len(almacen.antitrampa_llegadas(7777, 30)) == 1, "y esa sí se guarda")
+    finally:
+        notas.duracion_minima_de = antes_dur
+
+
 def main():
     try:
         probar_catalogo()
@@ -740,6 +789,7 @@ def main():
         probar_cartel()
         probar_llegadas()
         probar_mediana_envenenable()
+        probar_suelo_chart()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)
     if FALLAS:

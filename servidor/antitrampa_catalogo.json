@@ -407,6 +407,14 @@
       "descripcion": "Llegó a la meta mucho antes de lo que tarda esa canción (menos del 75 % de la mediana de sus llegadas limpias): «Simular llegada»."
     },
     {
+      "id": "llegada_imposible",
+      "accion": "avisar",
+      "origen": "cartel",
+      "gravedad": 3,
+      "nombre": "Llegada imposible",
+      "descripcion": "Llegó a la meta en menos de la mitad de lo que dura como poco su canción según el chart (última nota con su BPM más rápido): «Simular llegada», aunque la canción no tenga historia."
+    },
+    {
       "id": "manija_escritura",
       "accion": "registrar",
       "origen": "dll",
