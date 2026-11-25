@@ -316,6 +316,15 @@ CREATE TABLE IF NOT EXISTS antitrampa_pendientes (
     id INTEGER PRIMARY KEY AUTOINCREMENT, usn INTEGER NOT NULL, cuenta TEXT, nick TEXT, regla TEXT NOT NULL,
     detalle TEXT, cuando TEXT NOT NULL, estado TEXT NOT NULL DEFAULT 'pendiente', resuelta TEXT, quien TEXT);
 CREATE INDEX IF NOT EXISTS ix_at_pendientes ON antitrampa_pendientes(estado, cuando);
+-- ★ 25-nov · LA MÁQUINA (`maquina.py`): desde qué PC entró cada cuenta. `huella` es un HMAC de la MAC con una clave
+--   del server, NUNCA la MAC. Se olvida a los `MAQUINA_GUARDAR_DIAS` sin verla. `maquinas_baneadas`: las PC de las
+--   cuentas baneadas (`BANEO_POR_MAQUINA`); perdonar = borrar la fila (`.maquina perdonar <apodo>`).
+CREATE TABLE IF NOT EXISTS maquinas (
+    huella TEXT NOT NULL, cuenta TEXT NOT NULL, primera TEXT NOT NULL, ultima TEXT NOT NULL, veces INTEGER DEFAULT 1,
+    PRIMARY KEY (huella, cuenta));
+CREATE INDEX IF NOT EXISTS ix_maquinas_cuenta ON maquinas(cuenta);
+CREATE TABLE IF NOT EXISTS maquinas_baneadas (
+    huella TEXT PRIMARY KEY, cuenta TEXT, motivo TEXT, cuando TEXT NOT NULL);
 
 CREATE INDEX IF NOT EXISTS ix_inv_uid   ON inventory(uid);
 CREATE INDEX IF NOT EXISTS ix_chars_nk  ON chars(nickname);

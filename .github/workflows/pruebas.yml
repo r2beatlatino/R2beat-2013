@@ -33,6 +33,9 @@ jobs:
       - name: multicuenta (tope de cuentas conectadas a la vez por IP)
         run: python pruebas/probar_multicuenta.py
 
+      - name: máquina (huella de la PC, baneo y tope por PC, la MAC no se guarda)
+        run: python pruebas/probar_maquina.py
+
       - name: nada prohibido (bases, cuentas, paks, IPs, rutas personales)
         run: python pruebas/probar_nada_prohibido.py
 
