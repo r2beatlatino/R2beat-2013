@@ -123,7 +123,8 @@ def juzgar_cartel(st, frame, combo, pd, star, cancion, relevo=False, coop=False,
         go = getattr(st, "at_go", None)
         st.at_go = None                       # el próximo FF28 sin GO nuevo no se compara con éste
         transcurrido = None if go is None else (time.monotonic() if ahora is None else ahora) - go
-        llegadas = _llegadas_de(cancion)
+        cuenta = _cuenta_de(st)               # para no juzgarlo con sus propias llegadas (mediana envenenable)
+        llegadas = _llegadas_de(cancion, excluir=cuenta)
         marcas = marcas_del_cartel(frame, combo, pd, star, combo_total, transcurrido, relevo, coop,
                                    milesimas=milesimas, llegadas=llegadas)
     except Exception as e:                    # noqa: BLE001
@@ -131,7 +132,7 @@ def juzgar_cartel(st, frame, combo, pd, star, cancion, relevo=False, coop=False,
         return retener
     # una llegada limpia (sin ninguna marca, con meta real, carrera suelta) enseña cuánto tarda la canción
     if not marcas and cancion and frame not in (0, FRAME_SIN_META) and not relevo and not coop and combo > 0:
-        _anotar_llegada(cancion, frame)
+        _anotar_llegada(cancion, frame, cuenta)
     for regla, detalle in marcas:
         retener |= anotar(st, regla, detalle, {"cancion": cancion, "frame": frame, "combo": combo,
                                                "pd": pd, "star": star}) in _QUE_RETIENEN
@@ -140,21 +141,31 @@ def juzgar_cartel(st, frame, combo, pd, star, cancion, relevo=False, coop=False,
     return retener
 
 
-def _llegadas_de(cancion):
+def _cuenta_de(st):
+    """La CUENTA (username) del jugador, para no juzgarlo con sus propias llegadas. None si no se sabe."""
+    try:
+        from . import almacen
+        return almacen.cuenta_de_uid(getattr(st, "usn", None))[0]
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude ubicar la cuenta de usn={getattr(st, 'usn', None)}: {e!r}")
+        return None
+
+
+def _llegadas_de(cancion, excluir=None):
     if not cancion:
         return None
     try:
         from . import almacen
-        return almacen.antitrampa_llegadas(cancion, ANTITRAMPA_LLEGADA_HISTORIA)
+        return almacen.antitrampa_llegadas(cancion, ANTITRAMPA_LLEGADA_HISTORIA, excluir=excluir)
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude leer las llegadas de la canción {cancion}: {e!r}")
         return None
 
 
-def _anotar_llegada(cancion, frame):
+def _anotar_llegada(cancion, frame, cuenta=None):
     try:
         from . import almacen
-        almacen.antitrampa_anotar_llegada(cancion, frame)
+        almacen.antitrampa_anotar_llegada(cancion, frame, cuenta=cuenta)
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude guardar la llegada de la canción {cancion}: {e!r}")
 

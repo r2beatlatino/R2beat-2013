@@ -667,6 +667,47 @@ def probar_llegadas():
        "Candy renombrado lo caza la firma: proceso_prohibido")
 
 
+def probar_mediana_envenenable():
+    print("la mediana de llegadas no se envenena con las carreras del propio jugador:")
+    import statistics
+    from servidor import almacen
+    notas.combo_total_de = lambda cancion: 2000
+    CANCION = 5555
+    honesto_usn, honesto = almacen.asegurar_cuenta_uid(20000001)
+    tramposo_usn, tramposo = almacen.asegurar_cuenta_uid(20000002)
+    # el honesto deja 5 llegadas limpias de ~120 s (7200 frames)
+    for f in (7200, 7250, 7180, 7300, 7220):
+        almacen.antitrampa_anotar_llegada(CANCION, f, cuenta=honesto)
+    # el tramposo siembra 20 «llegadas» rápidas (3500) bajo SU cuenta para bajar la vara
+    for _ in range(20):
+        almacen.antitrampa_anotar_llegada(CANCION, 3500, cuenta=tramposo)
+    ok(statistics.median(almacen.antitrampa_llegadas(CANCION, 30)) < 4000,
+       "contando las suyas la mediana queda envenenada (<40 s) — así se colaba antes")
+    suyas = almacen.antitrampa_llegadas(CANCION, 30, excluir=tramposo)
+    ok(len(suyas) == 5 and all(f >= 7000 for f in suyas), "al tramposo se le juzga solo con las 5 del honesto")
+    m = antitrampa.marcas_del_cartel(3600, 500, 90, 0, 2000, 60.0, llegadas=suyas)
+    ok([r for r, _ in m] == ["llegada_anticipada"], "su llegada de 60 s se caza pese a las 20 que sembró")
+    # end to end por juzgar_cartel: saca la cuenta del usn y excluye las del propio tramposo
+    c = jugador(tramposo_usn)
+    antes = len(marcas_guardadas())
+    c.at_ultimo = None
+    antitrampa.marcar_salida(c, ahora=30000.0)
+    antitrampa.juzgar_cartel(c, 3600, 500, 90, 0, CANCION, ahora=30061.0)
+    ok(len(marcas_guardadas()) == antes + 1 and marcas_guardadas()[-1]["regla"] == "llegada_anticipada",
+       "y por juzgar_cartel (cuenta sacada del usn) también se caza")
+    # revés: una carrera normal del honesto no se retiene
+    c2 = jugador(honesto_usn)
+    c2.at_ultimo = None
+    antitrampa.marcar_salida(c2, ahora=40000.0)
+    retener = antitrampa.juzgar_cartel(c2, 7100, 500, 90, 0, CANCION, ahora=40000.0 + 7100 / 60 + 1)
+    ok(not retener, "revés: una carrera normal del honesto sí cobra")
+    # la llegada del honesto quedó guardada bajo SU cuenta (no la del tramposo)
+    con = almacen.conectar()
+    n_honesto = con.execute("SELECT COUNT(*) FROM antitrampa_llegadas WHERE cancion=? AND cuenta=?",
+                            (CANCION, honesto)).fetchone()[0]
+    ok(n_honesto == 6, "la llegada nueva se guardó con la cuenta del honesto")
+
+
 def main():
     try:
         probar_catalogo()
@@ -679,6 +720,7 @@ def main():
         probar_silencioso()
         probar_cartel()
         probar_llegadas()
+        probar_mediana_envenenable()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)
     if FALLAS:
