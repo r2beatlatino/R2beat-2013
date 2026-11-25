@@ -57,6 +57,8 @@ jobs:
           echo "ZIG=$RUNNER_TEMP/zig-x86_64-linux-0.16.0/zig" >> "$GITHUB_ENV"
       - name: el fuente da EXACTO la exe/d3d9.dll
         run: python herramientas/dll_d3d9/compilar.py --igual
+      - name: la de prod (sin la isla de temporada) también compila
+        run: python herramientas/dll_d3d9/compilar.py --prod
       - name: "el revés: una dll con un byte cambiado NO pasa"
         run: |
           cp exe/d3d9.dll "$RUNNER_TEMP/tocada.dll"

@@ -36,5 +36,10 @@ La dll compilada y qué hace cada `.ini`: [`exe/LEEME.md`](../../exe/LEEME.md).
 4. Si algo salió mal: en el launcher, «Subir archivos» → volver a una versión anterior de la lista de prueba
    (se guardan la actual y 5 más). O un PR que lo arregle.
 
+★ **La dll de prod** sale del MISMO fuente con `compilar.py --prod` (`-DR2_SIN_TEMPORADA`): igual a la de
+prueba, pero sin la isla de temporada (`isla_hora.c` e `isla_fx.c` no enganchan nada). Así prod muestra la isla de
+siempre aunque en la carpeta del jugador queden archivos de la Navidad del server de prueba (el launcher no borra lo
+que sobra). La `exe/d3d9.dll` del repo sigue siendo la de prueba.
+
 ⚠ Lo que se fusiona en `develop` llega a la PC de todos los que juegan en el server de prueba. La prueba `dll`
 asegura que es el fuente que se ve en el PR; lo que hace ese fuente lo tiene que mirar quien fusiona.
