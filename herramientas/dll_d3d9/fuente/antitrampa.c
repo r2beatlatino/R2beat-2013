@@ -208,7 +208,8 @@ static void at_revisar_codigo(void)
 /* 2b · ganchos conocidos, mirados aparte: «codigo=» sólo dice la PRIMERA página tocada de cada pasada y otro parche
  *      (far, teclado…) puede taparlo. El juego automático de Ñ2Hock/ToolBit es un salto en R2Beat.exe+0x1080B5. */
 static DWORD g_at_cerrar_t0;                                    /* cuándo se vio el automático (0 = nunca) */
-static int g_at_cerrar = 1;                                      /* [antitrampa] cerrar=0 lo apaga; la prueba también */
+static int g_at_cerrar = 0;      /* ★ 24-nov · MODO SILENCIOSO: la dll sólo informa, la sanción la decide el server (en tanda,
+                                  *   ANTITRAMPA_SILENCIOSO). `[antitrampa] cerrar=1` vuelve al cierre con cartel de antes */
 static struct { DWORD rva; const char *nombre; BYTE visto; } g_at_ganchos[] = {
     { 0x1080B5, "automatico", 0 },        /* Ñ2Hock «Juego automático» (con Azar / Precisión) */
     { 0x1AEDD4, "sala", 0 },              /* ★ 19-nov, medido: «Auto Listo / Inicio», «Anfitrión: al azar» y «Misma
@@ -919,7 +920,7 @@ static void antitrampa_iniciar(void)
         apuntar("  [antitrampa] apagado ([antitrampa] activo=0)");
         return;
     }
-    g_at_cerrar = GetPrivateProfileIntA("antitrampa", "cerrar", 1, ini);
+    g_at_cerrar = GetPrivateProfileIntA("antitrampa", "cerrar", 0, ini);   /* ★ 24-nov: de fábrica, NO cierra */
     if (GetPrivateProfileIntA("antitrampa", "pantalla", 1, ini)) {
         char nombre[MAX_PATH];
         GetPrivateProfileStringA("antitrampa", "imagen", "antitrampa_pantalla.bmp", nombre, sizeof(nombre), ini);
