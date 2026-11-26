@@ -97,10 +97,17 @@ def launcher(usuario, clave):
     return 0, struct.unpack_from("<I", p, 1)[0], int(p[10:10 + p[9]].decode("ascii"), 16)
 
 
-def login_juego(usn, vcode):
-    """-> la lista de canales [(puerto, nombre)], o None si no abre."""
-    with socket.create_connection(("127.0.0.1", LOGIN), 10) as s:
+PUERTA = "127.0.0.2"             # ★ 26-nov: la puerta de mentira (R2_PUERTA_IPS) y la IP «de verdad» de un jugador detrás
+JUGADOR = "127.0.0.3"
+
+
+def login_juego(usn, vcode, desde=None, proxy=None):
+    """-> la lista de canales [(puerto, nombre)], o None si no abre.
+    `desde` = la IP de origen (la puerta); `proxy` = la IP del jugador que va en una línea PROXY antes del FF01."""
+    with socket.create_connection(("127.0.0.1", LOGIN), 10, source_address=(desde, 0) if desde else None) as s:
         buf = [b""]
+        if proxy:
+            s.sendall(("PROXY TCP4 %s 127.0.0.1 51234 %d\r\n" % (proxy, LOGIN)).encode())
         s.sendall(trama(0x01, struct.pack("<IQ", usn, vcode)))
         r = leer_trama(s, buf, 5)
         if r is None or r[0] != 0x01 or r[1][:1] != b"\x00":
@@ -122,10 +129,10 @@ def login_juego(usn, vcode):
     return canales
 
 
-def canal(usn, puerto, ofuscar=True, extra=b""):
+def canal(usn, puerto, ofuscar=True, extra=b"", desde=None):
     """CheckVer + login al canal + un FF03 cifrado (y `extra`: más paquetes internos en el mismo FF55).
     -> (A cierra, cmds que volvieron del FF03)"""
-    with socket.create_connection(("127.0.0.1", puerto), 10) as s:
+    with socket.create_connection(("127.0.0.1", puerto), 10, source_address=(desde, 0) if desde else None) as s:
         buf = [b""]
         s.sendall(trama(0x01, b"\x04\x00"))
         r = leer_trama(s, buf)
@@ -170,6 +177,31 @@ def canal(usn, puerto, ofuscar=True, extra=b""):
                         j += 4 + n
                     break
         return cierra, vistos
+
+
+# ── ★ 26-nov · LA PUERTA (el repartidor del 48004 en Miami): el login llega desde la IP de la puerta y el canal desde
+#   la del jugador. Con la línea PROXY de la puerta el server anota la del jugador y el FF02 del canal entra. El bug del
+#   26-nov (nadie entraba al lobby del server de prueba) es el segundo caso: la puerta sin la línea.
+def puerta_de_punta_a_punta(usuario, clave, puerto):
+    def entrar(desde_login, proxy, desde_canal):
+        _, usn, vcode = launcher(usuario, clave)
+        abre = login_juego(usn, vcode, desde=desde_login, proxy=proxy) is not None
+        return abre, canal(usn, puerto, desde=desde_canal)[0]
+    try:
+        abre, entra = entrar(PUERTA, JUGADOR, JUGADOR)
+    except OSError as e:                                 # sin 127.0.0.2/.3 (raro): que se vea, no que pase
+        chequear("PUERTA: se puede salir desde %s y %s (%s)" % (PUERTA, JUGADOR, e), False)
+        return
+    chequear("PUERTA: el login con la línea PROXY abre", abre)
+    chequear("PUERTA: con la línea PROXY el canal entra desde la IP del jugador", entra)
+    abre, entra = entrar(PUERTA, None, JUGADOR)
+    chequear("PUERTA sin la línea: el login igual abre (una puerta que todavía no la manda no rompe nada)", abre)
+    chequear("★ revés: la puerta SIN la línea → el server anota la IP de la puerta y el canal NO entra (el bug)",
+             not entra)
+    abre, entra = entrar(None, JUGADOR, JUGADOR)
+    chequear("★ revés: una línea PROXY de alguien que NO es la puerta no sirve para entrar desde otra IP", not entra)
+    abre, entra = entrar(PUERTA, JUGADOR, JUGADOR)       # y después de todo eso, la puerta vuelve a andar
+    chequear("PUERTA: vuelve a entrar después de los reveses", abre and entra)
 
 
 # ── ★ 26-nov · el ANTITRAMPA de punta a punta: un FF59 con renglones R2AT entra por la red, cifrado como lo manda el
@@ -231,7 +263,7 @@ def main():
         tablero = _s.getsockname()[1]
     env = dict(os.environ, R2_PUERTOS=str(OFFSET), R2_BASE=os.path.join(tmp, "datos.db"),
                R2_TABLERO_PUERTO=str(tablero), R2_TABLERO_HOST="127.0.0.1",
-               R2_TABLERO_ADMINS="e2e:clave-de-la-prueba-e2e",
+               R2_TABLERO_ADMINS="e2e:clave-de-la-prueba-e2e", R2_PUERTA_IPS=PUERTA,
                R2_CHARS_DB=os.path.join(tmp, "chars_db.json"), R2_CUENTAS=os.path.join(tmp, "cuentas.json"),
                R2_SESIONES=os.path.join(tmp, "sesiones.json"), R2_LOG=os.path.join(tmp, "servidor.log"),
                R2_STATUS=os.path.join(tmp, "status.json"), R2_IP="127.0.0.1", PYTHONIOENCODING="utf-8")
@@ -291,6 +323,7 @@ def main():
             #   entra un usn que hizo un login del juego (FF01 con su vcode) desde la misma IP.
             ajeno, _ = canal(usn + 4242, puerto)
             chequear("★ revés: el FF02 con el usn de OTRO (sin su login) NO entra al canal", not ajeno)
+            puerta_de_punta_a_punta(usuario, clave, puerto)
             antitrampa_de_punta_a_punta(usuario, clave, puerto, tablero)
     finally:
         if srv is not None:

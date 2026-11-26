@@ -29,6 +29,7 @@ import time                              # ⚠ lo usa el resumen por minuto del 
 from . import gacha
 from . import antitrampa
 from . import multicuenta                 # ★ 25-nov: tope de cuentas a la vez por IP (farmeo con varias cuentas)
+from . import puerta_ip                   # ★ 26-nov: la IP de verdad cuando el login entra por la puerta (PROXY protocol)
 
 # ═══ ★ 26-nov · EL FF02 DEL LOBBY SÓLO VALE CON UN LOGIN DEL JUEGO ════════════════════════════════════════════════════
 #   El login (FF01 [usn][vcode]) se comprueba contra la sesión del launcher, pero el FF02 del lobby tomaba el `usn` del
@@ -821,7 +822,12 @@ def echar_sesion_anterior(usn, nuevo_st):
 
 
 def handle_login(conn, addr):
-    log("LOGIN", f"conexion desde {addr[0]}:{addr[1]}")
+    # ★ 26-nov: detrás de la puerta el server veía SU IP y el FF02 del lobby (que exige la misma IP del login) no dejaba
+    #   entrar a nadie. `puerta_ip.real` devuelve la del jugador si la conexión es de la puerta (`R2_PUERTA_IPS`) y
+    #   manda su línea PROXY; si no, `addr` tal cual. `pendiente` = lo que ya se leyó detrás de la línea.
+    _puerta = addr
+    addr, pendiente = puerta_ip.real(conn, addr)
+    log("LOGIN", f"conexion desde {addr[0]}:{addr[1]}" + (f" (por la puerta {_puerta[0]})" if addr != _puerta else ""))
     buf = b""
     # ★ Identidad de ESTA conexión de login. La siembra el FF01 (`atoi(argv[1])` del cliente) y la usa
     #   el FF02 para armar la lista de canales con la banda/licencia del jugador correcto.
@@ -857,7 +863,7 @@ def handle_login(conn, addr):
     # (El timeout de 120s cerraba el socket estando el cliente idle en el lobby -> crash 0x555917.)
     try:
         while True:
-            data = conn.recv(4096)
+            data, pendiente = (pendiente or conn.recv(4096)), b""   # lo que vino detrás de la línea PROXY, primero
             if not data:
                 log("LOGIN", "cliente cerro"); return
             buf += data
