@@ -749,6 +749,13 @@ static int selector_quiere_ventana(void);
 /* ★ el buscador y el carrito de la tienda (tienda.c): sus clics, la ruedita y lo que se escribe en el buscador */
 static int tienda_mensaje(HWND h, UINT msg, WPARAM wp, LPARAM lp);
 static int tienda_quiere_ventana(void);
+/* ★ A/B en la barra de la Pausa (pausa_barra.c): sus clics sobre la barra */
+static int pb_mensaje(HWND h, UINT msg, WPARAM wp, LPARAM lp);
+static int pb_quiere_ventana(void);
+/* ★ el panel del Far en la carrera (far_juego_dibujo.c): sus clics */
+static int fj_mensaje(HWND h, UINT msg, WPARAM wp, LPARAM lp);
+static int fj_quiere_ventana(void);
+static int calc_raton(HWND h, UINT msg, WPARAM wp, LPARAM lp);   /* ★ 26-nov: mover el PD con el mouse */
 
 static LRESULT CALLBACK mi_wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 {
@@ -775,13 +782,16 @@ static LRESULT CALLBACK mi_wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     if (top5_mensaje(h, msg, wp, lp)) return 0;
     if (selector_mensaje(h, msg, wp, lp)) return 0;
     if (tienda_mensaje(h, msg, wp, lp)) return 0;
+    if (pb_mensaje(h, msg, wp, lp)) return 0;
+    if (fj_mensaje(h, msg, wp, lp)) return 0;
+    if (calc_raton(h, msg, wp, lp)) return 0;
 
     return CallWindowProcA(g_wndproc_viejo, h, msg, wp, lp);
 }
 
 static void enganchar_ventana(HWND h)
 {
-    if ((!g_altenter && !top5_quiere_ventana() && !selector_quiere_ventana() && !tienda_quiere_ventana())
+    if ((!g_altenter && !top5_quiere_ventana() && !selector_quiere_ventana() && !tienda_quiere_ventana() && !pb_quiere_ventana() && !fj_quiere_ventana())
         || !h || g_wndproc_viejo || !IsWindow(h)) return;
     g_ventana = h;
     g_wndproc_viejo = (WNDPROC)SetWindowLongPtrA(h, GWLP_WNDPROC,
@@ -2543,6 +2553,7 @@ static int escribir_bytes(DWORD va, const BYTE *espera, const BYTE *nuevo, int n
 /* ★★ «R2beat tool» (03-oct-2026): la herramienta del jugador que reemplaza a ToolBit,
  *   con su ventana (F12) y sus opciones en [herramienta]. Ver herramienta.c y
  *   documentacion/R2BEAT_TOOL.md. Va DESPUES de la calculadora: usa `calc_escribiendo`. */
+#include "traducir.c"             /* ★ 26-nov: los idiomas de Ñ2Hock (español, português, 한국어, 中文, 日本語) — antes que herramienta.c */
 #include "herramienta.c"
 /* ★ «Repetir» en la Pausa (04-oct-2026): el 3er botón, como RBit, sólo jugando solo.
  *   Ver pausa.c y documentacion/PAUSA_REPETIR.md. */
@@ -2597,6 +2608,8 @@ static int escribir_bytes(DWORD va, const BYTE *espera, const BYTE *nuevo, int n
 #include "cuadros_nulos.c"        /* ★ 22-oct: (100) 0x6840F0 con la protección de su hermana (CAJAS_NEGRAS_2026-10-22.md) */
 #include "segundo_juego.c"        /* ★ 22-oct: (102) el 2.º juego abierto avisa en vez de reventar (CAJAS_NEGRAS_2026-10-22.md) */
 #include "estilos_texto.c"        /* ★ 23-oct: los estilos de letra (contorno grueso, arcoíris) — antes que los dos de abajo */
+#include "pausa_barra.c"          /* ★ 25-nov: A/B en la barra con la Pausa abierta (la idea del ToolBit 0.6.40) — después de estilos_texto.c y pausa.c */
+#include "far_juego_dibujo.c"     /* ★ 26-nov: el panel del Far (y la velocidad) dentro del juego — después de pausa_barra.c */
 #include "circulo_color.c"        /* ★ 23-oct: los crayones de círculo — el nombre del círculo de color por una marca (CRAYONES_MAZINO.md) */
 #include "crayones.c"             /* ★ 23-oct: los crayones del ID Mazino — 12 colores de apodo (CRAYONES_MAZINO.md) */
 #include "selector.c"             /* ★ 25-oct: «Elige tu personaje» encima de la creación (SELECTOR_PERSONAJE.md) — después de top5.c */

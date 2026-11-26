@@ -76,8 +76,10 @@ static int __cdecl pau_abrir(BYTE *obj)
 }
 
 /* ── 0x41B2B3: el dibujo. 1 = lo dibujé yo (salta al final del switch, 0x41BFE0) ── */
+static void pb_dibujar(void);                     /* ★ 25-nov: A/B en la barra (pausa_barra.c) */
 static int __cdecl pau_dibujar(BYTE *obj)
 {
+    pb_dibujar();
     if (!g_pau_listo) return 0;
     int cx = *(int *)PV(0x904084);
     ((F_CORTE)PV(0x683FB0))(*(void **)(obj + 0x2ED8), cx - 192, 0x49, PAUSA_C_FONDO, 0);

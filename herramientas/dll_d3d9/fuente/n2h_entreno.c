@@ -112,7 +112,7 @@
 #define NE_RVA_NOTA_X       0x5D45F0
 #define NE_RVA_PERIODO      0x5D4CEC
 #define NE_HSAM             0x4D415348  /* "HSAM" */
-#define NE_TOPE_TRAMOS      6
+#define NE_TOPE_TRAMOS      12                  /* ★ 26-nov: 12 (antes 6), anonimo03: «más de 6 tramos» */
 
 /* ═══ 1 · EL MOTOR (lado del juego) — engine.c, ABI 1 ═══════════════════════════════════════════════
  *   La ventana sólo escribe configuración, deseado, porcentaje, latido y orden; el resto lo escribe el gancho. */
@@ -124,6 +124,7 @@ typedef struct {
     volatile DWORD pct_aplicado, cuadros, hilo;
 } NE_MOTOR;
 static NE_MOTOR g_ne_m;
+static volatile LONG g_ne_pausas = 0;      /* ★ 25-nov: cuántas pausas del juego retomó el motor (antes: estado 6, todo apagado) */
 
 /* lo que lee el thunk (nombres de ensamblador fijos: el thunk los usa por nombre) */
 static volatile DWORD g_ne_vuelta_reloj   __asm__("ne_asm_vuelta_reloj") __attribute__((used));
@@ -446,6 +447,15 @@ static void __cdecl ne_antes_reloj(DWORD ahora)
     if (!ne_misma_cancion(s)) { ne_restaurar(s, 1); return; }
     DWORD pct = s->porcentaje;
     if (pct < 50 || pct > 150 || pct % 5) { ne_restaurar(s, 2); return; }
+    /* ★ 25-nov: LA PAUSA DEL JUEGO (Esc). Si el reloj no pasó por acá en más de 1 s, Ñ2Hock lo tomaba como falla
+     *   (estado 6: «el juego se pausó más de un segundo») y apagaba velocidad, tramo y moverse: justo lo que hace
+     *   falta con la Pausa abierta (A/B en la barra, pausa_barra.c). Ahora es una pausa: se retoma desde donde el
+     *   juego dejó su reloj, sin cobrar el hueco, y se sigue a la misma velocidad. */
+    if (s->activo && (DWORD)(ahora - s->tick_anterior) > 1000) {
+        g_ne_pausas++;
+        s->tick_anterior = ahora; s->resto = 0; s->origen = NE_U(g_ne_dir_origen);
+        return;
+    }
     DWORD pct_tramo = s->activo ? s->pct_aplicado : pct;
     int primera = !s->activo;
     if (!s->activo || s->confirmada != s->orden) {
@@ -941,11 +951,22 @@ static DWORD g_ne_ult_reintento;
 
 /* lo que en Ñ2Hock son las casillas y los cuadros de texto */
 static int g_ne_q_vel, g_ne_q_prep, g_ne_q_bucle, g_ne_q_tramos, g_ne_q_ac;
+/* ★ 25-nov, «Se aplicará al entrar a entrenar» (ToolBit 0.6.40): la velocidad prendida es la INTENCIÓN del jugador.
+ *   Fuera de la carrera queda ARMADA y ne_tick la aplica sola al haber canción de práctica; al terminar la canción
+ *   (el motor se restaura, como siempre) vuelve a quedar armada para la próxima. Tras una falla de verdad espera a que
+ *   se salga de esa carrera antes de volver a probar (no reintenta en bucle). */
+static int g_ne_vel_quiere = 0, g_ne_vel_espera_salida = 0;
+/* lo mismo con «Repetir un tramo»: armado se aplica al empezar la práctica (el motor graba desde el inicio, así se
+ * corre hasta A y desde ahí sigue el bucle). Si A ya pasó y no está grabado, no se apaga: espera a la próxima carrera
+ * (o a «Repetir» de la Pausa). */
+static int g_ne_bucle_quiere = 0, g_ne_bucle_espera_salida = 0;
+static DWORD g_ne_vel_reintento = 0;
 static int g_ne_pct_elegido = 75;           /* el deslizador */
 static int g_ne_pct_pedido = 75;            /* requestedPracticeSpeed */
 static int g_ne_b_desde = 0, g_ne_b_hasta = 0, g_ne_b_cuenta = 3, g_ne_b_previo = 2;
-static int g_ne_z_desde[NE_TOPE_TRAMOS] = { -1, -1, -1, -1, -1, -1 }, g_ne_z_hasta[NE_TOPE_TRAMOS] = { -1, -1, -1, -1, -1, -1 };
-static int g_ne_z_pct[NE_TOPE_TRAMOS] = { 100, 100, 100, 100, 100, 100 };
+static int g_ne_z_desde[NE_TOPE_TRAMOS] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+           g_ne_z_hasta[NE_TOPE_TRAMOS] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
+static int g_ne_z_pct[NE_TOPE_TRAMOS] = { 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100 };
 static NE_TRAMOS g_ne_tramos;               /* activeSpeedZones (válido si g_ne_q_tramos) */
 static DWORD g_ne_ac_gestor;
 
@@ -1142,7 +1163,7 @@ static int ne_parar_sesion(void)            /* StopLivePractice */
         g_ne_restaurar_pendiente = 1;
         wchar_t t[400];
         g_ne_err[300] = 0;
-        wsprintfW(t, L"Restauración pendiente: %s", g_ne_err);
+        wsprintfW(t, TR(L"Restauración pendiente: %s"), g_ne_err);
         lstrcpynW(g_ne_err, t, 400);
         ne_log_w("⚠ ", g_ne_err);
         return 0;
@@ -1188,7 +1209,7 @@ static const wchar_t *ne_error_bucle(DWORD e)
     case 4: return L"Sin captura de A. Habilita el motor al inicio de otra canción, o elige un A futuro.";
     case 3: return L"El tramo está fuera de la canción o sus tiempos no son válidos.";
     case 6: return L"El mapa de notas cambió; se detuvo el bucle antes de reposicionar.";
-    default: wsprintfW(t, L"El motor no pudo preparar el estado de notas del tramo (%u).", (unsigned)e); return t;
+    default: wsprintfW(t, TR(L"El motor no pudo preparar el estado de notas del tramo (%u)."), (unsigned)e); return t;
     }
 }
 static const wchar_t *ne_error_salto(DWORD e, int delta_ms)
@@ -1200,7 +1221,7 @@ static const wchar_t *ne_error_salto(DWORD e, int delta_ms)
     case 3: return L"El salto se sale de la canción.";
     case 4: return L"Espera a que termine la cuenta atrás del tramo.";
     case 5: return L"El mapa de notas cambió; no se movió nada.";
-    default: wsprintfW(t, L"El juego no está listo para saltar (%u).", (unsigned)e); return t;
+    default: wsprintfW(t, TR(L"El juego no está listo para saltar (%u)."), (unsigned)e); return t;
     }
 }
 static const wchar_t *ne_error_motor(DWORD e)
@@ -1211,7 +1232,7 @@ static const wchar_t *ne_error_motor(DWORD e)
     case 3: return L"Se perdió el latido de la herramienta; el motor restauró la velocidad.";
     case 4: return L"El juego reinició su reloj; se detuvo la velocidad.";
     case 6: return L"El juego se pausó más de un segundo; se detuvo la velocidad.";
-    default: wsprintfW(t, L"El motor detuvo la práctica (estado %u).", (unsigned)e); return t;
+    default: wsprintfW(t, TR(L"El motor detuvo la práctica (estado %u)."), (unsigned)e); return t;
     }
 }
 
@@ -1255,8 +1276,13 @@ static void ne_fallo_trabajador(const wchar_t *msg)
     lstrcpynW(m, msg, 300);
     ne_log_w("⛔ ", m);
     int bucle = g_ne_q_bucle, tramos = g_ne_q_tramos;
-    if (!ne_parar_sesion()) { lstrcatW(m, L" · Restauración pendiente."); }
+    if (!ne_parar_sesion()) { lstrcatW(m, TR(L" · Restauración pendiente.")); }
     g_ne_q_bucle = 0; g_ne_q_tramos = 0; g_ne_q_prep = 0; g_ne_q_vel = 0;
+    if (g_ne_bucle_quiere) g_ne_bucle_espera_salida = 1;
+    if (g_ne_vel_quiere) {                              /* sigue armada, pero no en ESTA carrera */
+        g_ne_vel_espera_salida = 1;
+        lstrcatW(m, TR(L" · La velocidad queda armada para la próxima práctica."));
+    }
     ne_poner_tx(NE_TX_VELOCIDAD, 1, m);
     if (bucle) ne_poner_tx(NE_TX_BUCLE, 1, m);
     if (tramos) ne_poner_tx(NE_TX_TRAMOS, 1, m);
@@ -1332,7 +1358,7 @@ static int ne_listo(void)
 static void ne_estado(wchar_t *s, int n)
 {
     if (!s || n <= 0) return;
-    lstrcpynW(s, g_ne_tx[NE_TX_VELOCIDAD][0] ? g_ne_tx[NE_TX_VELOCIDAD] : L"Motor nativo · inicia una práctica offline.", n);
+    lstrcpynW(s, g_ne_tx[NE_TX_VELOCIDAD][0] ? g_ne_tx[NE_TX_VELOCIDAD] : TR(L"Motor nativo · inicia una práctica offline."), n);
 }
 
 static int ne_texto(int que, wchar_t *s, int n)
@@ -1346,10 +1372,10 @@ static int ne_texto(int que, wchar_t *s, int n)
 }
 
 static int ne_preparado(void) { return g_ne_q_prep; }
-static int ne_velocidad_activa(void) { return g_ne_q_vel; }
+static int ne_velocidad_activa(void) { return g_ne_q_vel || g_ne_vel_quiere; }
 static int ne_velocidad(void) { return g_ne_pct_elegido; }
 static int ne_velocidad_aplicada(void) { return g_ne_sesion ? g_ne_pct_actual : 100; }
-static int ne_bucle_activo(void) { return g_ne_q_bucle; }
+static int ne_bucle_activo(void) { return g_ne_q_bucle || g_ne_bucle_quiere; }
 static int ne_tramos_activos(void) { return g_ne_q_tramos; }
 static int ne_tiempo_ms(void);
 
@@ -1358,7 +1384,7 @@ static int ne_preparar(int on)
 {
     if (on) {
         g_ne_q_prep = 1;
-        if (!ne_asegurar_motor(g_ne_q_vel ? g_ne_pct_elegido : 100)) {
+        if (!ne_asegurar_motor(g_ne_q_vel || g_ne_vel_quiere ? g_ne_pct_elegido : 100)) {
             g_ne_q_prep = 0;
             ne_parar_sesion();
             ne_poner_tx(NE_TX_VELOCIDAD, 1, g_ne_err);
@@ -1379,7 +1405,7 @@ static int ne_preparar(int on)
 static int ne_velocidad_activar(int on)
 {
     if (!on) {
-        g_ne_q_vel = 0;
+        g_ne_q_vel = 0; g_ne_vel_quiere = 0; g_ne_vel_espera_salida = 0;
         if (g_ne_q_bucle || g_ne_q_prep || g_ne_q_tramos) {
             g_ne_pct_pedido = 100;
             ne_poner_tx(NE_TX_VELOCIDAD, 0, L"Entrenamiento preparado a velocidad normal.");
@@ -1389,8 +1415,17 @@ static int ne_velocidad_activar(int on)
         else { ne_poner_tx(NE_TX_VELOCIDAD, 1, g_ne_err); return 0; }
         return 1;
     }
+    g_ne_vel_quiere = 1; g_ne_vel_espera_salida = 0;
+    if (!g_ne_sesion && !ne_listo()) {                /* fuera de la práctica: armada */
+        g_ne_q_vel = 0;
+        wchar_t t[96];
+        wsprintfW(t, TR(L"Velocidad armada al %d %%: se aplicará al entrar a entrenar."), g_ne_pct_elegido);
+        ne_poner_tx(NE_TX_VELOCIDAD, 0, t);
+        return 1;
+    }
     if (!ne_asegurar_motor(g_ne_pct_elegido)) {
         wchar_t m[320]; lstrcpynW(m, g_ne_err, 320);
+        g_ne_vel_quiere = 0;
         if (!g_ne_q_prep && !g_ne_q_bucle && !g_ne_q_tramos) ne_parar_sesion();
         g_ne_q_vel = 0;
         ne_poner_tx(NE_TX_VELOCIDAD, 1, m);
@@ -1458,7 +1493,13 @@ static int ne_bucle_configurar(int activo)
 static int ne_bucle_activar(int on)
 {
     if (on) {
-        int ok = ne_asegurar_motor(g_ne_q_vel ? g_ne_pct_elegido : 100);
+        g_ne_bucle_quiere = 1; g_ne_bucle_espera_salida = 0;
+        if (!g_ne_sesion && !ne_listo()) {            /* fuera de la práctica: armado */
+            g_ne_q_bucle = 0;
+            ne_poner_tx(NE_TX_BUCLE, 0, L"Tramo armado: al entrar a entrenar corres hasta A y desde ahí sigue el bucle.");
+            return 1;
+        }
+        int ok = ne_asegurar_motor(g_ne_q_vel || g_ne_vel_quiere ? g_ne_pct_elegido : 100);
         if (ok) {
             g_ne_q_prep = 1;
             ok = ne_bucle_configurar(1);
@@ -1469,6 +1510,14 @@ static int ne_bucle_activar(int on)
             wchar_t m[320]; lstrcpynW(m, g_ne_err, 320);
             ne_log_w("bucle: ", m);
             g_ne_q_bucle = 0;
+            if (g_ne_b.estado == 6 && g_ne_b.error == 4) {    /* A ya pasó y no está grabado: a la próxima */
+                g_ne_bucle_espera_salida = 1;
+                ne_poner_tx(NE_TX_VELOCIDAD, 0, L"Entrenamiento preparado: desde ahora se graba cada segundo.");
+                ne_poner_tx(NE_TX_BUCLE, 0, L"A ya pasó y no está grabado: sigues sin bucle hasta la meta. "
+                                            L"En la próxima carrera (o con «Repetir» de la Pausa) corres hasta A y desde ahí sigue el bucle.");
+                return 1;
+            }
+            g_ne_bucle_quiere = 0;
             ne_poner_tx(NE_TX_VELOCIDAD, 1, m);
             ne_poner_tx(NE_TX_BUCLE, 1, m);
             return 0;
@@ -1477,7 +1526,7 @@ static int ne_bucle_activar(int on)
         ne_poner_tx(NE_TX_VELOCIDAD, 0, L"Repetición activa; la cuenta atrás se ejecuta en el juego.");
         return 1;
     }
-    g_ne_q_bucle = 0;
+    g_ne_q_bucle = 0; g_ne_bucle_quiere = 0; g_ne_bucle_espera_salida = 0;
     if (g_ne_sesion) { ne_bucle_configurar(0); g_ne_err_reconocido = g_ne_b.estado == 6 ? g_ne_b.error : 0; }
     if (!g_ne_q_vel && !g_ne_q_prep && !g_ne_q_tramos) ne_parar_sesion();
     ne_poner_tx(NE_TX_BUCLE, 0, L"Tramo desactivado.");
@@ -1507,7 +1556,7 @@ static int ne_bucle_marcar(int a)
     if (g_ne_q_bucle) return ne_bucle_activar(1);
     wchar_t p[16], t[64];
     ne_texto_de_posicion(s, p);
-    wsprintfW(t, L"%s marcado en %s.", a ? L"Inicio" : L"Final", p);
+    wsprintfW(t, TR(L"%s marcado en %s."), a ? TR(L"Inicio") : TR(L"Final"), p);
     ne_poner_tx(NE_TX_BUCLE, 0, t);
     return 1;
 }
@@ -1540,9 +1589,9 @@ static int ne_bucle_puede_reiniciar(void)
 /* ── los tramos de velocidad ── */
 static void ne_describir_tramos(const NE_TRAMOS *z, wchar_t *t)
 {
-    wsprintfW(t, L"%d tramo%s activo%s", z->n, z->n == 1 ? L"" : L"s", z->n == 1 ? L"" : L"s");
+    wsprintfW(t, TR(L"%d tramo%s activo%s"), z->n, z->n == 1 ? L"" : L"s", z->n == 1 ? L"" : L"s");
     if (z->incompletos > 0)
-        wsprintfW(t + lstrlenW(t), L"; %d sin terminar (se ignora%s).", z->incompletos, z->incompletos == 1 ? L"" : L"n");
+        wsprintfW(t + lstrlenW(t), TR(L"; %d sin terminar (se ignora%s)."), z->incompletos, z->incompletos == 1 ? L"" : L"n");
     else lstrcatW(t, L".");
 }
 
@@ -1563,7 +1612,7 @@ static int ne_tramos_editados(void)
     wchar_t t[400];
     if (!ne_tramos_compilar(g_ne_z_desde, g_ne_z_hasta, g_ne_z_pct, NE_TOPE_TRAMOS, &z)) {
         g_ne_err[300] = 0;
-        wsprintfW(t, L"%s Se mantienen los tramos anteriores.", g_ne_err);
+        wsprintfW(t, TR(L"%s Se mantienen los tramos anteriores."), g_ne_err);
         ne_poner_tx(NE_TX_TRAMOS, 1, t);
         return 0;
     }
@@ -1588,7 +1637,7 @@ static int ne_tramos(int on, const int *desde_ms, const int *hasta_ms, const int
         NE_TRAMOS z;
         int ok = ne_tramos_compilar(g_ne_z_desde, g_ne_z_hasta, g_ne_z_pct, NE_TOPE_TRAMOS, &z);
         if (ok && z.n == 0) ok = ne_falla(L"Escribe al menos un tramo completo (Desde y Hasta).");
-        if (ok) ok = ne_asegurar_motor(g_ne_q_vel ? g_ne_pct_elegido : 100);
+        if (ok) ok = ne_asegurar_motor(g_ne_q_vel || g_ne_vel_quiere ? g_ne_pct_elegido : 100);
         if (!ok) {
             g_ne_q_tramos = 0;
             ne_log_w("tramos: ", g_ne_err);
@@ -1623,16 +1672,16 @@ static int ne_tramos_agregar_punto(int ms, wchar_t *msg)
     }
     if (ult >= 0 && g_ne_z_hasta[ult] < 0) {
         g_ne_z_hasta[ult] = punto;
-        wsprintfW(msg, L"Tramo %d: final en %s.", ult + 1, p);
+        wsprintfW(msg, TR(L"Tramo %d: final en %s."), ult + 1, p);
     } else if (ult + 1 < NE_TOPE_TRAMOS) {
         int fila = ult + 1;
         if (ult >= 0) {
             g_ne_z_desde[fila] = g_ne_z_hasta[ult]; g_ne_z_hasta[fila] = punto;
             ne_texto_de_posicion(g_ne_z_desde[fila], q);
-            wsprintfW(msg, L"Tramo %d: %s → %s.", fila + 1, q, p);
+            wsprintfW(msg, TR(L"Tramo %d: %s → %s."), fila + 1, q, p);
         } else {
             g_ne_z_desde[fila] = punto;
-            wsprintfW(msg, L"Tramo 1: inicio en %s. Marca otra vez en el final.", p);
+            wsprintfW(msg, TR(L"Tramo 1: inicio en %s. Marca otra vez en el final."), p);
         }
     } else return ne_falla(L"Ya no caben más tramos (máximo %d).", NE_TOPE_TRAMOS);
     return 1;
@@ -1657,7 +1706,7 @@ static int ne_mover(int delta_s)
 {
     int delta = delta_s * 1000;
     if (!g_ne_sesion) {
-        if (!ne_asegurar_motor(g_ne_q_vel ? g_ne_pct_elegido : 100)) {
+        if (!ne_asegurar_motor(g_ne_q_vel || g_ne_vel_quiere ? g_ne_pct_elegido : 100)) {
             ne_poner_tx(NE_TX_MOVER, 1, g_ne_err);
             return 0;
         }
@@ -1680,7 +1729,7 @@ static int ne_mover(int delta_s)
     DWORD ahora = ne_ahora();
     ne_ra_recalibrar(&g_ne_ra, ahora + 300); g_ne_silencio_hasta = ahora + 300;
     wchar_t t[64];
-    wsprintfW(t, L"%s %d s.", delta < 0 ? L"Atrás" : L"Adelante", (delta < 0 ? -delta : delta) / 1000);
+    wsprintfW(t, L"%s %d s.", delta < 0 ? TR(L"Atrás") : TR(L"Adelante"), (delta < 0 ? -delta : delta) / 1000);
     ne_poner_tx(NE_TX_MOVER, 0, t);
     return 1;
 }
@@ -1705,20 +1754,20 @@ static void ne_carteles(void)
         DWORD e = g_ne_b.estado, v = g_ne_b.vueltas;
         ne_texto_de_posicion((int)g_ne_b.posicion_ms, p);
         switch (e) {
-        case 1: lstrcpyW(t, L"Esperando capturar el inicio del tramo…"); break;
+        case 1: lstrcpyW(t, TR(L"Esperando capturar el inicio del tramo…")); break;
         case 3: { DWORD d = (g_ne_b.restante_ms + 50) / 100;
-                  wsprintfW(t, L"Cuenta atrás: %u.%u s · vueltas %u", (unsigned)(d / 10), (unsigned)(d % 10), (unsigned)v); break; }
-        case 4: wsprintfW(t, L"Antes del tramo, sin notas · %s · vueltas %u", p, (unsigned)v); break;
+                  wsprintfW(t, TR(L"Cuenta atrás: %u.%u s · vueltas %u"), (unsigned)(d / 10), (unsigned)(d % 10), (unsigned)v); break; }
+        case 4: wsprintfW(t, TR(L"Antes del tramo, sin notas · %s · vueltas %u"), p, (unsigned)v); break;
         case 6: lstrcpynW(t, ne_error_bucle(g_ne_b.error), 200); break;
-        default: wsprintfW(t, L"Tramo en el juego · %s · vueltas %u", p, (unsigned)v); break;
+        default: wsprintfW(t, TR(L"Tramo en el juego · %s · vueltas %u"), p, (unsigned)v); break;
         }
         ne_poner_tx(NE_TX_BUCLE, 0, t);
     }
     if (g_ne_q_tramos && g_ne_sesion && g_ne_pos_ms >= 0) {
         const NE_TRAMO *z = ne_tramo_en(&g_ne_tramos, g_ne_pos_ms);
         ne_texto_de_posicion((int)g_ne_pos_ms, p);
-        if (z) wsprintfW(t, L"En el tramo %d · %d %% · %s", z->numero, z->pct, p);
-        else wsprintfW(t, L"Fuera de los tramos · %d %% · %s", g_ne_pct_pedido, p);
+        if (z) wsprintfW(t, TR(L"En el tramo %d · %d %% · %s"), z->numero, z->pct, p);
+        else wsprintfW(t, TR(L"Fuera de los tramos · %d %% · %s"), g_ne_pct_pedido, p);
         ne_poner_tx(NE_TX_TRAMOS, 0, t);
     }
 }
@@ -1737,7 +1786,50 @@ static void ne_tick(void)
         g_ne_ult_reintento = GetTickCount();
         if (ne_parar_sesion()) ne_poner_tx(NE_TX_VELOCIDAD, 0, L"Restauración completada; frecuencias originales.");
     }
+    {
+        static LONG vistas = 0;
+        LONG p = g_ne_pausas;
+        if (p != vistas) { vistas = p; apuntar("  [entreno] ★ pausa del juego: el motor sigue a la misma velocidad (%ld)", p); }
+    }
     if (g_ne_q_ac && !ne_carrera_ac(g_ne_ac_gestor)) ne_ac_restaurar();
+    /* ★ la velocidad armada: al haber canción de práctica, se aplica sola (una prueba por segundo) */
+    if (g_ne_vel_quiere && !g_ne_q_vel && !g_ne_restaurar_pendiente && GetTickCount() - g_ne_vel_reintento > 1000) {
+        g_ne_vel_reintento = GetTickCount();
+        int hay = g_ne_sesion || ne_listo();
+        if (!hay) g_ne_vel_espera_salida = 0;
+        else if (!g_ne_vel_espera_salida) {
+            wchar_t guardado[320];
+            lstrcpynW(guardado, g_ne_err, 320);
+            if (ne_asegurar_motor(g_ne_pct_elegido)) {
+                g_ne_q_vel = 1; g_ne_q_prep = 1;
+                g_ne_pct_pedido = g_ne_pct_elegido;
+                wchar_t t[96];
+                wsprintfW(t, TR(L"Velocidad aplicada al entrar a entrenar (%d %%)."), g_ne_pct_elegido);
+                ne_poner_tx(NE_TX_VELOCIDAD, 0, t);
+                apuntar("  [entreno] ★ velocidad armada aplicada al %d %%", g_ne_pct_elegido);
+            } else {
+                g_ne_vel_espera_salida = 1;             /* no en esta carrera: se avisa una vez y se espera a la próxima */
+                wchar_t t[400];
+                g_ne_err[300] = 0;
+                wsprintfW(t, TR(L"La velocidad armada no se pudo aplicar: %s"), g_ne_err);
+                ne_poner_tx(NE_TX_VELOCIDAD, 1, t);
+                ne_log_w("", t);
+            }
+            lstrcpynW(g_ne_err, guardado, 320);
+        }
+    }
+    /* ★ el tramo armado: igual, una prueba por segundo (después de la velocidad, así arranca a la elegida) */
+    {
+        static DWORD reintento = 0;
+        if (g_ne_bucle_quiere && !g_ne_q_bucle && !g_ne_restaurar_pendiente && GetTickCount() - reintento > 1000) {
+            reintento = GetTickCount();
+            int hay = g_ne_sesion || ne_listo();
+            if (!hay) g_ne_bucle_espera_salida = 0;
+            else if (!g_ne_bucle_espera_salida) {
+                if (ne_bucle_activar(1) && g_ne_q_bucle) apuntar("  [entreno] ★ tramo armado aplicado al entrar a entrenar");
+            }
+        }
+    }
     ne_carteles();
 }
 
@@ -1746,6 +1838,8 @@ static int ne_apagar_todo(void)
 {
     if (!g_ht_base) return 1;
     g_ne_q_vel = g_ne_q_prep = g_ne_q_bucle = g_ne_q_tramos = 0;
+    g_ne_vel_quiere = 0; g_ne_vel_espera_salida = 0;
+    g_ne_bucle_quiere = 0; g_ne_bucle_espera_salida = 0;
     g_ne_pct_pedido = g_ne_pct_elegido;
     int ok = 1;
     if (g_ne_m.hilo && g_ne_m.hilo == GetCurrentThreadId() && g_ne_m.imagen) {
