@@ -29,6 +29,7 @@ import time                              # ⚠ lo usa el resumen por minuto del 
 from . import gacha
 from . import antitrampa
 from . import multicuenta                 # ★ 25-nov: tope de cuentas a la vez por IP (farmeo con varias cuentas)
+from . import maquina                    # ★ 25-nov: la PC (huella de la MAC): baneo y tope por máquina
 from . import autoplay_gm
 from . import nombre_publico             # ★ 14-nov: la IP que se anuncia en los canales, sacada del DNS (si hay nombre)
 from . import notas
@@ -1221,7 +1222,8 @@ def handle_lobby(conn, addr):
                         #   farmear). Va ANTES de echar y registrar: si no entra, no se toca la sesión de nadie.
                         #   `reemplazada` hace que el `finally` de abajo no limpie nada compartido: esta
                         #   conexión nunca se sentó ni se registró (y su `usn` podría ser de otra sesión).
-                        if multicuenta.rechazar_por_tope(st, _u):
+                        # ★ MÁQUINA (HWID): PC baneada o tope de cuentas por PC (`maquina.py`). Mismo cierre.
+                        if multicuenta.rechazar_por_tope(st, _u) or maquina.rechazar_al_entrar(st, _u, payload):
                             st.reemplazada = True
                             try:
                                 conn.shutdown(socket.SHUT_RDWR)
@@ -1249,7 +1251,8 @@ def handle_lobby(conn, addr):
                         #     login y el canal, nadie llegaría a este punto y el socket quedaría
                         #     colgado. Ahora es el respaldo, no el mecanismo.
                         cerrar_login_pendiente(_u, " (ya conectó a su canal)")
-                    log("LOBBY", f"  ★★ FF02 LOBBY-LOGIN payload len={len(payload)} : {hx(payload[:48])}"
+                    # ★ 25-nov: sin la MAC (`maquina.sin_mac`): en el log no queda la de nadie.
+                    log("LOBBY", f"  ★★ FF02 LOBBY-LOGIN payload len={len(payload)} : {hx(maquina.sin_mac(payload)[:48])}"
                                  + (f"  -> usn={_u} key_base=0x{st.key_base:08X}" if _u is not None
                                     else "  (VACÍO: no es el de la lobby)"))
                     # ★★★★★ EL CHALLENGE SALE DE ESTE MISMO PAQUETE, no de una constante (ver
