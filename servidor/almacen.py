@@ -368,6 +368,199 @@ def antitrampa_resolver(ids, estado, quien=""):
         return n
 
 
+# ═══ ★ 26-nov · EL REGISTRO CENTRAL DEL ANTITRAMPA (antitrampa_eventos.py escribe; tablero_antitrampa.py lee) ═════
+_EV_COLS = ("id", "evento", "cuando", "ultimo", "usn", "cuenta", "nick", "sesion", "partida", "categoria", "regla",
+            "modulo", "origen", "descripcion", "evidencia", "riesgo", "confianza", "reincidencias", "repeticiones",
+            "version_cliente", "version_antitrampa", "accion", "pendiente", "estado", "revisado_por",
+            "revisado_cuando", "nota")
+
+
+def ev_insertar(ev):
+    """Un evento nuevo (dict con las columnas de `antitrampa_eventos` salvo id/reincidencias). Las REINCIDENCIAS se
+    cuentan acá: los eventos anteriores de la misma regla en la misma cuenta. -> el id de la fila."""
+    with _lock:
+        c = conectar()
+        cuenta = ev.get("cuenta")
+        reinc = 0
+        if cuenta:
+            reinc = c.execute("SELECT COUNT(*) FROM antitrampa_eventos WHERE cuenta = ? AND regla = ?",
+                              (cuenta, ev["regla"])).fetchone()[0]
+        cols = [k for k in _EV_COLS if k not in ("id", "reincidencias") and k in ev]
+        cur = c.execute(f"INSERT INTO antitrampa_eventos ({', '.join(cols)}, reincidencias) "
+                        f"VALUES ({', '.join('?' * len(cols))}, ?)", (*[ev[k] for k in cols], int(reinc)))
+        c.commit()
+        return cur.lastrowid
+
+
+def ev_repetir(evento, ultimo, veces=1):
+    """La misma detección otra vez en la misma sesión: suma `repeticiones` y corre `ultimo`."""
+    with _lock:
+        c = conectar()
+        c.execute("UPDATE antitrampa_eventos SET repeticiones = repeticiones + ?, ultimo = ? WHERE evento = ?",
+                  (int(veces), ultimo, evento))
+        c.commit()
+
+
+def ev_marcar(eventos=None, estado=None, por=None, nota=None, pendientes=None, solo_abiertos=True):
+    """Cambia el estado de revisión de unos eventos (por su id único, o por los pendientes de la tanda que les tocan).
+    Con `solo_abiertos` no toca los ya descartados o sancionados. -> cuántos cambió."""
+    with _lock:
+        c = conectar()
+        donde, args = [], []
+        if eventos:
+            donde.append(f"evento IN ({','.join('?' * len(eventos))})"); args += list(eventos)
+        if pendientes:
+            donde.append(f"pendiente IN ({','.join('?' * len(pendientes))})"); args += [int(p) for p in pendientes]
+        if not donde:
+            return 0
+        filtro = "(" + " OR ".join(donde) + ")"
+        if solo_abiertos:
+            filtro += " AND estado NOT IN ('descartado', 'sancionado')"
+        n = c.execute(f"UPDATE antitrampa_eventos SET estado = ?, revisado_por = ?, nota = COALESCE(?, nota), "
+                      f"revisado_cuando = datetime('now', 'localtime') WHERE {filtro}",
+                      (estado, por, nota, *args)).rowcount
+        c.commit()
+        return n
+
+
+def ev_poner_pendiente(evento, pendiente_id):
+    with _lock:
+        c = conectar()
+        c.execute("UPDATE antitrampa_eventos SET pendiente = ? WHERE evento = ?", (int(pendiente_id), evento))
+        c.commit()
+
+
+def _ev_filtro(f):
+    donde, args = [], []
+    for campo, col in (("cuenta", "cuenta"), ("regla", "regla"), ("categoria", "categoria"), ("riesgo", "riesgo"),
+                       ("estado", "estado"), ("sesion", "sesion"), ("evento", "evento")):
+        if f.get(campo):
+            donde.append(f"{col} = ?"); args.append(str(f[campo]))
+    if f.get("usn"):
+        donde.append("usn = ?"); args.append(int(f["usn"]))
+    if f.get("jugador"):                                  # apodo, cuenta o usn, parcial
+        q = str(f["jugador"]).strip()
+        donde.append("(nick LIKE ? OR cuenta LIKE ? OR CAST(usn AS TEXT) = ?)"); args += [f"%{q}%", f"%{q}%", q]
+    if f.get("desde"):
+        donde.append("cuando >= ?"); args.append(str(f["desde"]))
+    if f.get("hasta"):
+        donde.append("cuando <= ?"); args.append(str(f["hasta"]) + ("" if len(str(f["hasta"])) > 10 else " 23:59:59"))
+    if f.get("riesgo_min"):
+        orden = ["informativo", "bajo", "medio", "alto", "critico"]
+        if f["riesgo_min"] in orden:
+            sirven = orden[orden.index(f["riesgo_min"]):]
+            donde.append(f"riesgo IN ({','.join('?' * len(sirven))})"); args += sirven
+    if f.get("despues_de"):                               # el tiempo real del tablero: lo nuevo desde este id
+        donde.append("id > ?"); args.append(int(f["despues_de"]))
+    return (" WHERE " + " AND ".join(donde)) if donde else "", args
+
+
+def ev_listar(filtros=None, limite=200):
+    """Los eventos que cumplen `filtros` (ver `_ev_filtro`), el más nuevo primero."""
+    where, args = _ev_filtro(filtros or {})
+    with _lock:
+        c = conectar()
+        filas = c.execute(f"SELECT * FROM antitrampa_eventos{where} ORDER BY id DESC LIMIT ?",
+                          (*args, max(1, min(int(limite), 2000)))).fetchall()
+        return [dict(r) for r in filas]
+
+
+def ev_estadisticas(filtros=None):
+    """Para el tablero: cuántos por categoría, riesgo, estado, regla y día (con los mismos filtros)."""
+    where, args = _ev_filtro(filtros or {})
+    out = {}
+    with _lock:
+        c = conectar()
+        for col in ("categoria", "riesgo", "estado", "regla", "origen"):
+            out[col] = {r[0]: r[1] for r in c.execute(
+                f"SELECT {col}, COUNT(*) FROM antitrampa_eventos{where} GROUP BY {col}", args)}
+        out["dia"] = {r[0]: r[1] for r in c.execute(
+            f"SELECT substr(cuando, 1, 10) AS d, COUNT(*) FROM antitrampa_eventos{where} GROUP BY d ORDER BY d DESC "
+            f"LIMIT 30", args)}
+        out["total"] = c.execute(f"SELECT COUNT(*) FROM antitrampa_eventos{where}", args).fetchone()[0]
+        out["cuentas"] = c.execute(f"SELECT COUNT(DISTINCT cuenta) FROM antitrampa_eventos{where}", args).fetchone()[0]
+    return out
+
+
+def ev_resumen_cuenta(cuenta):
+    """El historial de una cuenta para el tablero: faltas de la escalera, suspensión, baneo y sus eventos por regla."""
+    with _lock:
+        c = conectar()
+        f = c.execute("SELECT faltas, ultima_regla, ultima FROM antitrampa_faltas WHERE username = ?", (cuenta,)).fetchone()
+        s = c.execute("SELECT hasta, motivo, quien, desde FROM antitrampa_suspensiones WHERE cuenta = ? "
+                      "AND hasta > datetime('now', 'localtime')", (cuenta,)).fetchone()
+        u = c.execute("SELECT pass_hash FROM users WHERE username = ? COLLATE BINARY", (cuenta,)).fetchone()
+        reglas = {r[0]: r[1] for r in c.execute(
+            "SELECT regla, COUNT(*) FROM antitrampa_eventos WHERE cuenta = ? GROUP BY regla", (cuenta,))}
+        pend = c.execute("SELECT COUNT(*) FROM antitrampa_pendientes WHERE cuenta = ? AND estado = 'pendiente'",
+                         (cuenta,)).fetchone()[0]
+    return {"cuenta": cuenta, "faltas": dict(f) if f else None, "suspension": dict(s) if s else None,
+            "baneada": bool(u) and str(u["pass_hash"] or "").startswith("BANNED:"), "por_regla": reglas,
+            "pendientes": int(pend), "existe": bool(u)}
+
+
+def at_accion(admin, accion, cuenta=None, usn=None, evento=None, detalle=""):
+    """El registro de acciones administrativas del antitrampa (todo lo que hace alguien desde el tablero o el chat)."""
+    with _lock:
+        c = conectar()
+        c.execute("INSERT INTO antitrampa_acciones (cuando, admin, accion, cuenta, usn, evento, detalle) "
+                  "VALUES (datetime('now', 'localtime'), ?, ?, ?, ?, ?, ?)",
+                  (str(admin), str(accion), cuenta, int(usn) if usn else None, evento, str(detalle)[:1000]))
+        c.commit()
+
+
+def at_acciones(limite=200, cuenta=None):
+    with _lock:
+        c = conectar()
+        if cuenta:
+            filas = c.execute("SELECT * FROM antitrampa_acciones WHERE cuenta = ? ORDER BY id DESC LIMIT ?",
+                              (cuenta, int(limite)))
+        else:
+            filas = c.execute("SELECT * FROM antitrampa_acciones ORDER BY id DESC LIMIT ?", (int(limite),))
+        return [dict(r) for r in filas]
+
+
+def suspender_cuenta(cuenta, horas, motivo="", quien=""):
+    """Suspende la cuenta `horas` (no la banea: vuelve sola). -> la fecha de fin ('AAAA-MM-DD HH:MM:SS')."""
+    with _lock:
+        c = conectar()
+        c.execute("INSERT INTO antitrampa_suspensiones (cuenta, hasta, motivo, quien, desde) VALUES "
+                  "(?, datetime('now', 'localtime', ?), ?, ?, datetime('now', 'localtime')) ON CONFLICT(cuenta) DO "
+                  "UPDATE SET hasta = excluded.hasta, motivo = excluded.motivo, quien = excluded.quien, "
+                  "desde = excluded.desde", (cuenta, f"+{float(horas)} hours", str(motivo)[:300], str(quien)))
+        c.commit()
+        return c.execute("SELECT hasta FROM antitrampa_suspensiones WHERE cuenta = ?", (cuenta,)).fetchone()[0]
+
+
+def levantar_suspension(cuenta):
+    with _lock:
+        c = conectar()
+        n = c.execute("DELETE FROM antitrampa_suspensiones WHERE cuenta = ?", (cuenta,)).rowcount
+        c.commit()
+        return n > 0
+
+
+def suspendida_hasta(cuenta):
+    """La fecha de fin si la cuenta está suspendida AHORA, o None."""
+    if not cuenta:
+        return None
+    with _lock:
+        c = conectar()
+        r = c.execute("SELECT hasta FROM antitrampa_suspensiones WHERE cuenta = ? AND hasta > datetime('now', 'localtime')",
+                      (cuenta,)).fetchone()
+        return r[0] if r else None
+
+
+def desbanear_cuenta(usuario):
+    """Saca el `BANNED:` del `pass_hash` (el inverso de `banear_cuenta`). True si cambió."""
+    with _lock:
+        c = conectar()
+        cur = c.execute("UPDATE users SET pass_hash = substr(pass_hash, 8) WHERE username = ? COLLATE BINARY "
+                        "AND pass_hash LIKE 'BANNED:%'", (usuario,))
+        c.commit()
+        return cur.rowcount > 0
+
+
 def banear_cuenta(usuario):
     """`BANNED:` delante del `pass_hash` (como siempre: todo login la rechaza; se deshace sacándolo). True si cambió."""
     with _lock:

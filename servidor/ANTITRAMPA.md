@@ -29,6 +29,9 @@ un panel web encima. El catálogo de reglas también está en JSON, listo para e
 4. ★ 24-nov · **Modo silencioso** (`ANTITRAMPA_SILENCIOSO = True`, de fábrica, § 5b): lo que «expulsa» no echa a
    nadie al momento. El jugador no se entera; sus carreras dejan de cobrar y la detección queda **pendiente**
    hasta que un GM aplica la **tanda** de sanciones (`.sanciones aplicar`). Así el tramposo no sabe qué lo delató.
+5. ★ 26-nov · **Registro central y tablero** (§ 10): toda detección es un EVENTO en `antitrampa_eventos` (categoría,
+   riesgo, confianza, sesión, partida, versiones, reincidencias, estado de revisión) que se ve en vivo en el tablero
+   (`tablero_antitrampa.py`), donde los admins revisan, descartan, advierten, suspenden y banean.
 
 ## 2. Qué revisa la dll
 
@@ -114,7 +117,7 @@ valor). Los bytes van como hex separados por `_`: `E9_46_81_A9_03_90_90_6A`. El 
 | `relevo_automatico` | expulsar | dll | Alguien pisó el gancho del relevo (Auto Relevo) |
 | `resultado_alterado` | expulsar | dll | El armado del resultado (FF28 o Juego Solo) reescrito: precisión o combo personalizados |
 | `modulo_prohibido` | expulsar | dll | Tiene cargado un módulo de trampas (ToolBit, R2Mods, Cheat Engine…) |
-| `proceso_prohibido` | expulsar | dll | Tiene abierto un programa de trampas |
+| `proceso_prohibido` | ★ avisar | dll | Tiene abierto un programa de trampas. **Solo no prueba nada** (26-nov): ver `manipulacion_correlacionada` (§ 10) |
 | `farmeo` | expulsar | farmeo | Dos o más señales de farmeo distintas en la misma sesión (`ANTITRAMPA_FARMEO_SENALES`) |
 | `combo_imposible` | retener | cartel | Más combo que notas tiene la canción |
 | `porcentaje_imposible` | retener | cartel | PD o estrellas por encima de 100 |
@@ -331,3 +334,106 @@ GM y nunca mostrar `pass_hash`, sólo si empieza con `BANNED:`.
 
 En la dll (`d3d9_proxy.ini`, sección `[antitrampa]`): `activo` (1), `cerrar` (★ 0: no cierra), `pantalla` (1),
 `pantalla_centro` (0).
+
+## 10. ★ 26-nov · El registro central, la telemetría y el tablero
+
+Hecho tras una auditoría completa (dll + servidor). Lo que cambió y por qué:
+
+### 10.1 Un evento por detección (`antitrampa_eventos.py`)
+
+Todas las reglas (dll, cartel, FF3D, farmeo, telemetría, correlación) pasan por `antitrampa.anotar`, que ahora deja un
+**evento** en la tabla `antitrampa_eventos` (además del renglón de siempre en `antitrampa.jsonl`, con el mismo id):
+
+| Campo | Qué es |
+|---|---|
+| `evento` | id único (hex de 32), el mismo en el jsonl |
+| `usn`, `cuenta`, `nick` | el personaje, la cuenta (la escalera es por cuenta) y el apodo |
+| `sesion`, `partida` | la corrida del juego (de «hola» a «hola») · `sala:corrida` (`room_id:game_magic`) |
+| `cuando`, `ultimo` | la primera vez y la última vez que se vio |
+| `categoria`, `regla`, `modulo`, `origen` | la categoría del tablero (§ 10.2), la regla, quién la vio (dll, cartel, ff3d, farmeo, telemetria, correlacion, servidor) y si lo **comprobó el server** o lo **declara la dll** |
+| `descripcion`, `evidencia` | el texto y la evidencia (JSON: el renglón R2AT, lo medido) |
+| `riesgo`, `confianza` | informativo · bajo · medio · alto · crítico, y 0-100 (`ANTITRAMPA_CLASIFICACION`) |
+| `reincidencias`, `repeticiones` | eventos anteriores de esa regla en esa cuenta · la MISMA detección repetida en la misma sesión (no crea otra fila) |
+| `version_cliente`, `version_antitrampa` | el md5 del exe · la versión del protocolo y el md5 (12) de la dll |
+| `accion`, `pendiente` | lo que hizo el server · el `antitrampa_pendientes.id` si quedó para la tanda |
+| `estado`, `revisado_por`, `revisado_cuando`, `nota` | nuevo · revisado · confirmado · descartado · sancionado |
+
+⚡ El juego no espera: `registrar()` mete el evento en una cola y lo escribe un hilo aparte.
+⛔ No se guarda la IP, la MAC ni nada personal que no haga falta.
+
+Otras tablas: `antitrampa_acciones` (cada acción de un admin, con su nombre) y `antitrampa_suspensiones` (suspensión
+con fecha de fin; el login y el lobby la rechazan mientras dure).
+
+### 10.2 Categorías
+
+Cheat Engine y herramientas de memoria · Auto play · Auto perfect · Bots · Macros · Speed hack · DLL no autorizadas ·
+Alteraciones de memoria · Archivos protegidos · Integridad del antitrampa · Comportamiento anormal · Manipulación de
+paquetes · Resultados imposibles · Interrupciones de la telemetría (`ANTITRAMPA_CATEGORIAS`, `ANTITRAMPA_CLASIFICACION`).
+
+### 10.3 Reglas nuevas
+
+| Regla | Acción | Qué |
+|---|---|---|
+| `manipulacion_correlacionada` | expulsar (→ tanda) | una herramienta (proceso, manija con escritura, depurador) **y** una alteración comprobada del juego en la misma sesión |
+| `telemetria_interrumpida` | avisar | la dll dijo que late (`lat=`) y lleva `ANTITRAMPA_LATIDO_TOPE_S` sin latir con el juego conectado |
+| `telemetria_inundada` | registrar | más de `ANTITRAMPA_R2AT_POR_MINUTO` renglones por minuto: los de más se descartan |
+| `telemetria_repetida` | avisar | un renglón con una secuencia (`s=`) ya vista: se descarta |
+| `reloj_cliente` | avisar | el reloj de la PC entre latidos (`t=`, al mandar) corrió ±15 % distinto que el del server, 2 veces seguidas |
+| `antitrampa_apagado` | registrar | la dll avisa que la apagaron en su ini (antes callaba) |
+| `vigia_parado` | avisar | el hilo del antitrampa dejó de correr (lo avisa el hilo del juego) |
+
+### 10.4 Lo que se corrigió
+
+- **El FF02 del lobby no validaba la sesión**: se podía entrar con el usn de otro, echarlo y mandar R2AT a su nombre.
+  Ahora un usn entra al lobby sólo si hizo un FF01 válido (con su vcode) desde la misma IP en `LOBBY_EXIGE_LOGIN_H`.
+- **Un «hola» fabricado lavaba la retención**: ya no, mientras la cuenta tenga detecciones pendientes.
+- **Sólo se leía el primer R2AT de cada FF59** y los valores se cortaban en el espacio: ahora todos, enteros.
+- **Inundación**: tope por minuto y por jugador; avisos a los GM con tope y una vez por regla y sesión.
+- **Cheat Engine abierto = expulsión** → avisa; lo que sanciona es la correlación.
+- **«farmeo» con dos señales débiles** (callado + teclado en pantalla) → hace falta al menos una fuerte.
+- **La tanda perdía la falta** si el Coordinador no contestaba (y marcaba «sancionada»): ahora queda pendiente.
+- **La tanda sancionaba con la 1.ª regla alfabética**: ahora con la más grave.
+- **Un pendiente por cada «hola»**: ahora uno por cuenta y regla mientras espere la tanda.
+- **El jsonl crecía sin fin**: rota a `.1` al pasar `ANTITRAMPA_JSONL_MAX_MB`. La memoria por jugador se olvida a las 6 h.
+- **dll**: desborde de pila en `at_encolar` con nombres largos; la deduplicación por subcadena («a.dll» = «toolbit_a.dll»).
+
+### 10.5 La telemetría de la dll (nuevo en `antitrampa.c`)
+
+- Cada renglón lleva `s=<n>` (secuencia) y, al mandarse, `t=<GetTickCount>`.
+- El «hola» dice `dll=<md5 de la dll, 12>` y `lat=60`.
+- `R2AT latido=<n> perdidas=<renglones perdidos por cola llena> abiertas=<páginas abiertas>` cada 60 s.
+- `R2AT vigia=parado` si el hilo del antitrampa se detiene; `R2AT apagado=1` con `[antitrampa] activo=0`.
+- Compatible: una dll vieja (sin `lat=` ni `s=`) sigue funcionando y no se la marca por no latir.
+
+### 10.6 El tablero (`tablero_antitrampa.py`)
+
+```
+R2_TABLERO_PUERTO=8765
+R2_TABLERO_HOST=127.0.0.1                        # de fábrica sólo local: detrás de Caddy/túnel, nunca directo
+R2_TABLERO_ADMINS="ana:una-clave-larga,beto:otra-clave-larga"   # 12+ caracteres
+```
+
+En vivo (cada 3 s): conectados y estado del antitrampa de cada uno (activo, sin antitrampa, callado, apagado, último
+latido, reloj, renglones perdidos), detecciones nuevas, alertas críticas, filtros (jugador, categoría, riesgo, estado,
+fechas), historial de cada cuenta, estadísticas, detalle con la evidencia y el registro de acciones. Acciones: revisar,
+confirmar, falso positivo (perdona sus pendientes), advertir (texto genérico, sin detalles técnicos), suspender,
+levantar, banear, desbanear. Seguridad: cookie HttpOnly + SameSite=Strict, token CSRF, tope de intentos de login por IP,
+CSP con nonce, nada de `pass_hash` ni IPs, todo dato pintado como texto.
+
+El panel del servidor de parches (`/admin`) lee la base: puede leer `antitrampa_eventos` directamente.
+
+```sql
+-- las alertas sin revisar
+SELECT cuando, nick, cuenta, regla, riesgo, confianza, descripcion FROM antitrampa_eventos
+WHERE estado = 'nuevo' AND riesgo IN ('alto', 'critico') ORDER BY id DESC LIMIT 50;
+```
+
+### 10.7 Límites (lo que esto NO resuelve)
+
+- Todo lo que manda la dll lo **declara el cliente**: una dll recompilada puede mentir o callar. La secuencia y el
+  latido sólo detectan a la que se calla o repite; por eso lo declarado nunca sanciona solo, y el tablero lo marca.
+- No hay firma criptográfica de los renglones: el secreto viviría en el cliente. La identidad la da la sesión validada
+  (FF01 + FF02 atados).
+- No se miran la memoria escribible (puntaje, combo en el heap), los paks en disco ni drivers/macros por hardware.
+- `reloj_cliente` necesita que la dll mande el latido; un speed hack que no toque GetTickCount no se ve ahí (el reloj
+  del cartel, `reloj_rapido`, sigue).
