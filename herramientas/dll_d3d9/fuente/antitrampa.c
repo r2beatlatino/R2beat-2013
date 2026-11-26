@@ -55,39 +55,74 @@ static SIZE_T at_iguales(const BYTE *a, const BYTE *b)
     return i;
 }
 
+/* ★ 26-nov (auditoría): cada renglón lleva su número de SECUENCIA (`s=`, el server descarta los repetidos) y la cola
+ *   cuenta lo que pierde cuando está llena (va en el latido). El vigía: `g_at_vueltas` lo sube el hilo del antitrampa;
+ *   si se queda quieto, el hilo del JUEGO lo avisa (at_enviar_pendiente). */
+static volatile LONG g_at_seq = 0, g_at_perdidas = 0, g_at_vueltas = 0;
+static BYTE *g_at_solo_envio = NULL;                             /* apagado por el ini: sólo para avisar eso */
+
 static void at_encolar(const char *formato, ...)
 {
-    char linea[AT_LARGO];
+    /* ⚠ wvsprintfA escribe hasta 1024: el búfer es ESE (con `linea[AT_LARGO]` un nombre largo de módulo/proceso
+     *   desbordaba la pila — la auditoría del 26-nov). Lo que pase de AT_LARGO se recorta al encolar. */
+    char linea[1100];
     va_list args;
     va_start(args, formato);
     int n = wvsprintfA(linea, formato, args);
     va_end(args);
     if (n <= 0) return;
+    linea[AT_LARGO - 16] = 0;                                    /* lugar para « s=<n>» */
+    wsprintfA(linea + lstrlenA(linea), " s=%ld", InterlockedIncrement(&g_at_seq));
     apuntar("  [antitrampa] %s", linea);
     EnterCriticalSection(&g_at_cs);
     int sig = (g_at_cola_fin + 1) % AT_RENGLONES;
     if (sig != g_at_cola_ini) {                                  /* llena: se pierde la más nueva, no la «hola» */
         lstrcpynA(g_at_cola[g_at_cola_fin], linea, AT_LARGO);
         g_at_cola_fin = sig;
+    } else {
+        InterlockedIncrement(&g_at_perdidas);
     }
     LeaveCriticalSection(&g_at_cs);
+}
+
+/* ¿`nombre` ya está en la lista «a|b|c|»? (nombre ENTERO: «a.dll» no es «toolbit_a.dll», como antes con at_busca) */
+static int at_en_lista(const char *lista, const char *nombre)
+{
+    int n = lstrlenA(nombre);
+    for (const char *p = lista; *p;) {
+        const char *f = p;
+        while (*f && *f != '|') f++;
+        if (f - p == n && CompareStringA(LOCALE_INVARIANT, 0, p, n, nombre, n) == CSTR_EQUAL) return 1;
+        p = *f ? f + 1 : f;
+    }
+    return 0;
 }
 
 /* (hilo del juego, desde cn_enviar_pendiente) de a un renglón por segundo, ya en el lobby */
 static void at_enviar_pendiente(void)
 {
-    if (!g_at_ini || g_at_cola_ini == g_at_cola_fin) return;
+    BYTE *base = g_at_ini ? g_at_ini : g_at_solo_envio;
+    if (!base) return;
+    if (g_at_ini) {                                              /* el vigía: ¿el hilo del antitrampa sigue vivo? */
+        static LONG visto = -1;
+        static DWORD desde = 0;
+        static int avisado = 0;
+        LONG v = g_at_vueltas;
+        if (v != visto) { visto = v; desde = GetTickCount(); avisado = 0; }
+        else if (v > 0 && !avisado && GetTickCount() - desde > 60000) { avisado = 1; at_encolar("R2AT vigia=parado"); }
+    }
+    if (g_at_cola_ini == g_at_cola_fin) return;
     if (GetTickCount() - g_at_ultimo_envio < 1000) return;
-    BYTE *base = g_at_ini;
     BYTE *red = *(BYTE **)(base + (0x009314D0 - 0x400000));
     BYTE *cuenta = *(BYTE **)(base + (0x009314E0 - 0x400000));
     if (!red || !cuenta || (*(DWORD *)(red + 0x21B54) & 2) != 2 || !*(DWORD *)(cuenta + 0x7C)) return;
-    char linea[AT_LARGO];
+    char linea[AT_LARGO + 24];
     EnterCriticalSection(&g_at_cs);
     lstrcpyA(linea, g_at_cola[g_at_cola_ini]);
     g_at_cola_ini = (g_at_cola_ini + 1) % AT_RENGLONES;
     LeaveCriticalSection(&g_at_cs);
     g_at_ultimo_envio = GetTickCount();
+    wsprintfA(linea + lstrlenA(linea), " t=%lu", (unsigned long)g_at_ultimo_envio);   /* el reloj de la PC, al mandar */
     ((void (__cdecl *)(const char *))(base + (0x00404440 - 0x400000)))(linea);
 }
 
@@ -318,7 +353,7 @@ static void at_revisar_modulos(void)
         if (at_busca(nombre, "toolbitpracticeengine")) continue;
         for (int i = 0; i < (int)(sizeof(AT_MODULOS) / sizeof(AT_MODULOS[0])); i++) {
             if (!at_busca(nombre, AT_MODULOS[i])) continue;
-            if (at_busca(g_at_modulos_vistos, nombre)) break;
+            if (at_en_lista(g_at_modulos_vistos, nombre)) break;
             if (at_de_windows(m.szExePath)) {        /* ★ el d3dref9.dll de System32/SysWOW64 lo carga Windows mismo */
                 if (!g_at_windows_avisado++) apuntar("  [antitrampa] %s es de Windows (%s): no cuenta", nombre, m.szExePath);
                 break;                               /* ⚠ NO va a «vistos»: una copia junto al juego se informa igual */
@@ -466,7 +501,7 @@ static void at_revisar_procesos(void)
         CharLowerA(nombre);
         for (int i = 0; i < (int)(sizeof(AT_PROCESOS) / sizeof(AT_PROCESOS[0])); i++) {
             if (!at_busca(nombre, AT_PROCESOS[i])) continue;
-            if (at_busca(g_at_procesos_vistos, nombre)) break;
+            if (at_en_lista(g_at_procesos_vistos, nombre)) break;
             if (lstrlenA(g_at_procesos_vistos) + lstrlenA(nombre) + 2 < (int)sizeof(g_at_procesos_vistos)) {
                 lstrcatA(g_at_procesos_vistos, nombre);
                 lstrcatA(g_at_procesos_vistos, "|");
@@ -649,7 +684,7 @@ static int at_revisar_manijas_de(DWORD objetivo)
                 int sistema = 0;
                 for (int k = 0; k < (int)(sizeof(AT_MANIJAS_SISTEMA) / sizeof(AT_MANIJAS_SISTEMA[0])); k++)
                     sistema |= !lstrcmpA(nombre, AT_MANIJAS_SISTEMA[k]);
-                if (sistema || at_busca(g_at_manijas_vistas, nombre)) continue;
+                if (sistema || at_en_lista(g_at_manijas_vistas, nombre)) continue;
                 if (lstrlenA(g_at_manijas_vistas) + lstrlenA(nombre) + 2 < (int)sizeof(g_at_manijas_vistas)) {
                     lstrcatA(g_at_manijas_vistas, nombre); lstrcatA(g_at_manijas_vistas, "|");
                 }
@@ -880,23 +915,44 @@ static DWORD WINAPI at_hilo_pantalla(LPVOID nada)
     return 0;
 }
 
+#define AT_LATIDO_S 60
 static DWORD WINAPI at_hilo(LPVOID nada)
 {
     (void)nada;
-    char exe[MAX_PATH];
+    char exe[MAX_PATH], dll[40] = "?";
     DWORD tam = 0;
+    /* ★ 26-nov: el md5 de NUESTRA dll (los 12 primeros): qué build tiene el jugador. Va antes que el del exe porque
+     *   at_md5 escribe en g_at_md5. */
+    HMODULE yo = NULL;
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCSTR)(void *)at_hilo, &yo) && GetModuleFileNameA(yo, exe, MAX_PATH)) {
+        BYTE *propio = at_leer_archivo(exe, &tam);
+        if (propio) {
+            at_md5(propio, tam);
+            lstrcpynA(dll, g_at_md5, 13);
+            HeapFree(GetProcessHeap(), 0, propio);
+        }
+    }
     BYTE *archivo = GetModuleFileNameA(NULL, exe, MAX_PATH) ? at_leer_archivo(exe, &tam) : NULL;
     if (archivo) {
         at_md5(archivo, tam);
         HeapFree(GetProcessHeap(), 0, archivo);
     }
     if (g_at_previo > 0)
-        at_encolar("R2AT v=1 exe=%s previo=%d previo_va=0x%08X", g_at_md5, g_at_previo, g_at_previo_va);
+        at_encolar("R2AT v=1 exe=%s previo=%d previo_va=0x%08X dll=%s lat=%d", g_at_md5, g_at_previo, g_at_previo_va,
+                   dll, AT_LATIDO_S);
     else
-        at_encolar("R2AT v=1 exe=%s previo=%d", g_at_md5, g_at_previo);
+        at_encolar("R2AT v=1 exe=%s previo=%d dll=%s lat=%d", g_at_md5, g_at_previo, dll, AT_LATIDO_S);
     int depurador = 0;
+    DWORD latidos = 0;
     for (DWORD vuelta = 0;; vuelta++) {
         Sleep(5000);
+        InterlockedIncrement(&g_at_vueltas);
+        if (vuelta % (AT_LATIDO_S / 5) == 0) {                   /* ★ 26-nov: el LATIDO (el server nota si se calla) */
+            int abiertas = 0;
+            for (DWORD p = 0; p < g_at_paginas; p++) abiertas += g_at_abiertas[p] > 0;
+            at_encolar("R2AT latido=%lu perdidas=%ld abiertas=%d", (unsigned long)++latidos, (long)g_at_perdidas, abiertas);
+        }
         at_revisar_codigo();
         at_revisar_ganchos();
         at_cerrar_juego();
@@ -917,7 +973,11 @@ static void antitrampa_iniciar(void)
     lstrcpyA(ini, g_carpeta);
     lstrcatA(ini, "d3d9_proxy.ini");
     if (!GetPrivateProfileIntA("antitrampa", "activo", 1, ini)) {
-        apuntar("  [antitrampa] apagado ([antitrampa] activo=0)");
+        apuntar("  [antitrampa] apagado ([antitrampa] activo=0): sólo se le avisa al server");
+        /* ★ 26-nov: en vez de callar, un renglón: el server lo ve (`antitrampa_apagado`). Sin la copia ni los hilos. */
+        InitializeCriticalSection(&g_at_cs);
+        g_at_solo_envio = (BYTE *)GetModuleHandleA(NULL);
+        at_encolar("R2AT apagado=1");
         return;
     }
     g_at_cerrar = GetPrivateProfileIntA("antitrampa", "cerrar", 0, ini);   /* ★ 24-nov: de fábrica, NO cierra */

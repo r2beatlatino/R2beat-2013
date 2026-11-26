@@ -122,8 +122,9 @@ def login_juego(usn, vcode):
     return canales
 
 
-def canal(usn, puerto, ofuscar=True):
-    """CheckVer + login al canal + un FF03 cifrado. -> (A cierra, cmds que volvieron del FF03)"""
+def canal(usn, puerto, ofuscar=True, extra=b""):
+    """CheckVer + login al canal + un FF03 cifrado (y `extra`: más paquetes internos en el mismo FF55).
+    -> (A cierra, cmds que volvieron del FF03)"""
     with socket.create_connection(("127.0.0.1", puerto), 10) as s:
         buf = [b""]
         s.sendall(trama(0x01, b"\x04\x00"))
@@ -142,7 +143,9 @@ def canal(usn, puerto, ofuscar=True):
         cierra = A == (chal ^ CHALLENGE_XOR) & 0xFFFFFFFF
         pwd = r[1][9:9 + 256]
         key = (B + usn) & 0xFFFFFFFF
-        claro = b"\xFF\x56\x00\x00" + b"\xFF\x03\x00\x00"           # FF56 de relleno + FF03 vacío
+        # FF56 de relleno + (extra) + FF03 vacío. ⚠ `extra` va ANTES del FF03: al ver la respuesta del FF03 esta prueba
+        #   cierra el socket, y lo que viniera detrás ya no se atiende.
+        claro = b"\xFF\x56\x00\x00" + extra + b"\xFF\x03\x00\x00"
         s.sendall(trama(0x55, xor(claro, flujo(pwd, len(claro), key & 0xFF))))   # contador 0
         vistos, fin = [], time.time() + 10
         while time.time() < fin and 0x03 not in vistos:
@@ -169,6 +172,49 @@ def canal(usn, puerto, ofuscar=True):
         return cierra, vistos
 
 
+# ── ★ 26-nov · el ANTITRAMPA de punta a punta: un FF59 con renglones R2AT entra por la red, cifrado como lo manda el
+#   juego, y sale en el TABLERO por HTTP (con sesión de admin). Nada simulado del lado del server.
+def antitrampa_de_punta_a_punta(usuario, clave, puerto, tablero):
+    import http.cookiejar
+    import json
+    import urllib.request
+    estado, usn, vcode = launcher(usuario, clave)
+    login_juego(usn, vcode)
+    texto = (f"USN:{usn} TIME:2026-11-26 SERVER:prueba\n"
+             f"R2AT v=1 exe=00000000000000000000000000000000 previo=0 dll=e2e lat=60 s=1\n"
+             f"R2AT proceso=Cheat Engine.exe s=2").encode("cp1252")
+    cuerpo = struct.pack("<H", len(texto)) + texto
+    ff59 = b"\xFF\x59" + struct.pack("<H", len(cuerpo)) + cuerpo
+    cierra, _ = canal(usn, puerto, extra=ff59)
+    chequear("ANTITRAMPA: el canal acepta el FF59 con los renglones R2AT (cifrado, como el juego)", cierra)
+    jar = http.cookiejar.CookieJar()
+    op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    base = f"http://127.0.0.1:{tablero}"
+    pedido = urllib.request.Request(base + "/api/login", data=json.dumps(
+        {"usuario": "e2e", "clave": "clave-de-la-prueba-e2e"}).encode(), headers={"Content-Type": "application/json"})
+    try:
+        with op.open(pedido, timeout=10) as r:
+            entra = r.status == 200
+    except OSError:
+        entra = False
+    chequear("TABLERO: arranca con el server y el admin entra (:%d)" % tablero, entra)
+    vistos, fin = [], time.time() + 15
+    while entra and time.time() < fin:
+        with op.open(base + f"/api/eventos?usn={usn}", timeout=10) as r:
+            vistos = json.loads(r.read().decode("utf-8"))
+        if {"exe_desconocido", "proceso_prohibido"} <= {e["regla"] for e in vistos}:
+            break
+        time.sleep(0.5)
+    reglas = {e["regla"]: e for e in vistos}
+    chequear("TABLERO: llegan las DOS detecciones del FF59 (%s)" % ", ".join(sorted(reglas)),
+             {"exe_desconocido", "proceso_prohibido"} <= set(reglas))
+    p = reglas.get("proceso_prohibido") or {}
+    chequear("TABLERO: con su categoría, riesgo, versión y la evidencia entera («Cheat Engine.exe»)",
+             p.get("categoria") == "herramienta_memoria" and p.get("riesgo") == "bajo"
+             and "Cheat Engine.exe" in (p.get("descripcion") or "") and "dll e2e" in (p.get("version_antitrampa") or "")
+             and p.get("cuenta") == usuario)
+
+
 # ── el armado: tablas vacías, base temporal, cuenta de prueba, server ───────────────────────────────
 def main():
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -180,7 +226,12 @@ def main():
             os.makedirs(os.path.dirname(p), exist_ok=True)
             open(p, "w").close()
             puestas.append(p)
+    with socket.socket() as _s:                         # ★ 26-nov: el tablero del antitrampa, en un puerto libre
+        _s.bind(("127.0.0.1", 0))
+        tablero = _s.getsockname()[1]
     env = dict(os.environ, R2_PUERTOS=str(OFFSET), R2_BASE=os.path.join(tmp, "datos.db"),
+               R2_TABLERO_PUERTO=str(tablero), R2_TABLERO_HOST="127.0.0.1",
+               R2_TABLERO_ADMINS="e2e:clave-de-la-prueba-e2e",
                R2_CHARS_DB=os.path.join(tmp, "chars_db.json"), R2_CUENTAS=os.path.join(tmp, "cuentas.json"),
                R2_SESIONES=os.path.join(tmp, "sesiones.json"), R2_LOG=os.path.join(tmp, "servidor.log"),
                R2_STATUS=os.path.join(tmp, "status.json"), R2_IP="127.0.0.1", PYTHONIOENCODING="utf-8")
@@ -236,6 +287,11 @@ def main():
             login_juego(usn, vcode)
             cierra_mal, _ = canal(usn, puerto, ofuscar=False)
             chequear("★ revés: con el challenge SIN ofuscar el A NO cierra", not cierra_mal)
+            # ★ 26-nov (auditoría del antitrampa): el FF02 del canal tomaba el usn del paquete sin más. Ahora sólo
+            #   entra un usn que hizo un login del juego (FF01 con su vcode) desde la misma IP.
+            ajeno, _ = canal(usn + 4242, puerto)
+            chequear("★ revés: el FF02 con el usn de OTRO (sin su login) NO entra al canal", not ajeno)
+            antitrampa_de_punta_a_punta(usuario, clave, puerto, tablero)
     finally:
         if srv is not None:
             srv.terminate()

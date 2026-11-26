@@ -318,6 +318,33 @@ CREATE TABLE IF NOT EXISTS antitrampa_pendientes (
     id INTEGER PRIMARY KEY AUTOINCREMENT, usn INTEGER NOT NULL, cuenta TEXT, nick TEXT, regla TEXT NOT NULL,
     detalle TEXT, cuando TEXT NOT NULL, estado TEXT NOT NULL DEFAULT 'pendiente', resuelta TEXT, quien TEXT);
 CREATE INDEX IF NOT EXISTS ix_at_pendientes ON antitrampa_pendientes(estado, cuando);
+-- ★ 26-nov · el REGISTRO CENTRAL del antitrampa (antitrampa_eventos.py) y el tablero (tablero_antitrampa.py).
+--   Un evento por detección; la misma detección repetida en la misma sesión suma `repeticiones` (no otra fila).
+CREATE TABLE IF NOT EXISTS antitrampa_eventos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    evento TEXT NOT NULL UNIQUE,            -- id único (hex de 32)
+    cuando TEXT NOT NULL, ultimo TEXT NOT NULL,
+    usn INTEGER, cuenta TEXT, nick TEXT,
+    sesion TEXT, partida TEXT,              -- la sesión del juego (de «hola» a «hola») · sala:corrida
+    categoria TEXT NOT NULL, regla TEXT NOT NULL, modulo TEXT NOT NULL, origen TEXT NOT NULL,
+    descripcion TEXT, evidencia TEXT,       -- evidencia: JSON
+    riesgo TEXT NOT NULL, confianza INTEGER NOT NULL,
+    reincidencias INTEGER NOT NULL DEFAULT 0, repeticiones INTEGER NOT NULL DEFAULT 1,
+    version_cliente TEXT, version_antitrampa TEXT,
+    accion TEXT,                            -- lo que hizo el server (registrar, avisar, retener, pendiente…)
+    pendiente INTEGER,                      -- antitrampa_pendientes.id, si quedó para la tanda
+    estado TEXT NOT NULL DEFAULT 'nuevo',   -- nuevo | revisado | confirmado | descartado | sancionado
+    revisado_por TEXT, revisado_cuando TEXT, nota TEXT);
+CREATE INDEX IF NOT EXISTS ix_at_ev_cuando ON antitrampa_eventos(cuando);
+CREATE INDEX IF NOT EXISTS ix_at_ev_cuenta ON antitrampa_eventos(cuenta, regla);
+CREATE INDEX IF NOT EXISTS ix_at_ev_estado ON antitrampa_eventos(estado, riesgo);
+-- lo que hace cada administrador (revisar, descartar, advertir, suspender, banear…)
+CREATE TABLE IF NOT EXISTS antitrampa_acciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, cuando TEXT NOT NULL, admin TEXT NOT NULL, accion TEXT NOT NULL,
+    cuenta TEXT, usn INTEGER, evento TEXT, detalle TEXT);
+-- suspensiones con fecha de fin (el baneo permanente sigue siendo BANNED: en users.pass_hash)
+CREATE TABLE IF NOT EXISTS antitrampa_suspensiones (
+    cuenta TEXT PRIMARY KEY, hasta TEXT NOT NULL, motivo TEXT, quien TEXT, desde TEXT NOT NULL);
 
 CREATE INDEX IF NOT EXISTS ix_inv_uid   ON inventory(uid);
 CREATE INDEX IF NOT EXISTS ix_chars_nk  ON chars(nickname);

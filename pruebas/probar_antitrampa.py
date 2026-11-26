@@ -307,9 +307,15 @@ def probar_farmeo():
     antitrampa.al_ff59(c, "R2AT teclas=500 inyectadas=480")
     ok(reglas_de(6015)[-1] == "farmeo" and antitrampa.fue_expulsado(c),
        "listo automático + teclas inyectadas = farmeo y expulsión")
+    # ★ 26-nov: tener Cheat Engine ABIERTO no prueba que se use: sólo avisa. Lo que va a la escalera es la
+    #   CORRELACIÓN: la herramienta y una alteración del juego en la misma sesión.
     c = jugador(6016)
     antitrampa.al_ff59(c, "R2AT proceso=cheatengine-i386.exe")
-    ok(reglas_de(6016)[-1] == "proceso_prohibido" and antitrampa.fue_expulsado(c), "Cheat Engine abierto = expulsión")
+    ok(reglas_de(6016)[-1] == "proceso_prohibido" and not antitrampa.fue_expulsado(c),
+       "Cheat Engine abierto, solo, avisa pero NO expulsa")
+    antitrampa.al_ff59(c, "R2AT codigo=0x00412000 paginas=1 bytes=90_90_90_90_90_90_90_90")
+    ok(reglas_de(6016)[-1] == "manipulacion_correlacionada" and antitrampa.fue_expulsado(c),
+       "Cheat Engine + código del juego tocado en la misma sesión = manipulación correlacionada y expulsión")
 
     print("el gancho del juego automático (Ñ2Hock, R2Beat.exe+0x1080B5):")
     c = jugador(6017)
@@ -631,8 +637,11 @@ def probar_silencioso():
             salas.CONEXIONES.pop(usn, None)
             salas.CONEXIONES.pop(6299, None)
         usn2, _m = basedatos.cuenta_crear("inocente", "D" * 64)
-        antitrampa.al_ff59(jugador(usn2), "R2AT proceso=cheatengine-i386.exe")
-        ok(pendientes("inocente") == 1, "otra detección pendiente")
+        j2 = jugador(usn2)
+        antitrampa.al_ff59(j2, "R2AT proceso=cheatengine-i386.exe")
+        ok(pendientes("inocente") == 0, "Cheat Engine abierto, solo, NO deja nada para la tanda")
+        antitrampa.al_ff59(j2, "R2AT memoria=0x1A2B0000 regiones=1")
+        ok(pendientes("inocente") == 1, "con memoria ajena en la misma sesión, sí: otra detección pendiente")
         ok("descartada" in " ".join(antitrampa.perdonar_pendientes(str(usn2), "prueba")), "`.sanciones perdonar` la descarta")
         antitrampa.sancionar_tanda("prueba", ya=True)
         ok(pendientes("inocente") == 0 and faltas("inocente") == 0, "revés: lo perdonado no se sanciona")
@@ -665,7 +674,9 @@ def probar_llegadas():
     antitrampa.al_ff59(c, f"USN:{c.usn} TIME:x SERVER:y\nR2AT codigo=0x005060B5 paginas=1 bytes=90_90_90_90_90_90")
     ok(marcas_guardadas()[-1]["regla"] == "juego_automatico", "una dll vieja: la dirección de las largas A es juego_automatico")
     antitrampa.al_ff59(c, f"USN:{c.usn} TIME:x SERVER:y\nR2AT manija=candy0503.exe acceso=0x1FFFFF")
-    ok(marcas_guardadas()[-1]["regla"] == "manija_escritura", "Candy con el juego abierto para escribir: manija_escritura")
+    ultimas = [m["regla"] for m in marcas_guardadas()[-2:]]
+    ok(ultimas == ["manija_escritura", "manipulacion_correlacionada"],
+       "Candy con el juego abierto para escribir: manija_escritura (y, con ganchos en la sesión, la correlación)")
     antitrampa.al_ff59(c, f"USN:{c.usn} TIME:x SERVER:y\nR2AT proceso=notas.exe firma=producto_candy")
     ok(marcas_guardadas()[-1]["regla"] == "proceso_prohibido" and "producto_candy" in marcas_guardadas()[-1]["detalle"],
        "Candy renombrado lo caza la firma: proceso_prohibido")
