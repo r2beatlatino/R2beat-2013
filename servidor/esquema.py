@@ -307,8 +307,10 @@ CREATE TABLE IF NOT EXISTS movimientos_personajes (
 CREATE TABLE IF NOT EXISTS antitrampa_faltas (
     username TEXT PRIMARY KEY, faltas INTEGER NOT NULL DEFAULT 0, ultima_regla TEXT, ultima TEXT);
 
+-- ★ `cuenta`: de quién fue la llegada. A un jugador NO se le juzga con sus propias llegadas (si no, sembrando
+--   carreras limpias y lentas baja su propia vara y luego cuela una llegada simulada). Las viejas quedan en NULL.
 CREATE TABLE IF NOT EXISTS antitrampa_llegadas (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, cancion INTEGER NOT NULL, frame INTEGER NOT NULL, cuando TEXT);
+    id INTEGER PRIMARY KEY AUTOINCREMENT, cancion INTEGER NOT NULL, frame INTEGER NOT NULL, cuando TEXT, cuenta TEXT);
 CREATE INDEX IF NOT EXISTS ix_at_llegadas ON antitrampa_llegadas(cancion, id);
 -- ★ 24-nov (antitrampa SILENCIOSO): lo que antes expulsaba al instante queda acá, PENDIENTE, hasta que un GM aplica
 --   la tanda (`.sanciones aplicar`). `estado`: pendiente | sancionada | perdonada. Una fila por sesión del juego.

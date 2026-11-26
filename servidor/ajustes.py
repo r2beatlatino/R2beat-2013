@@ -5507,6 +5507,8 @@ ANTITRAMPA_REGLAS.update({
     "precision_imposible": "retener",    # milésimas > 999, o 100 % con milésimas (100.000 es el tope)
     # ⏳ "avisar" hasta medirlo en prod: la duración «normal» la aprende el server de las llegadas limpias.
     "llegada_anticipada":  "avisar",     # llegó a la meta mucho antes de lo que tarda esa canción (llegada simulada)
+    # ⏳ "avisar" hasta medirlo en prod: el suelo sale del chart (notas.duracion_minima_de), sin llegadas para contrastar.
+    "llegada_imposible":   "avisar",     # llegó en menos de la mitad de lo que dura como poco su canción (aun sin historia)
     # ★ 24-nov · INFORME_DEFENSA_CANDY0503.md: Candy no se inyecta, escribe la memoria del juego desde AFUERA.
     # ⏳ "registrar" hasta ver qué aparece en los limpios (el que lanzó el juego, overlays): después, "avisar" o más.
     "manija_escritura":    "registrar",  # un programa tiene abierto el juego con permiso de escribir su memoria
@@ -5517,6 +5519,14 @@ ANTITRAMPA_REGLAS.update({
 ANTITRAMPA_LLEGADA_MUESTRAS = 5
 ANTITRAMPA_LLEGADA_HISTORIA = 30
 ANTITRAMPA_LLEGADA_FACTOR = 0.75
+#   La vara de una canción sólo es de fiar si la pusieron al menos CUENTAS cuentas DISTINTAS (sin contar al juzgado):
+#   si no, un alt solo podría sembrarla para su cuenta principal. Las llegadas viejas sin cuenta (NULL, de antes de
+#   guardarla) se aceptan como antes mientras no haya ninguna con cuenta; se van renovando solas.
+ANTITRAMPA_LLEGADA_CUENTAS = 2
+#   Llegada imposible: frame < lo menos que dura la canción según su chart × SUELO_FACTOR. Tapa lo que la mediana no
+#   puede (canción nueva, o que sólo jugó una cuenta). La mitad deja margen de sobra a un jugador rápido de verdad:
+#   sólo caza la llegada simulada descarada.
+ANTITRAMPA_SUELO_FACTOR = 0.5
 ANTITRAMPA_REGLAS["relevo_automatico"] = "expulsar"
 
 # ── ★ ANTITRAMPA DEL FARMEO (`antitrampa.py`, «señales de farmeo») ─────────────────────────────────────

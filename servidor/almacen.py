@@ -50,6 +50,10 @@ def _migrar_esquema(c):
     if "enenos_id" not in cols:
         c.execute("ALTER TABLE users ADD COLUMN enenos_id INTEGER")
     c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_enenos_id ON users(enenos_id) WHERE enenos_id IS NOT NULL")
+    # ★ de quién fue cada llegada: no juzgar a un jugador con las suyas (mediana envenenable).
+    cols_ll = {r[1] for r in c.execute("PRAGMA table_info(antitrampa_llegadas)").fetchall()}
+    if cols_ll and "cuenta" not in cols_ll:
+        c.execute("ALTER TABLE antitrampa_llegadas ADD COLUMN cuenta TEXT")
 
 
 def conectar():
@@ -285,20 +289,44 @@ def antitrampa_sumar_falta(uid, regla):
 
 
 # ★ 24-nov · cuánto tarda cada canción, aprendido de las llegadas LIMPIAS (antitrampa: «llegada_anticipada»).
-def antitrampa_llegadas(cancion, n):
-    """Los `frame` de las últimas `n` llegadas limpias de `cancion` (la más nueva primero)."""
+def antitrampa_llegadas(cancion, n, excluir=None):
+    """Los `frame` de las últimas `n` llegadas limpias de `cancion` (la más nueva primero).
+
+    `excluir` = una cuenta (username) cuyas llegadas NO cuentan: a un jugador se le juzga con las de los demás, no
+    con las suyas. Las llegadas sin cuenta (viejas, NULL) sí cuentan: nadie las puede reclamar como propias."""
     with _lock:
         c = conectar()
-        return [int(r["frame"]) for r in c.execute(
-            "SELECT frame FROM antitrampa_llegadas WHERE cancion = ? ORDER BY id DESC LIMIT ?", (int(cancion), int(n)))]
+        if excluir is None:
+            filas = c.execute("SELECT frame FROM antitrampa_llegadas WHERE cancion = ? ORDER BY id DESC LIMIT ?",
+                              (int(cancion), int(n)))
+        else:
+            filas = c.execute("SELECT frame FROM antitrampa_llegadas WHERE cancion = ? AND (cuenta IS NULL OR cuenta <> ?) "
+                              "ORDER BY id DESC LIMIT ?", (int(cancion), str(excluir), int(n)))
+        return [int(r["frame"]) for r in filas]
 
 
-def antitrampa_anotar_llegada(cancion, frame, guardar=200):
-    """Una llegada limpia más de `cancion`. Por canción quedan las últimas `guardar`."""
+def antitrampa_llegadas_filas(cancion, n, excluir=None):
+    """Como `antitrampa_llegadas` pero `[(frame, cuenta), …]`: hace falta saber de cuántas cuentas distintas sale la
+    vara (antitrampa: un alt solo no la puede fijar). `cuenta` es None en las llegadas viejas."""
     with _lock:
         c = conectar()
-        c.execute("INSERT INTO antitrampa_llegadas (cancion, frame, cuando) VALUES (?, ?, datetime('now', 'localtime'))",
-                  (int(cancion), int(frame)))
+        if excluir is None:
+            filas = c.execute("SELECT frame, cuenta FROM antitrampa_llegadas WHERE cancion = ? ORDER BY id DESC LIMIT ?",
+                              (int(cancion), int(n)))
+        else:
+            filas = c.execute("SELECT frame, cuenta FROM antitrampa_llegadas WHERE cancion = ? "
+                              "AND (cuenta IS NULL OR cuenta <> ?) ORDER BY id DESC LIMIT ?",
+                              (int(cancion), str(excluir), int(n)))
+        return [(int(r["frame"]), r["cuenta"]) for r in filas]
+
+
+def antitrampa_anotar_llegada(cancion, frame, cuenta=None, guardar=200):
+    """Una llegada limpia más de `cancion`, con la cuenta de quién fue. Por canción quedan las últimas `guardar`."""
+    with _lock:
+        c = conectar()
+        c.execute("INSERT INTO antitrampa_llegadas (cancion, frame, cuando, cuenta) "
+                  "VALUES (?, ?, datetime('now', 'localtime'), ?)",
+                  (int(cancion), int(frame), str(cuenta) if cuenta else None))
         c.execute("DELETE FROM antitrampa_llegadas WHERE cancion = ? AND id NOT IN (SELECT id FROM antitrampa_llegadas "
                   "WHERE cancion = ? ORDER BY id DESC LIMIT ?)", (int(cancion), int(cancion), int(guardar)))
         c.commit()

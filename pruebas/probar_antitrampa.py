@@ -27,6 +27,10 @@ sys.path.insert(0, RAIZ)
 from servidor import antitrampa, notas          # noqa: E402
 
 FALLAS = []
+# ★ 25-nov: el suelo del chart (llegada_imposible) se prueba aparte, en `probar_suelo_chart`. Acá queda APAGADO: los
+#   charts no están en el repo (en el CI no hay ninguno) y en una PC con charts las canciones de las pruebas de
+#   siempre (77+i, 4242…) tendrían suelo y darían distinto que en el CI.
+notas.duracion_minima_de = lambda cancion: None
 # ★ 24-nov: el server viene en modo SILENCIOSO (sanciona en tanda). Las pruebas de siempre son del modo de antes
 #   (expulsión al instante); el silencioso tiene la suya, `probar_silencioso`.
 antitrampa.ANTITRAMPA_SILENCIOSO = False
@@ -667,6 +671,111 @@ def probar_llegadas():
        "Candy renombrado lo caza la firma: proceso_prohibido")
 
 
+def probar_mediana_envenenable():
+    print("la mediana de llegadas no se envenena con las carreras del propio jugador:")
+    import statistics
+    from servidor import almacen
+    notas.combo_total_de = lambda cancion: 2000
+    CANCION = 5555
+    honesto_usn, honesto = almacen.asegurar_cuenta_uid(20000001)
+    tramposo_usn, tramposo = almacen.asegurar_cuenta_uid(20000002)
+    _otro_usn, otro = almacen.asegurar_cuenta_uid(20000003)
+    # dos jugadores honestos dejan 5 llegadas limpias de ~120 s (7200 frames): la vara sale de 2 cuentas distintas
+    for f in (7200, 7250, 7180):
+        almacen.antitrampa_anotar_llegada(CANCION, f, cuenta=honesto)
+    for f in (7300, 7220):
+        almacen.antitrampa_anotar_llegada(CANCION, f, cuenta=otro)
+    # el tramposo siembra 20 «llegadas» rápidas (3500) bajo SU cuenta para bajar la vara
+    for _ in range(20):
+        almacen.antitrampa_anotar_llegada(CANCION, 3500, cuenta=tramposo)
+    ok(statistics.median(almacen.antitrampa_llegadas(CANCION, 30)) < 4000,
+       "contando las suyas la mediana queda envenenada (<40 s) — así se colaba antes")
+    suyas = almacen.antitrampa_llegadas(CANCION, 30, excluir=tramposo)
+    ok(len(suyas) == 5 and all(f >= 7000 for f in suyas), "al tramposo se le juzga solo con las 5 de los honestos")
+    m = antitrampa.marcas_del_cartel(3600, 500, 90, 0, 2000, 60.0, llegadas=suyas)
+    ok([r for r, _ in m] == ["llegada_anticipada"], "su llegada de 60 s se caza pese a las 20 que sembró")
+    # end to end por juzgar_cartel: saca la cuenta del usn y excluye las del propio tramposo
+    c = jugador(tramposo_usn)
+    antes = len(marcas_guardadas())
+    c.at_ultimo = None
+    antitrampa.marcar_salida(c, ahora=30000.0)
+    antitrampa.juzgar_cartel(c, 3600, 500, 90, 0, CANCION, ahora=30061.0)
+    ok(len(marcas_guardadas()) == antes + 1 and marcas_guardadas()[-1]["regla"] == "llegada_anticipada",
+       "y por juzgar_cartel (cuenta sacada del usn) también se caza")
+    # revés: una carrera normal del honesto no se retiene
+    c2 = jugador(honesto_usn)
+    c2.at_ultimo = None
+    antitrampa.marcar_salida(c2, ahora=40000.0)
+    retener = antitrampa.juzgar_cartel(c2, 7100, 500, 90, 0, CANCION, ahora=40000.0 + 7100 / 60 + 1)
+    ok(not retener, "revés: una carrera normal del honesto sí cobra")
+    # la llegada del honesto quedó guardada bajo SU cuenta (no la del tramposo)
+    con = almacen.conectar()
+    n_honesto = con.execute("SELECT COUNT(*) FROM antitrampa_llegadas WHERE cancion=? AND cuenta=?",
+                            (CANCION, honesto)).fetchone()[0]
+    ok(n_honesto == 4, "la llegada nueva se guardó con la cuenta del honesto")
+
+    print("la vara sólo es de fiar si la pusieron varias cuentas distintas:")
+    v = antitrampa.vara_de_fiar
+    ok(v([(7200, "alt")] * 6) == [], "un alt solo, aunque deje 6 llegadas, no pone la vara")
+    ok(v([(7200, "a")] * 3 + [(7300, "b")] * 2) == [7200, 7200, 7200, 7300, 7300], "dos cuentas distintas sí")
+    ok(v([(7200, None)] * 5) == [7200] * 5, "sólo llegadas viejas sin cuenta: como antes")
+    ok(v([(7200, None)] * 4 + [(3500, "alt")]) == [], "un alt no se esconde detrás de las viejas")
+    # end to end: canción que sólo jugó UNA cuenta → no se juzga con esa vara (podría ser un alt del tramposo)
+    for f in (7200, 7250, 7180, 7300, 7220):
+        almacen.antitrampa_anotar_llegada(6666, f, cuenta=otro)
+    c3 = jugador(tramposo_usn)
+    antes = len(marcas_guardadas())
+    c3.at_ultimo = None
+    antitrampa.marcar_salida(c3, ahora=50000.0)
+    antitrampa.juzgar_cartel(c3, 3600, 500, 90, 0, 6666, ahora=50061.0)
+    ok(len(marcas_guardadas()) == antes, "con la vara de una sola cuenta no marca (el suelo del chart cubrirá esto)")
+
+
+def probar_suelo_chart():
+    print("el suelo del chart caza la llegada imposible aunque la canción no tenga historia:")
+    import zlib
+    from servidor import almacen
+
+    def chart(bpms, coords):
+        cab = struct.pack("<i", len(bpms)) + b"".join(struct.pack("<if", marca, bpm) for marca, bpm in bpms)
+        return cab + zlib.compress(b"".join(struct.pack("<HBBH", c, 1, 1, 0) for c in coords))
+
+    d = notas.duracion_minima_chart
+    ok(d(chart([(0, 120.0)], [12, 1440, 2880])) == 120.0, "2880 doceavos a 120 BPM = 240 pulsos = 120 s")
+    ok(d(chart([(0, 120.0), (100, 240.0)], [2880])) == 60.0, "con varios BPM se usa el más rápido (lo más corto)")
+    ok(d(b"\x00\x01") is None and d(chart([(0, 120.0)], [])) is None, "un chart roto o sin notas no da suelo")
+    m = antitrampa.marcas_del_cartel
+    ok(reglas(m(600, 200, 95, 80, 600, 10.0, duracion_min=120.0)) == ["llegada_imposible"],
+       "llegar en 10 s a una canción de 120 s es imposible (simular llegada)")
+    ok(reglas(m(600, 200, 95, 80, 600, 10.0, llegadas=[7200] * 5, duracion_min=120.0)) == ["llegada_imposible"],
+       "si es imposible no se suma también la anticipada (una sola marca)")
+    ok(m(4200, 500, 95, 80, 600, 70.0, duracion_min=120.0) == [], "revés: 70 s sobre 120 s es rápida, no imposible")
+    ok(m(600, 200, 95, 80, 600, 10.0, relevo=True, duracion_min=120.0) == [], "relevo: no se juzga")
+    ok(m(600, 200, 95, 80, 600, 10.0, coop=True, duracion_min=120.0) == [], "cooperativo: no se juzga")
+    ok(m(600, 200, 95, 80, 600, 10.0, duracion_min=None) == [], "sin chart conocido (ni historia) no hay suelo")
+    ok(m(0xFFFFFFFF, 200, 95, 80, 600, 10.0, duracion_min=120.0) == [], "sin meta (no llegó) no es llegada imposible")
+    # end to end: canción SIN historia, con suelo de 120 s
+    antes_dur = notas.duracion_minima_de
+    notas.duracion_minima_de = lambda cancion: 120.0 if cancion == 7777 else None
+    try:
+        usn, _cuenta = almacen.asegurar_cuenta_uid(20000009)
+        c = jugador(usn)
+        antes = len(marcas_guardadas())
+        c.at_ultimo = None
+        antitrampa.marcar_salida(c, ahora=60000.0)
+        antitrampa.juzgar_cartel(c, 600, 200, 95, 80, 7777, ahora=60011.0)
+        ok(len(marcas_guardadas()) == antes + 1 and marcas_guardadas()[-1]["regla"] == "llegada_imposible",
+           "por juzgar_cartel: llegada de 10 s en una canción nueva queda marcada")
+        ok(len(almacen.antitrampa_llegadas(7777, 30)) == 0, "y no se guarda como llegada normal")
+        c.at_ultimo = None
+        antitrampa.marcar_salida(c, ahora=70000.0)
+        retener = antitrampa.juzgar_cartel(c, 6900, 500, 95, 80, 7777, ahora=70000.0 + 6900 / 60 + 1)
+        ok(not retener and len(marcas_guardadas()) == antes + 1, "revés: una llegada normal de 115 s no marca")
+        ok(len(almacen.antitrampa_llegadas(7777, 30)) == 1, "y esa sí se guarda")
+    finally:
+        notas.duracion_minima_de = antes_dur
+
+
 def main():
     try:
         probar_catalogo()
@@ -679,6 +788,8 @@ def main():
         probar_silencioso()
         probar_cartel()
         probar_llegadas()
+        probar_mediana_envenenable()
+        probar_suelo_chart()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)
     if FALLAS:

@@ -40,6 +40,7 @@ from .ajustes import (
     ANTITRAMPA_LENTO_MARGEN_S,
     ANTITRAMPA_LISTO_DESVIO_S,
     ANTITRAMPA_LISTO_MUESTRAS,
+    ANTITRAMPA_LLEGADA_CUENTAS,
     ANTITRAMPA_LLEGADA_FACTOR,
     ANTITRAMPA_LLEGADA_HISTORIA,
     ANTITRAMPA_LLEGADA_MUESTRAS,
@@ -53,6 +54,7 @@ from .ajustes import (
     ANTITRAMPA_RELOJ_TOLERANCIA,
     ANTITRAMPA_SIN_HABLAR,
     ANTITRAMPA_SILENCIOSO,
+    ANTITRAMPA_SUELO_FACTOR,
     ANTITRAMPA_TANDA_DEMORA_H,
 )
 from .registro import log
@@ -73,12 +75,13 @@ def marcar_salida(conn, ahora=None):
 
 
 def marcas_del_cartel(frame, combo, pd, star, combo_total, transcurrido, relevo=False, coop=False,
-                      milesimas=0, llegadas=None):
+                      milesimas=0, llegadas=None, duracion_min=None):
     """Las reglas que rompe un reporte `FF28`. `[(regla, detalle), …]`; vacía si está limpio.
 
     `pd` y `star` son los bytes CRUDOS del paquete (antes del tope a 100). `transcurrido` = segundos
     desde el GO según el server, o `None` si no se sabe. `milesimas` = las de la precisión (0..999).
-    `llegadas` = los frame de las últimas llegadas limpias de esa canción (o None). Función pura: no loguea ni avisa.
+    `llegadas` = los frame de las últimas llegadas limpias de esa canción (o None). `duracion_min` = los segundos
+    que como poco dura la canción según su chart (`notas.duracion_minima_de`, o None). Pura: no loguea ni avisa.
     """
     marcas = []
     if pd > 100 or star > 100:
@@ -86,10 +89,17 @@ def marcas_del_cartel(frame, combo, pd, star, combo_total, transcurrido, relevo=
     # ★ 24-nov (el laboratorio: «Precisión personalizada» escribe entero y milésimas): 100.000 es el tope.
     elif milesimas > 999 or (pd == 100 and milesimas > 0):
         marcas.append(("precision_imposible", f"precisión {pd}.{milesimas:03d} (tope 100.000)"))
+    # ★ 25-nov · el SUELO del chart: aun sin historia (canción nueva o que sólo jugó una cuenta), no se llega en
+    #   menos de la mitad de lo que dura como poco la canción. Si salta, la anticipada no se suma (es la misma llegada).
+    imposible = (duracion_min is not None and duracion_min > 0 and frame not in (0, FRAME_SIN_META)
+                 and not relevo and not coop and frame / FPS < duracion_min * ANTITRAMPA_SUELO_FACTOR)
+    if imposible:
+        marcas.append(("llegada_imposible", f"llegó a la meta en {frame / FPS:.1f} s; su chart dura como poco "
+                                              f"{duracion_min:.0f} s (tope {ANTITRAMPA_SUELO_FACTOR:.0%})"))
     # ★ 24-nov («Simular llegada»): la meta se dispara cuando el cliente quiere. El frame cuadra con el reloj del
     #   server, pero la carrera duró mucho menos que las llegadas limpias de esa canción.
-    if (llegadas and len(llegadas) >= ANTITRAMPA_LLEGADA_MUESTRAS and frame not in (0, FRAME_SIN_META)
-            and not relevo and not coop):
+    if (not imposible and llegadas and len(llegadas) >= ANTITRAMPA_LLEGADA_MUESTRAS
+            and frame not in (0, FRAME_SIN_META) and not relevo and not coop):
         normal = statistics.median(llegadas)
         if frame < normal * ANTITRAMPA_LLEGADA_FACTOR:
             marcas.append(("llegada_anticipada", f"llegó a la meta en {frame / FPS:.1f} s; esa canción suele tardar "
@@ -123,15 +133,17 @@ def juzgar_cartel(st, frame, combo, pd, star, cancion, relevo=False, coop=False,
         go = getattr(st, "at_go", None)
         st.at_go = None                       # el próximo FF28 sin GO nuevo no se compara con éste
         transcurrido = None if go is None else (time.monotonic() if ahora is None else ahora) - go
-        llegadas = _llegadas_de(cancion)
+        cuenta = _cuenta_de(st)               # para no juzgarlo con sus propias llegadas (mediana envenenable)
+        llegadas = _llegadas_de(cancion, excluir=cuenta)
+        duracion_min = _duracion_de(cancion)   # el suelo del chart (llegada_imposible)
         marcas = marcas_del_cartel(frame, combo, pd, star, combo_total, transcurrido, relevo, coop,
-                                   milesimas=milesimas, llegadas=llegadas)
+                                   milesimas=milesimas, llegadas=llegadas, duracion_min=duracion_min)
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude revisar el FF28 de usn={getattr(st, 'usn', None)}: {e!r}")
         return retener
     # una llegada limpia (sin ninguna marca, con meta real, carrera suelta) enseña cuánto tarda la canción
     if not marcas and cancion and frame not in (0, FRAME_SIN_META) and not relevo and not coop and combo > 0:
-        _anotar_llegada(cancion, frame)
+        _anotar_llegada(cancion, frame, cuenta)
     for regla, detalle in marcas:
         retener |= anotar(st, regla, detalle, {"cancion": cancion, "frame": frame, "combo": combo,
                                                "pd": pd, "star": star}) in _QUE_RETIENEN
@@ -140,21 +152,53 @@ def juzgar_cartel(st, frame, combo, pd, star, cancion, relevo=False, coop=False,
     return retener
 
 
-def _llegadas_de(cancion):
+def _duracion_de(cancion):
+    """Lo menos que dura la canción según su chart (segundos), o None. Ver `notas.duracion_minima_de`."""
+    if not cancion:
+        return None
+    try:
+        from . import notas
+        return notas.duracion_minima_de(cancion)
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude calcular la duración de la canción {cancion}: {e!r}")
+        return None
+
+
+def _cuenta_de(st):
+    """La CUENTA (username) del jugador, para no juzgarlo con sus propias llegadas. None si no se sabe."""
+    try:
+        from . import almacen
+        return almacen.cuenta_de_uid(getattr(st, "usn", None))[0]
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude ubicar la cuenta de usn={getattr(st, 'usn', None)}: {e!r}")
+        return None
+
+
+def vara_de_fiar(filas):
+    """De las llegadas `[(frame, cuenta), …]` (ya sin las del juzgado), los `frame` con los que se le puede juzgar, o
+    `[]` si la vara no es de fiar: con llegadas con cuenta, tienen que salir de al menos LLEGADA_CUENTAS cuentas
+    distintas (un alt solo no la fija). Sólo llegadas viejas sin cuenta: se aceptan como antes. Función pura."""
+    cuentas = {cuenta for _frame, cuenta in filas if cuenta}
+    if cuentas and len(cuentas) < ANTITRAMPA_LLEGADA_CUENTAS:
+        return []
+    return [frame for frame, _cuenta in filas]
+
+
+def _llegadas_de(cancion, excluir=None):
     if not cancion:
         return None
     try:
         from . import almacen
-        return almacen.antitrampa_llegadas(cancion, ANTITRAMPA_LLEGADA_HISTORIA)
+        return vara_de_fiar(almacen.antitrampa_llegadas_filas(cancion, ANTITRAMPA_LLEGADA_HISTORIA, excluir=excluir))
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude leer las llegadas de la canción {cancion}: {e!r}")
         return None
 
 
-def _anotar_llegada(cancion, frame):
+def _anotar_llegada(cancion, frame, cuenta=None):
     try:
         from . import almacen
-        almacen.antitrampa_anotar_llegada(cancion, frame)
+        almacen.antitrampa_anotar_llegada(cancion, frame, cuenta=cuenta)
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude guardar la llegada de la canción {cancion}: {e!r}")
 

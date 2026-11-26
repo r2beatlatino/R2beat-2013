@@ -283,6 +283,46 @@ def combo_total_de(song_id):
     return total
 
 
+# ★ 25-nov · EL SUELO del antitrampa («llegada_imposible»): lo menos que puede durar la canción según su chart.
+#   `Coord` va en DOCEAVOS DE PULSO, no en frames: medido sobre los 3675 charts, `max(coord) / 12 / BPM × 60` da
+#   104-205 s (mediana 2:23) para canciones de 110 a 175 BPM; en frames saldrían duraciones dispares. Con varios
+#   BPM se usa el MÁS RÁPIDO (la duración más corta posible: el suelo nunca queda alto; los marcadores de cambio de
+#   BPM no siempre caen en la misma unidad que `Coord`). Y del chart más corto que se puede servir (el recortado de
+#   la dll vieja, `recortar_al_techo`). ⏳ Sin llegadas reales para contrastar: la regla va en «avisar».
+_DURACIONES = {}
+
+
+def duracion_minima_chart(blob):
+    """Los segundos que como poco dura un chart: su última nota con el BPM más rápido. `None` si no se lee."""
+    try:
+        n = struct.unpack_from("<i", blob, 0)[0]
+        if n < 0 or 4 + 8 * n > len(blob):
+            return None
+        bpms = [struct.unpack_from("<f", blob, 4 + 8 * i + 4)[0] for i in range(n)]
+        crudo = zlib.decompress(blob[4 + 8 * n:])
+        coords = [struct.unpack_from("<H", crudo, i)[0] for i in range(0, len(crudo) - len(crudo) % 6, 6)]
+        rapido = max((b for b in bpms if b > 0), default=0)
+        if not coords or rapido <= 0:
+            return None
+        return max(coords) / 12.0 / rapido * 60.0
+    except Exception:                                                  # noqa: BLE001
+        return None
+
+
+def duracion_minima_de(song_id):
+    """Lo menos que dura la canción en segundos (ver arriba), o `None` si no hay chart o no se lee."""
+    if song_id in _DURACIONES:
+        return _DURACIONES[song_id]
+    datos = chart_de(song_id)
+    dur = None
+    if datos:
+        servido, _antes, _despues = recortar_al_techo(datos)
+        cand = [d for d in (duracion_minima_chart(datos), duracion_minima_chart(servido) if servido else None) if d]
+        dur = min(cand) if cand else None
+    _DURACIONES[song_id] = dur
+    return dur
+
+
 # ═════════════════════════════════════════════════════════════════════════════════════════════════
 # ★★★★★ NIVEL → BANDA (el "canal" del picker) — LEÍDO DEL CLIENTE 2013, `0x40C5C0`
 # ═════════════════════════════════════════════════════════════════════════════════════════════════
