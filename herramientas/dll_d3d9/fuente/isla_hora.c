@@ -163,6 +163,13 @@ static int ih_existe(const char *nombre)
 
 static void isla_hora_iniciar(void)
 {
+#ifdef R2_SIN_TEMPORADA
+    /* ★ 25-nov: la dll de PROD se compila con -DR2_SIN_TEMPORADA (compilar.py --prod): sin la isla de temporada,
+     *   aunque en la carpeta quede el .r2b del día de alguien que jugó en el server de prueba (el launcher no borra
+     *   lo que sobra). La de prueba (exe/d3d9.dll) se compila sin la marca: todo igual que antes. */
+    apuntar("  [isla_hora] apagado en esta dll (la de prod: sin isla de temporada)");
+    return;
+#endif
     char ini[MAX_PATH], forzar[32];
     lstrcpyA(ini, g_carpeta);
     lstrcatA(ini, "d3d9_proxy.ini");

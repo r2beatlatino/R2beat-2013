@@ -4247,6 +4247,12 @@ static int g_fx_vigia_puesto = 0;
 
 static void isla_fx_iniciar(void)
 {
+#ifdef R2_SIN_TEMPORADA
+    /* ★ 25-nov: la dll de PROD (compilar.py --prod): la capa 4 no engancha nada, aunque quede un isla_fx.ini. */
+    g_fx_activo = 0;
+    apuntar("  [isla_fx] apagado en esta dll (la de prod: sin isla de temporada)");
+    return;
+#endif
     char ini[MAX_PATH], perfil[MAX_PATH], nom[MAX_PATH], hora[32];
     lstrcpyA(ini, g_carpeta);
     lstrcatA(ini, "d3d9_proxy.ini");
