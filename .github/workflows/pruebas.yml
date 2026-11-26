@@ -51,16 +51,38 @@ jobs:
   #   que llega a la PC de los jugadores sale del fuente que se puede leer, no de un archivo armado aparte.
   dll:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
-      - name: el compilador (Zig 0.16.0 oficial, con su sha256)
+      # ★ 26-nov: bajarlo de ziglang.org en CADA corrida se colgaba (un curl sin plazo, 7+ min parado). Ahora: la caché
+      #   (la guarda la primera corrida de develop y la usan todas las PR) y, si no está, espejos con plazo (los
+  #   rápidos primero: ziglang.org daba ~300 KB/s). El sha256
+      #   oficial manda igual: ningún espejo puede cambiar el compilador.
+      - name: el compilador desde la caché (Zig 0.16.0)
+        id: zig
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/zig-x86_64-linux-0.16.0
+          key: zig-0.16.0-linux-70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00
+      - name: si no estaba, se baja (ziglang.org o un espejo, con su sha256 oficial)
+        if: steps.zig.outputs.cache-hit != 'true'
         run: |
-          curl -sSfL -o zig.tar.xz https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
-          echo "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00  zig.tar.xz" | sha256sum -c
-          tar xJf zig.tar.xz -C "$RUNNER_TEMP"
+          F=zig-x86_64-linux-0.16.0.tar.xz
+          for u in "https://zig.linus.dev/zig/$F" "https://pkg.machengine.org/zig/$F" "https://ziglang.org/download/0.16.0/$F" "https://fs.liujiacai.net/zigbuilds/$F"; do
+            echo "→ $u"
+            if curl -sSfL --connect-timeout 15 --max-time 120 --retry 1 -o zig.tar.xz "$u" && echo "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00  zig.tar.xz" | sha256sum -c; then
+              tar xJf zig.tar.xz -C "$RUNNER_TEMP"
+              exit 0
+            fi
+          done
+          echo "::error::no se pudo bajar Zig 0.16.0 de ningún lado (o el sha256 no dio)"
+          exit 1
+      - name: el compilador listo
+        run: |
           echo "ZIG=$RUNNER_TEMP/zig-x86_64-linux-0.16.0/zig" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/zig-x86_64-linux-0.16.0/zig" version
       - name: el fuente da EXACTO la exe/d3d9.dll
         run: python herramientas/dll_d3d9/compilar.py --igual
       - name: la de prod (sin la isla de temporada) también compila
