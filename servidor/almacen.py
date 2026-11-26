@@ -562,13 +562,76 @@ def desbanear_cuenta(usuario):
 
 
 def banear_cuenta(usuario):
-    """`BANNED:` delante del `pass_hash` (como siempre: todo login la rechaza; se deshace sacándolo). True si cambió."""
+    """`BANNED:` delante del `pass_hash` (como siempre: todo login la rechaza; se deshace sacándolo). True si cambió.
+    ★ 25-nov: con `BANEO_POR_MAQUINA` también quedan baneadas las PC desde las que entró (`maquina.py`)."""
     with _lock:
         c = conectar()
         cur = c.execute("UPDATE users SET pass_hash = 'BANNED:' || pass_hash WHERE username = ? COLLATE BINARY "
                         "AND pass_hash NOT LIKE 'BANNED:%'", (usuario,))
         c.commit()
-        return cur.rowcount > 0
+        cambio = cur.rowcount > 0
+    from .ajustes import BANEO_POR_MAQUINA
+    if BANEO_POR_MAQUINA:
+        maquinas_banear_de(usuario, "cuenta baneada")
+    return cambio
+
+
+# ═══ ★ 25-nov · LA MÁQUINA (HWID, `maquina.py`). `huella` = HMAC de la MAC; la MAC no se guarda nunca.
+def maquinas_anotar(huella, cuenta, dias=90):
+    """Esta cuenta entró desde esta PC. Lo que no se vio en `dias` días se olvida."""
+    with _lock:
+        c = conectar()
+        c.execute("INSERT INTO maquinas (huella, cuenta, primera, ultima) VALUES (?, ?, datetime('now', 'localtime'), "
+                  "datetime('now', 'localtime')) ON CONFLICT(huella, cuenta) DO UPDATE SET ultima = excluded.ultima, "
+                  "veces = veces + 1", (str(huella), str(cuenta)))
+        c.execute("DELETE FROM maquinas WHERE ultima < datetime('now', 'localtime', ?)", (f"-{int(dias)} days",))
+        c.commit()
+
+
+def maquinas_de_cuenta(cuenta):
+    """Las huellas de las PC desde las que entró esa cuenta (la más reciente primero)."""
+    with _lock:
+        return [r["huella"] for r in conectar().execute(
+            "SELECT huella FROM maquinas WHERE cuenta = ? ORDER BY ultima DESC", (str(cuenta),))]
+
+
+def maquinas_cuentas_de(huella):
+    """Las cuentas que entraron desde esa PC: [(cuenta, primera, ultima, veces)], la más reciente primero."""
+    with _lock:
+        return [(r["cuenta"], r["primera"], r["ultima"], int(r["veces"])) for r in conectar().execute(
+            "SELECT cuenta, primera, ultima, veces FROM maquinas WHERE huella = ? ORDER BY ultima DESC", (str(huella),))]
+
+
+def maquina_baneada(huella):
+    """La fila del baneo de esa PC (dict) o None."""
+    with _lock:
+        f = conectar().execute("SELECT * FROM maquinas_baneadas WHERE huella = ?", (str(huella),)).fetchone()
+        return dict(f) if f else None
+
+
+def maquinas_banear_de(cuenta, motivo=""):
+    """Banea las PC desde las que entró esa cuenta. -> cuántas quedaron baneadas nuevas."""
+    huellas = maquinas_de_cuenta(cuenta)
+    with _lock:
+        c = conectar()
+        n = 0
+        for h in huellas:
+            n += c.execute("INSERT OR IGNORE INTO maquinas_baneadas (huella, cuenta, motivo, cuando) "
+                           "VALUES (?, ?, ?, datetime('now', 'localtime'))", (h, str(cuenta), motivo[:200])).rowcount
+        c.commit()
+        return n
+
+
+def maquinas_perdonar_de(cuenta):
+    """Saca el baneo de las PC desde las que entró esa cuenta (y de las que se banearon POR ella). -> cuántas."""
+    huellas = maquinas_de_cuenta(cuenta)
+    with _lock:
+        c = conectar()
+        n = c.execute("DELETE FROM maquinas_baneadas WHERE cuenta = ?", (str(cuenta),)).rowcount
+        for h in huellas:
+            n += c.execute("DELETE FROM maquinas_baneadas WHERE huella = ?", (h,)).rowcount
+        c.commit()
+        return n
 
 
 # ═══ MUDAR PERSONAJES ENTRE CUENTAS (25-oct, anonimo03: «fusionar, separar cuentas… control total», en el panel) ═══════
