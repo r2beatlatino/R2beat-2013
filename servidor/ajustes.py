@@ -4136,6 +4136,16 @@ CANAL_CAPACIDAD = 200
 #   ★ En False vuelve el comportamiento de antes. Ver `lobby.echar_sesion_anterior`.
 DOBLE_LOGIN_ECHA_AL_ANTERIOR = True
 
+# ★ MULTICUENTA (25-nov): hay programas externos que abren varias cuentas en el mismo PC para farmear Rcoin y exp.
+#   Tope de CUENTAS distintas conectadas A LA VEZ desde la misma IP — la que ve el server (`st.addr`), no la que
+#   dice el cliente. El mismo jugador re-logueando o cambiando de canal o de personaje NO suma. 0 = sin tope.
+#   ⚠ NAT: un cyber o una casa con varios jugadores comparten IP → ponerla en R2_IPS_SIN_TOPE (separadas por coma).
+#   ⚠ Si el server está detrás de un proxy que le muestra a todos la MISMA IP, el tope frenaría a todos: mirar en el
+#     log («MULTICUENTA») qué IP ve. Loopback (127.x, ::1) no tiene tope: son las pruebas en la misma PC.
+#   Ver `multicuenta.py`.
+MAX_CUENTAS_POR_IP = int(os.environ.get("R2_MAX_CUENTAS_IP", "2") or 0)
+IPS_SIN_TOPE = frozenset(i.strip() for i in os.environ.get("R2_IPS_SIN_TOPE", "").split(",") if i.strip())
+
 # ★★★★ REPONER LA CANCIÓN DESPUÉS DEL `type 5` DEL PICKER — 2026-09-09.
 #   Reportado por anonimo03: *"el picker funciona bien hasta empezar el juego, pero al regresar a la
 #   sala se resetea"*. El `type 5` es lo que el cliente manda al SOLTAR el picker, y su handler
