@@ -40,7 +40,7 @@ static void af_aplicar(void)
     af_caja_desde_motor();                           /* ordenada y limpia */
     ht_pedir_guardar();
     wchar_t m[120];
-    wsprintfW(m, L"Curva puesta (%d puntos). Con AutoFar prendido se usa en la próxima lectura del BPM.", n);
+    wsprintfW(m, TR(L"Curva puesta (%d puntos). Con AutoFar prendido se usa en la próxima lectura del BPM."), n);
     af_aviso(m);
 }
 
@@ -88,13 +88,13 @@ static LRESULT CALLBACK af_graf_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         n2_linea(dc, L, AF_Y(f), R, AF_Y(f), RGB(36, 40, 58));
         wchar_t t[8]; wsprintfW(t, L"%d", f);
         RECT r = { 0, AF_Y(f) - 8, L - 4, AF_Y(f) + 8 };
-        SetTextColor(dc, RGB(130, 140, 160)); DrawTextW(dc, t, -1, &r, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+        SetTextColor(dc, RGB(130, 140, 160)); DrawTextW(dc, TR(t), -1, &r, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
     }
     for (int b = 80; b <= 320; b += 40) {
         n2_linea(dc, AF_X(b), T, AF_X(b), B, RGB(36, 40, 58));
         wchar_t t[8]; wsprintfW(t, L"%d", b);
         RECT r = { AF_X(b) - 20, B + 2, AF_X(b) + 20, B + 18 };
-        DrawTextW(dc, t, -1, &r, DT_CENTER | DT_SINGLELINE);
+        DrawTextW(dc, TR(t), -1, &r, DT_CENTER | DT_SINGLELINE);
     }
     /* la curva, muestreada con el motor */
     HPEN p = CreatePen(PS_SOLID, 2, N2_ACENTO);
@@ -123,9 +123,9 @@ static LRESULT CALLBACK af_graf_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         n2_linea(dc, AF_X(bpm), T, AF_X(bpm), B, RGB(250, 204, 21));
         wchar_t t[40];
         int f10 = (int)(ht_af_curva(bpm) * 10 + 0.5f);
-        wsprintfW(t, L"%d BPM → Far %d.%d", (int)(bpm + 0.5f), f10 / 10, f10 % 10);
+        wsprintfW(t, TR(L"%d BPM → Far %d.%d"), (int)(bpm + 0.5f), f10 / 10, f10 % 10);
         RECT r = { L + 4, T, R, T + 16 };
-        SetTextColor(dc, RGB(250, 204, 21)); DrawTextW(dc, t, -1, &r, DT_LEFT | DT_SINGLELINE);
+        SetTextColor(dc, RGB(250, 204, 21)); DrawTextW(dc, TR(t), -1, &r, DT_LEFT | DT_SINGLELINE);
     }
     #undef AF_X
     #undef AF_Y
@@ -166,6 +166,6 @@ static void af_maquetar(void)
     n2_boton(170, Y0 + 240, 168, 26, L"Aplicar", B_AF_APLICAR);
     n2_boton(170, Y0 + 272, 168, 26, L"De fábrica", B_AF_FABRICA);
     n2_lbl(170, Y0 + 304, 168, 86, NULL, N2_SUAVE, N2_PARR); g_n2l[g_n2nl - 1].dyn = g_af_estado;
-    lstrcpyW(g_af_estado, L"«Aplicar» la pone al momento y la guarda. Se usa con AutoFar prendido (pestaña General).");
+    lstrcpyW(g_af_estado, TR(L"«Aplicar» la pone al momento y la guarda. Se usa con AutoFar prendido (pestaña General)."));
     af_caja_desde_motor();
 }

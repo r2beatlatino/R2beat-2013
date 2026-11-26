@@ -427,9 +427,9 @@ static void nc_refrescar(int elegida_juego, int leyo)
     int abierto = m >= 0 && g_nc_c[m].abierto;
     if (!abierto) { nc_poner_estado(1, L"Ese canal no está abierto en el juego ahora."); return; }
     wchar_t nombre[NCH_NOMBRE_W], s[160];
-    if (g_nc_c[m].nn == 0) lstrcpyW(nombre, L"General");
+    if (g_nc_c[m].nn == 0) lstrcpyW(nombre, TR(L"General"));
     else nc_decodificar(g_nc_cod, g_nc_c[m].nombre, g_nc_c[m].nn, nombre, NCH_NOMBRE_W);
-    wsprintfW(s, L"Leyendo «%s» · %d entrada(s).", nombre, g_nc_c[m].hist.nl);
+    wsprintfW(s, TR(L"Leyendo «%s» · %d entrada(s)."), nombre, g_nc_c[m].hist.nl);
     nc_poner_estado(1, s);
 }
 
@@ -441,7 +441,7 @@ static void nc_tick_adentro(void)
         g_nc_firma = nc_mirar_firma();
         if (g_nc_firma < 0) {
             wchar_t s[160];
-            wsprintfW(s, L"Esta versión del juego no coincide con el lector de chat (+0x%X).", (unsigned)(g_nc_firma_va - 0x400000));
+            wsprintfW(s, TR(L"Esta versión del juego no coincide con el lector de chat (+0x%X)."), (unsigned)(g_nc_firma_va - 0x400000));
             nc_poner_estado(-1, s);
             apuntar("  [chat] ⛔ el exe no es el esperado en 0x%08X: el chat no se lee", (unsigned)g_nc_firma_va);
         }
@@ -558,10 +558,10 @@ static int nc_canales(wchar_t nombres[][NCH_NOMBRE_W], int max)
     int n[NCH_MAX_CANALES + 1];
     if (max <= 0) return 0;
     AcquireSRWLockShared(&g_nc_candado);
-    lstrcpynW(nombres[0], L"Canal seleccionado en el juego", NCH_NOMBRE_W);
+    lstrcpynW(nombres[0], TR(L"Canal seleccionado en el juego"), NCH_NOMBRE_W);
     int k = nc_nombres(p, n, NCH_MAX_CANALES + 1), total = 1;
     for (int i = 0; i < k && total < max; i++, total++) {
-        if (n[i] == 0) lstrcpynW(nombres[total], L"General", NCH_NOMBRE_W);
+        if (n[i] == 0) lstrcpynW(nombres[total], TR(L"General"), NCH_NOMBRE_W);
         else nc_decodificar(g_nc_cod, p[i], n[i], nombres[total], NCH_NOMBRE_W);
     }
     ReleaseSRWLockShared(&g_nc_candado);

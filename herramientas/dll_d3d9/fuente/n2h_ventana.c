@@ -78,7 +78,7 @@ static int  g_n2_chat_diez = 0, g_n2_chat_en_juego = 1, g_n2_chat_solo = 1, g_n2
 static HWND g_n2_chat_canal, g_n2_chat_lista;
 static wchar_t g_n2_chat_estado[160];
 static COLORREF g_n2_chat_estado_c = RGB(229, 231, 235);
-typedef struct { BYTE tipo, pag, falso; HWND h; int ref; int *pvk; int *pbool; RECT r; } N2_CTL;
+typedef struct { BYTE tipo, pag, falso; HWND h; int ref; int *pvk; int *pbool; RECT r; const wchar_t *t0; } N2_CTL;
 typedef struct { BYTE pag; RECT r; const wchar_t *t; const wchar_t *dyn; COLORREF c; UINT fmt; } N2_LBL;
 typedef struct { BYTE pag; RECT r; const wchar_t *t; } N2_GRP;
 
@@ -108,6 +108,9 @@ static HDC     g_n2_fondo_dc;  static HBITMAP g_n2_fondo_bm;      /* la imagen +
 static void n2_per_comando(int ref);
 static void n2_lista_cambio(int ref, HWND h);
 static void n2_per_abrir(void);
+static void n2_idioma_poner(int idi);
+static const wchar_t *const N2_PEST[5] = { L"Juego", L"Controles", L"Entreno", L"Tramos", L"Chat" };          /* ★ 26-nov */
+static const wchar_t *const N2_PER_PEST[4] = { L"Ventana", L"Far", L"Piedras y booster", L"PD" };
 static void n2_apodo_tick(void);
 static void n2_e_cambio(int *pb);
 static void n2_e_tick(void);
@@ -169,9 +172,9 @@ static N2_CTL *n2_ctl(BYTE tipo, const wchar_t *clase, const wchar_t *txt, DWORD
     int i = g_n2n++;
     N2_CTL *c = &g_n2c[i];
     ZeroMemory(c, sizeof(*c));
-    c->tipo = tipo; c->pag = g_n2_p; c->ref = ref;
+    c->tipo = tipo; c->pag = g_n2_p; c->ref = ref; c->t0 = txt;      /* ★ 26-nov: el texto en español (el idioma) */
     SetRect(&c->r, g_n2_ox + x, g_n2_oy + y, g_n2_ox + x + w, g_n2_oy + y + h);
-    c->h = CreateWindowExW(0, clase, txt, WS_CHILD | WS_VISIBLE | WS_TABSTOP | est, c->r.left, c->r.top,
+    c->h = CreateWindowExW(0, clase, TR(txt), WS_CHILD | WS_VISIBLE | WS_TABSTOP | est, c->r.left, c->r.top,
                            w, h, n2_padre(), (HMENU)(INT_PTR)(1000 + i), GetModuleHandleA(NULL), NULL);
     if (c->h) SendMessageW(c->h, WM_SETFONT, (WPARAM)g_n2_f, 0);
     return c;
@@ -220,7 +223,7 @@ static void n2_combo_teclas(HWND cb)
     for (int i = 1; i <= 12; i++) { wsprintfW(n, L"F%d", i); n2_combo_meter(cb, n, VK_F1 + i - 1); }
     for (int c = 'A'; c <= 'Z'; c++) { n[0] = (wchar_t)c; n[1] = 0; n2_combo_meter(cb, n, c); }
     for (int c = '0'; c <= '9'; c++) { n[0] = (wchar_t)c; n[1] = 0; n2_combo_meter(cb, n, c); }
-    for (int i = 0; i <= 9; i++) { wsprintfW(n, L"NUM%d", i); n2_combo_meter(cb, n, VK_NUMPAD0 + i); }
+    for (int i = 0; i <= 9; i++) { wsprintfW(n, TR(L"NUM%d"), i); n2_combo_meter(cb, n, VK_NUMPAD0 + i); }
     for (int i = 0; i < (int)(sizeof(N2_EXTRA) / sizeof(N2_EXTRA[0])); i++) n2_combo_meter(cb, N2_EXTRA[i].n, N2_EXTRA[i].vk);
 }
 static void n2_combo_elegir(HWND cb, int vk)
@@ -306,7 +309,7 @@ static void n2_maquetar(void)
     n2_en(0xFF, 11, 11);
     {
         HWND cb = n2_combo_lista(4, 4, 146, 23, L_CUENTA, 0);
-        if (cb) { SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)L"Este juego"); SendMessageW(cb, CB_SETCURSEL, 0, 0); }
+        if (cb) { SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)TR(L"Este juego")); SendMessageW(cb, CB_SETCURSEL, 0, 0); }
     }
     n2_chk(6, 32, 70, 20, L"Hotkey", O_HOTKEYS, 0);
     n2_chk(80, 32, 70, 20, L"Anclar", O_ANCLAR, 0);
@@ -318,9 +321,12 @@ static void n2_maquetar(void)
     n2_lbl(8, 20, 70, 22, L"Idioma", N2_C_ACENTO, N2_IZQ);
     {
         HWND cb = n2_combo_lista(82, 19, 200, 22, L_IDIOMA, 0);
-        if (cb) { SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)L"Español"); SendMessageW(cb, CB_SETCURSEL, 0, 0); }
+        if (cb) {                                      /* ★ 26-nov: los 5 idiomas, cada uno con su nombre */
+            for (int i = 0; i < TR_N_IDIOMAS; i++) SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)TR_NOMBRES[i]);
+            SendMessageW(cb, CB_SETCURSEL, (WPARAM)g_tr_idi, 0);
+        }
     }
-    n2_lbl(8, 46, 290, 20, L"Por ahora la herramienta está sólo en español.", N2_SUAVE, N2_IZQ);
+    n2_lbl(8, 46, 290, 20, L"Cambia los textos de Ñ2Hock (los del juego no).", N2_SUAVE, N2_IZQ);
     n2_en(0xFF, 13, 718);
     n2_boton(0, 0, 304, 30, L"Personalización…", B_PERSONAL);
 
@@ -504,7 +510,7 @@ static void n2_textos(void)
     wsprintfW(g_n2_opac_txt, L"%d %%", g_n2_opac);
     wsprintfW(g_n2_tam_txt, L"%d", g_n2i.tam);
     wsprintfW(g_n2_dura_txt, L"%d.%d s", g_n2i.dura / 1000, g_n2i.dura / 100 % 10);
-    if (g_op[O_AUTOFAR].quiere) lstrcpyW(g_ht_far_n2h_txt, L"auto");
+    if (g_op[O_AUTOFAR].quiere) lstrcpyW(g_ht_far_n2h_txt, TR(L"auto"));
     else { int d = g_ht_far_n2h * 5; wsprintfW(g_ht_far_n2h_txt, L"%d.%d", d / 10, d % 10); }
     wsprintfW(g_n2_alfa_txt, L"%d", g_ht_alfa_nivel);
 }
@@ -518,8 +524,8 @@ static void n2_estado(wchar_t *s)                     /* s: 320 */
     if (g_ht_aviso[0]) { lstrcpyW(s, g_ht_aviso); return; }
     if (g_ht_pag >= 0 && g_ht_pag < N2_PAGS && PAG[g_ht_pag]) { lstrcpyW(s, PAG[g_ht_pag]); return; }
     ht_nombre_vk(g_ht_tecla_ver, n);
-    if (g_ht_apagada) wsprintfW(s, L"Parches restaurados · desconectado · %s mostrar / ocultar", n);
-    else wsprintfW(s, L"Conectado · %s mostrar / ocultar", n);
+    if (g_ht_apagada) wsprintfW(s, TR(L"Parches restaurados · desconectado · %s mostrar / ocultar"), n);
+    else wsprintfW(s, TR(L"Conectado · %s mostrar / ocultar"), n);
 }
 
 static void n2_sincronizar(void)
@@ -546,7 +552,7 @@ static void n2_texto(HDC dc, const RECT *r, const wchar_t *t, HFONT f, COLORREF 
     SelectObject(dc, f);
     SetBkMode(dc, TRANSPARENT);
     SetTextColor(dc, c);
-    DrawTextW(dc, t, -1, &q, fmt);
+    DrawTextW(dc, TR(t), -1, &q, fmt);                        /* ★ 26-nov: en el idioma elegido */
 }
 
 static void n2_rect(HDC dc, const RECT *r, COLORREF fondo, COLORREF borde)
@@ -599,7 +605,7 @@ static void n2_pintar_pag(HDC dc, BYTE pag, const RECT *todo, HWND h)
         if (g->pag != pag) continue;
         SIZE tz;
         SelectObject(dc, g_n2_fb);
-        GetTextExtentPoint32W(dc, g->t, lstrlenW(g->t), &tz);
+        GetTextExtentPoint32W(dc, TR(g->t), lstrlenW(TR(g->t)), &tz);
         int ym = g->r.top + tz.cy / 2, xt = g->r.left + 8;
         n2_linea(dc, g->r.left, ym, xt - 2, ym, N2_MARCO);
         n2_linea(dc, xt + tz.cx + 2, ym, g->r.right - 1, ym, N2_MARCO);
@@ -1050,10 +1056,12 @@ static void n2_todo_repintar(void)
 static void n2_fuentes_crear(void)
 {
     HFONT v[4] = { g_n2_f, g_n2_fb, g_n2_fchico, g_n2_ftab };
-    g_n2_f      = CreateFontW(-11, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, g_n2_letra);
-    g_n2_fb     = CreateFontW(-11, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, g_n2_letra);
-    g_n2_fchico = CreateFontW(-10, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, g_n2_letra);
-    g_n2_ftab   = CreateFontW(-10, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, g_n2_letra);
+    const wchar_t *le = g_tr_idi > 0 && g_tr_idi < TR_N_IDIOMAS && TR_LETRA[g_tr_idi] ? TR_LETRA[g_tr_idi] : g_n2_letra;   /* ★ 26-nov */
+    int gr = le != g_n2_letra ? -1 : 0;                /* hangul y kanji: un punto más grandes, se leen mejor */
+    g_n2_f      = CreateFontW(-11 + gr, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, le);
+    g_n2_fb     = CreateFontW(-11 + gr, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, le);
+    g_n2_fchico = CreateFontW(-10 + gr, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, le);
+    g_n2_ftab   = CreateFontW(-10 + gr, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, le);
     for (int i = 0; i < g_n2n; i++) if (g_n2c[i].h) SendMessageW(g_n2c[i].h, WM_SETFONT, (WPARAM)g_n2_f, TRUE);
     if (g_n2_tabs) SendMessageW(g_n2_tabs, WM_SETFONT, (WPARAM)g_n2_ftab, TRUE);
     if (g_n2_per_tabs) SendMessageW(g_n2_per_tabs, WM_SETFONT, (WPARAM)g_n2_ftab, TRUE);
@@ -1317,7 +1325,7 @@ static COLORREF n2_e_color(int lbl, COLORREF c)
 
 static void n2_e_falta_confirmo(void)
 {
-    lstrcpyW(g_e_tx[NE_TX_VELOCIDAD], L"Conecta una cuenta y confirma que estás en práctica offline.");
+    lstrcpyW(g_e_tx[NE_TX_VELOCIDAD], TR(L"Conecta una cuenta y confirma que estás en práctica offline."));
     g_e_tx_err[NE_TX_VELOCIDAD] = 1;
     if (g_n2_pag[2]) InvalidateRect(g_n2_pag[2], NULL, FALSE);
 }
@@ -1335,7 +1343,7 @@ static int n2_e_bucle_configurar(void)
     n2_e_leer_cajas();
     int a = ne_posicion_de_texto(g_e.desde), b = g_e.hasta[0] ? ne_posicion_de_texto(g_e.hasta) : 0;
     if (a < 0 || b < 0) {
-        lstrcpyW(g_e_tx[NE_TX_BUCLE], L"Escribe Desde y Hasta como m:ss (por ejemplo 0:20).");
+        lstrcpyW(g_e_tx[NE_TX_BUCLE], TR(L"Escribe Desde y Hasta como m:ss (por ejemplo 0:20)."));
         g_e_tx_err[NE_TX_BUCLE] = 1;
         return 0;
     }
@@ -1459,8 +1467,8 @@ static void n2_pb_tick(void)
             int da, db, dc, ds;
             ne_bucle_leer(&da, &db, &dc, &ds);
             ne_texto_de_posicion(da, x);
-            if (db > 0) ne_texto_de_posicion(db, y); else lstrcpyW(y, L"el final");
-            wsprintfW(g_pb_msj, L"Tramo: A %s → B %s%s", x, y, g_e.bucle_on ? L" (repitiendo)" : L" · actívalo con «Repetir un tramo»");
+            if (db > 0) ne_texto_de_posicion(db, y); else lstrcpyW(y, TR(L"el final"));
+            wsprintfW(g_pb_msj, TR(L"Tramo: A %s → B %s%s"), x, y, g_e.bucle_on ? TR(L" (repitiendo)") : TR(L" · actívalo con «Repetir un tramo»"));
             InterlockedIncrement(&g_pb_msj_serie);
         }
         n2_sincronizar();
@@ -1468,7 +1476,7 @@ static void n2_pb_tick(void)
     if (ir >= 0) {
         int pos = ne_tiempo_ms();
         if (pos < 0) {
-            lstrcpyW(g_pb_msj, L"No sé en qué segundo de la canción estás: habilita Entreno en Ñ2Hock.");
+            lstrcpyW(g_pb_msj, TR(L"No sé en qué segundo de la canción estás: habilita Entreno en Ñ2Hock."));
             g_pb_msj_err = 1; InterlockedIncrement(&g_pb_msj_serie);
         } else {
             int d = (int)ir - pos;
@@ -1563,10 +1571,10 @@ static void n2_e_tick(void)
     for (int k = 0; k < NE_TX_N; k++) {
         wchar_t t[320];
         int err = ne_texto(k, t, 320);
-        if (k == NE_TX_VELOCIDAD && !t[0] && !g_e_tx[k][0]) { lstrcpyW(t, L"Motor nativo · conecta una cuenta e inicia práctica offline."); }
-        if (k == NE_TX_ANTICAIDA && !t[0]) lstrcpyW(t, L"el choque del Latino");
-        if (k == NE_TX_TRAMOS && !t[0]) lstrcpyW(t, L"Tramos desactivados.");
-        if (k == NE_TX_MOVER && !t[0]) lstrcpyW(t, L"Vuelve a un segundo ya tocado para ver dónde poner un tramo lento.");
+        if (k == NE_TX_VELOCIDAD && !t[0] && !g_e_tx[k][0]) { lstrcpyW(t, TR(L"Motor nativo · conecta una cuenta e inicia práctica offline.")); }
+        if (k == NE_TX_ANTICAIDA && !t[0]) lstrcpyW(t, TR(L"el choque del Latino"));
+        if (k == NE_TX_TRAMOS && !t[0]) lstrcpyW(t, TR(L"Tramos desactivados."));
+        if (k == NE_TX_MOVER && !t[0]) lstrcpyW(t, TR(L"Vuelve a un segundo ya tocado para ver dónde poner un tramo lento."));
         if (!t[0]) continue;
         if (lstrcmpW(t, g_e_tx[k]) || err != g_e_tx_err[k]) { lstrcpyW(g_e_tx[k], t); g_e_tx_err[k] = err; cambio = 1; }
     }
@@ -1682,7 +1690,7 @@ static void pb_tramos_tick(void)
     LONG onoff = InterlockedExchange(&g_pt_ped_onoff, 0);
     int hubo = punto >= 0 || borde >= 0 || vel >= 0 || quitar >= 0 || onoff;
     if (hubo && (!g_e_ed_tde[N2_TRAMOS - 1] || !g_e_ed_tha[N2_TRAMOS - 1] || !g_e_cb_tvel[N2_TRAMOS - 1])) {
-        lstrcpyW(g_pb_msj, L"Los tramos no están listos: abre una vez la pestaña Tramos de Ñ2Hock.");
+        lstrcpyW(g_pb_msj, TR(L"Los tramos no están listos: abre una vez la pestaña Tramos de Ñ2Hock."));
         g_pb_msj_err = 1; InterlockedIncrement(&g_pb_msj_serie);
         return;
     }
@@ -1815,7 +1823,7 @@ static void n2m_pintar(HWND h, HDC d0)
         wsprintfW(t, L"%d · %d %%", tr[i].n, tr[i].pc);
         GetTextExtentPoint32W(dc, t, lstrlenW(t), &sz);
         if (sz.cx + 4 > r - l) { wsprintfW(t, L"%d%%", tr[i].pc); GetTextExtentPoint32W(dc, t, lstrlenW(t), &sz); }
-        if (sz.cx + 2 <= r - l) { SetTextColor(dc, RGB(255, 255, 255)); DrawTextW(dc, t, -1, &z, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX); }
+        if (sz.cx + 2 <= r - l) { SetTextColor(dc, RGB(255, 255, 255)); DrawTextW(dc, TR(t), -1, &z, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX); }
     }
     SelectObject(dc, f);
     /* el punto pendiente (amarillo, punteado) */
@@ -1896,7 +1904,7 @@ static void n2m_menu(HWND h, const N2M_TRAMO *z)
     if (!m) return;
     wchar_t t[64], a[16], b2[16];
     n2m_formato(z->de, a); n2m_formato(z->ha, b2);
-    wsprintfW(t, L"Tramo %d: %s → %s", z->n, a, b2);
+    wsprintfW(t, TR(L"Tramo %d: %s → %s"), z->n, a, b2);
     AppendMenuW(m, MF_STRING | MF_GRAYED, 0, t);
     for (int p = 50; p <= 150; p += 5) { wsprintfW(t, L"%d %%", p); AppendMenuW(m, MF_STRING | (p == z->pc ? MF_CHECKED : 0), (UINT_PTR)p, t); }
     AppendMenuW(m, MF_SEPARATOR, 0, NULL);
@@ -2006,8 +2014,8 @@ static LRESULT CALLBACK n2m_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         N2M_TRAMO tr[N2_TRAMOS];
         wchar_t s[240];
         int n = n2m_tramos(tr);
-        if (g_n2m_msj[0]) lstrcpyW(s, g_n2m_msj); else wsprintfW(s, L"%d tramo(s).", n);
-        if (g_n2m_pos < 0) lstrcatW(s, L" · Habilita Entreno en una canción de práctica para ver tu posición.");
+        if (g_n2m_msj[0]) lstrcpyW(s, g_n2m_msj); else wsprintfW(s, TR(L"%d tramo(s)."), n);
+        if (g_n2m_pos < 0) lstrcatW(s, TR(L" · Habilita Entreno en una canción de práctica para ver tu posición."));
         RECT st = { 10, c.bottom - 30, c.right - 10 - 80 - 220, c.bottom - 4 };
         n2_texto(dc, &st, s, g_n2_f, g_n2m_msj_err ? N2_ERROR : N2_BIEN, N2_IZQ | DT_END_ELLIPSIS);
         static const wchar_t *LEY[3] = { L"lento", L"normal", L"rápido" };
@@ -2203,8 +2211,8 @@ static LRESULT CALLBACK n2_vista_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
             HGDIOBJ of = SelectObject(dc, f);
             SetBkMode(dc, TRANSPARENT);
             RECT s = r; OffsetRect(&s, 1, 1);
-            SetTextColor(dc, RGB(0, 0, 0)); DrawTextW(dc, L"FAR 15.5", -1, &s, DT_SINGLELINE | DT_NOPREFIX);
-            SetTextColor(dc, g_n2i.color); DrawTextW(dc, L"FAR 15.5", -1, &r, DT_SINGLELINE | DT_NOPREFIX);
+            SetTextColor(dc, RGB(0, 0, 0)); DrawTextW(dc, TR(L"FAR 15.5"), -1, &s, DT_SINGLELINE | DT_NOPREFIX);
+            SetTextColor(dc, g_n2i.color); DrawTextW(dc, TR(L"FAR 15.5"), -1, &r, DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(dc, of);
         }
         DeleteObject(f);
@@ -2221,7 +2229,7 @@ static LRESULT CALLBACK n2_vista_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         if (x < 0) x = 0; if (y < 0) y = 0; if (x > c.right) x = c.right; if (y > c.bottom) y = c.bottom;
         g_n2i.x = c.right ? x * 1000 / c.right : 500;
         g_n2i.y = c.bottom ? y * 1000 / c.bottom : 450;
-        wsprintfW(g_n2_ind_estado, L"Posición: %d %% · %d %%", (g_n2i.x + 5) / 10, (g_n2i.y + 5) / 10);
+        wsprintfW(g_n2_ind_estado, TR(L"Posición: %d %% · %d %%"), (g_n2i.x + 5) / 10, (g_n2i.y + 5) / 10);
         InvalidateRect(h, NULL, FALSE);
         if (g_n2_pag[6]) InvalidateRect(g_n2_pag[6], NULL, FALSE);
         return 0;
@@ -2262,7 +2270,7 @@ static void n2_per_maquetar(void)
     n2_lbl(8, 131, 44, 20, L"Tema", N2_C_ACENTO, N2_IZQ);
     {
         HWND cb = n2_combo_lista(56, 130, 84, 22, L_TEMA, 0);
-        if (cb) { SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)L"Oscuro"); SendMessageW(cb, CB_SETCURSEL, 0, 0); }
+        if (cb) { SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)TR(L"Oscuro")); SendMessageW(cb, CB_SETCURSEL, 0, 0); }
     }
     n2_lbl(150, 131, 38, 20, L"Tecla", N2_C_ACENTO, N2_IZQ);
     n2_combo(190, 130, 92, 22, &g_ht_tecla_ver, NULL);
@@ -2298,7 +2306,7 @@ static void n2_per_maquetar(void)
     n2_boton(14, 440, 102, 26, L"Probar", B_IND_PROBAR);
     n2_boton(125, 440, 102, 26, L"Restablecer", B_IND_FABRICA);
     n2_boton(236, 440, 102, 26, L"Guardar", B_IND_GUARDAR);
-    lstrcpyW(g_n2_ind_estado, L"Arrastra el número en la vista previa.");
+    lstrcpyW(g_n2_ind_estado, TR(L"Arrastra el número en la vista previa."));
     n2_lbl(14, 472, 324, 44, NULL, N2_SUAVE, N2_PARR); g_n2l[g_n2nl - 1].dyn = g_n2_ind_estado;
 
     /* ★ 26-nov (boceto de anonimo03): el Idioma va en la ventana principal (n2_maquetar) */
@@ -2350,7 +2358,7 @@ static void n2_per_armar(void)
     DWORD est = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN;
     RECT r = { 0, 0, 368, 690 };
     AdjustWindowRectEx(&r, est, FALSE, 0);
-    g_n2_per = CreateWindowExW(0, L"N2HPersonal", L"Personalización · Ñ2Hock", est, 100, 100,
+    g_n2_per = CreateWindowExW(0, L"N2HPersonal", TR(L"Personalización · Ñ2Hock"), est, 100, 100,
                                r.right - r.left, r.bottom - r.top, g_ht_ven, NULL, hi, NULL);
     if (!g_n2_per) return;
     {
@@ -2364,12 +2372,12 @@ static void n2_per_armar(void)
                                     0, 0, 368, 690, g_n2_per, NULL, hi, NULL);
     RECT pr = { 4, 26, 364, 686 };
     if (g_n2_per_tabs) {
-        static const wchar_t *T[4] = { L"Ventana", L"Far", L"Piedras y booster", L"PD" };
+        const wchar_t *const *T = N2_PER_PEST;
         SendMessageW(g_n2_per_tabs, WM_SETFONT, (WPARAM)g_n2_ftab, 0);
         SendMessageW(g_n2_per_tabs, TCM_SETPADDING, 0, MAKELPARAM(10, 4));
         for (int i = 0; i < 4; i++) {
             TCITEMW it; ZeroMemory(&it, sizeof(it));
-            it.mask = TCIF_TEXT; it.pszText = (LPWSTR)T[i];
+            it.mask = TCIF_TEXT; it.pszText = (LPWSTR)TR(T[i]);
             SendMessageW(g_n2_per_tabs, TCM_INSERTITEMW, (WPARAM)i, (LPARAM)&it);
         }
         RECT a; GetClientRect(g_n2_per_tabs, &a);
@@ -2402,7 +2410,7 @@ static void n2_per_abrir(void)
         if (x < mi.rcWork.left) x = mi.rcWork.left;
         int y = v.top; if (y + h > mi.rcWork.bottom) y = mi.rcWork.bottom - h; if (y < mi.rcWork.top) y = mi.rcWork.top;
         SetWindowPos(g_n2_per, HWND_TOP, x, y, 0, 0, SWP_NOSIZE);
-        lstrcpyW(g_n2_ind_estado, L"Arrastra el número en la vista previa.");
+        lstrcpyW(g_n2_ind_estado, TR(L"Arrastra el número en la vista previa."));
         n2_sincronizar();
         ShowWindow(g_n2_per, SW_SHOW);
     }
@@ -2453,13 +2461,13 @@ static void n2_per_comando(int ref)
         if (!g_ht_ind_txt[0]) lstrcpyA(g_ht_ind_txt, "FAR 15.5");
         g_ht_ind_hasta = GetTickCount() + (DWORD)g_n2i.dura;
         g_n2_capa_firma = 0;
-        lstrcpyW(g_n2_ind_estado, L"Mostrando el indicador sobre el juego.");
+        lstrcpyW(g_n2_ind_estado, TR(L"Mostrando el indicador sobre el juego."));
         break;
     case B_IND_FABRICA:
         g_n2i.animar = g_n2i.conectar = g_n2i.ronda = g_n2i.negrita = 1;
         g_n2i.tam = 48; g_n2i.dura = 900; g_n2i.x = 500; g_n2i.y = 450; g_n2i.color = RGB(0xFA, 0xCC, 0x15);
         lstrcpyW(g_n2i.letra, L"Segoe UI");
-        lstrcpyW(g_n2_ind_estado, L"Valores por defecto (sin guardar).");
+        lstrcpyW(g_n2_ind_estado, TR(L"Valores por defecto (sin guardar)."));
         break;
     case B_CHAT_VACIAR:
         nc_vaciar();
@@ -2479,10 +2487,40 @@ static void n2_per_comando(int ref)
         break;
     case B_IND_GUARDAR:
         ht_guardar();
-        lstrcpyW(g_n2_ind_estado, L"Guardado.");
+        lstrcpyW(g_n2_ind_estado, TR(L"Guardado."));
         break;
     }
     n2_sincronizar();
+}
+
+/* ★ 26-nov: cambiar el idioma en vivo: los textos de los controles, las pestañas, las letras y todo de nuevo */
+static void n2_idioma_poner(int idi)
+{
+    int antes = g_tr_idi;
+    g_tr_idi = idi;
+    wchar_t t[160];
+    for (int i = 0; i < g_n2n; i++) {
+        N2_CTL *c = &g_n2c[i];
+        if (!c->h || !c->t0 || !c->t0[0] || c->tipo == C_COMBO || c->tipo == C_EDIT) continue;
+        GetWindowTextW(c->h, t, 160);
+        if (!lstrcmpW(t, tr_en(antes, c->t0)) || !lstrcmpW(t, c->t0)) SetWindowTextW(c->h, TR(c->t0));
+    }
+    HWND tb[2] = { g_n2_tabs, g_n2_per_tabs };
+    const wchar_t *const *nom[2] = { N2_PEST, N2_PER_PEST };
+    int cuantas[2] = { N2_PAGS, 4 };
+    for (int k = 0; k < 2; k++)
+        for (int i = 0; tb[k] && i < cuantas[k]; i++) {
+            TCITEMW it; ZeroMemory(&it, sizeof(it));
+            it.mask = TCIF_TEXT; it.pszText = (LPWSTR)TR(nom[k][i]);
+            SendMessageW(tb[k], TCM_SETITEMW, (WPARAM)i, (LPARAM)&it);
+        }
+    if (g_n2_per) SetWindowTextW(g_n2_per, TR(L"Personalización · Ñ2Hock"));
+    ht_pedir_guardar();
+    n2_fuentes_crear();                                /* las letras del idioma y repinta todo */
+    for (int p = 0; p < N2_PAGS_TOT; p++) if (g_n2_pag[p]) InvalidateRect(g_n2_pag[p], NULL, TRUE);
+    if (g_ht_ven) InvalidateRect(g_ht_ven, NULL, TRUE);
+    if (g_n2_per) InvalidateRect(g_n2_per, NULL, TRUE);
+    apuntar("[tool] idioma: %d", idi);
 }
 
 static void n2_lista_cambio(int ref, HWND h)
@@ -2491,6 +2529,7 @@ static void n2_lista_cambio(int ref, HWND h)
     int k = (int)SendMessageW(h, CB_GETCURSEL, 0, 0);
     if (k < 0 || SendMessageW(h, CB_GETLBTEXTLEN, (WPARAM)k, 0) >= 64) return;
     SendMessageW(h, CB_GETLBTEXT, (WPARAM)k, (LPARAM)t);
+    if (ref == L_IDIOMA) { if (k >= 0 && k < TR_N_IDIOMAS && k != g_tr_idi) n2_idioma_poner(k); return; }   /* ★ 26-nov */
     if (ref == L_CANAL) { nc_elegir_canal(k); return; }
     if (ref == L_COD) { g_n2_chat_cod = k; nc_elegir_codificacion(k); ht_pedir_guardar(); return; }
     if (ref == L_LETRA) { lstrcpyW(g_n2_letra, t); n2_fuentes_crear(); ht_pedir_guardar(); }
@@ -2515,14 +2554,14 @@ static void n2_apodo_tick(void)
     if (!lstrcmpA(a, g_n2_apodo)) return;
     lstrcpyA(g_n2_apodo, a);
     wchar_t w[48], tit[80];
-    if (!a[0] || !MultiByteToWideChar(CP_ACP, 0, a, -1, w, 48)) lstrcpyW(w, L"Este juego");
+    if (!a[0] || !MultiByteToWideChar(CP_ACP, 0, a, -1, w, 48)) lstrcpyW(w, TR(L"Este juego"));
     for (int i = 0; i < g_n2n; i++)
         if (g_n2c[i].tipo == C_COMBO && g_n2c[i].ref == L_CUENTA && g_n2c[i].h) {
             SendMessageW(g_n2c[i].h, CB_RESETCONTENT, 0, 0);
             SendMessageW(g_n2c[i].h, CB_ADDSTRING, 0, (LPARAM)w);
             SendMessageW(g_n2c[i].h, CB_SETCURSEL, 0, 0);
         }
-    if (a[0]) wsprintfW(tit, L"Ñ2Hock - %s", w); else lstrcpyW(tit, L"Ñ2Hock");
+    if (a[0]) wsprintfW(tit, TR(L"Ñ2Hock - %s"), w); else lstrcpyW(tit, TR(L"Ñ2Hock"));
     SetWindowTextW(g_ht_ven, tit);
     if (a[0] && g_n2i.conectar) g_n2i_forzar = 1;                 /* «Mostrar al conectar con el juego» */
 }
@@ -2740,7 +2779,7 @@ static void n2_contexto_v6(void)
     wchar_t ruta[MAX_PATH];
     DWORD n = GetTempPathW(MAX_PATH - 40, ruta);
     if (!n || n > MAX_PATH - 40) return;
-    lstrcatW(ruta, L"n2hock_controles6.manifest");
+    lstrcatW(ruta, TR(L"n2hock_controles6.manifest"));
     HANDLE f = CreateFileW(ruta, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (f != INVALID_HANDLE_VALUE) {
         DWORD e = 0;
@@ -2821,14 +2860,14 @@ static void n2_armar(void)
                                 11, 95, 308, 537, g_ht_ven, (HMENU)(INT_PTR)900, hi, NULL);
     RECT pr = { 11, 95 + 26, 11 + 308 - 4, 95 + 537 - 4 };
     if (g_n2_tabs) {
-        static const wchar_t *T[N2_PAGS] = { L"Juego", L"Controles", L"Entreno", L"Tramos", L"Chat" };
+        const wchar_t *const *T = N2_PEST;
         SendMessageW(g_n2_tabs, WM_SETFONT, (WPARAM)g_n2_ftab, 0);
         SendMessageW(g_n2_tabs, TCM_SETITEMSIZE, 0, MAKELPARAM(58, 22));
         for (int i = 0; i < N2_PAGS; i++) {
             TCITEMW it;
             ZeroMemory(&it, sizeof(it));
             it.mask = TCIF_TEXT;
-            it.pszText = (LPWSTR)T[i];
+            it.pszText = (LPWSTR)TR(T[i]);
             SendMessageW(g_n2_tabs, TCM_INSERTITEMW, (WPARAM)i, (LPARAM)&it);
         }
         RECT a; GetClientRect(g_n2_tabs, &a);

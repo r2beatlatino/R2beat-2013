@@ -2553,6 +2553,7 @@ static int escribir_bytes(DWORD va, const BYTE *espera, const BYTE *nuevo, int n
 /* ★★ «R2beat tool» (03-oct-2026): la herramienta del jugador que reemplaza a ToolBit,
  *   con su ventana (F12) y sus opciones en [herramienta]. Ver herramienta.c y
  *   documentacion/R2BEAT_TOOL.md. Va DESPUES de la calculadora: usa `calc_escribiendo`. */
+#include "traducir.c"             /* ★ 26-nov: los idiomas de Ñ2Hock (español, português, 한국어, 中文, 日本語) — antes que herramienta.c */
 #include "herramienta.c"
 /* ★ «Repetir» en la Pausa (04-oct-2026): el 3er botón, como RBit, sólo jugando solo.
  *   Ver pausa.c y documentacion/PAUSA_REPETIR.md. */

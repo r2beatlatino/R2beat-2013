@@ -175,7 +175,7 @@ static void pb_txt_crayon(int x, int y, int w, const wchar_t *s, HFONT f, COLORR
     RECT r = { 2, 2, 2 + w, 22 };
     SelectObject(g_pb_mdc, f);
     SetTextColor(g_pb_mdc, RGB(255, 255, 255));
-    DrawTextW(g_pb_mdc, s, -1, &r, al | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+    DrawTextW(g_pb_mdc, TR(s), -1, &r, al | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
     GdiFlush();
     int y0 = -1, alto = 0;
     for (int yy = 0; yy < H; yy++)
@@ -221,11 +221,12 @@ static void pb_txt_crayon(int x, int y, int w, const wchar_t *s, HFONT f, COLORR
 }
 static void pb_txt(int x, int y, int w, const wchar_t *s, HFONT f, COLORREF c, UINT al)
 {
+    s = TR(s);                                         /* ★ 26-nov: el idioma */
     if (g_pb_mpx && GetRValue(c) + GetGValue(c) + GetBValue(c) > 200) { pb_txt_crayon(x, y, w, s, f, c, al); return; }
     RECT r = { x, y, x + w, y + 20 };
     SelectObject(g_pb_dc, f);
     SetTextColor(g_pb_dc, c);
-    DrawTextW(g_pb_dc, s, -1, &r, al | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+    DrawTextW(g_pb_dc, TR(s), -1, &r, al | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
 }
 static void pb_txt_centrado(int cx, int y, const wchar_t *s, HFONT f, COLORREF c)
 {
@@ -327,8 +328,8 @@ static void pb_armar(void)
                        : !g_pb_bucle_real ? L"armado: en la próxima carrera corres hasta A"
                        : g_pb_estado == 1 ? L"esperando A" : g_pb_estado == 3 ? L"cuenta atrás"
                        : g_pb_estado == 4 ? L"antes de A, sin notas" : g_pb_estado == 6 ? L"error en el tramo" : L"repitiendo";
-    if (g_pb_bucle && g_pb_vueltas > 0) wsprintfW(t, L"TRAMO DE PRÁCTICA   A %s → B %s   ·   %s (vuelta %ld)", x1, x2, est, g_pb_vueltas);
-    else wsprintfW(t, L"TRAMO DE PRÁCTICA   A %s → B %s   ·   %s", x1, x2, est);
+    if (g_pb_bucle && g_pb_vueltas > 0) wsprintfW(t, TR(L"TRAMO DE PRÁCTICA   A %s → B %s   ·   %s (vuelta %ld)"), x1, x2, est, g_pb_vueltas);
+    else wsprintfW(t, TR(L"TRAMO DE PRÁCTICA   A %s → B %s   ·   %s"), x1, x2, est);
     pb_txt(10, 5, w - 20, t, g_pb_fb, RGB(235, 238, 245), DT_LEFT);
     if (pos >= 0) {
         wchar_t p[16], l[16];
@@ -549,7 +550,7 @@ static void pb_pintar(void)
                   ^ (DWORD)g_pb_arr_ms * 31u ^ (DWORD)w << 20 ^ (DWORD)g_pb_prep
                   ^ (DWORD)g_pt_serie * 2246822519u ^ (DWORD)g_pb_tramos << 30 ^ (DWORD)g_pt_arr << 31 ^ (DWORD)g_pt_arr_ms * 977u
                   ^ (DWORD)g_pb_zona << 26 ^ (DWORD)(GetTickCount() - g_pb_msj_t < 6000) << 28
-                  ^ (g_fj_arco ? (GetTickCount() / 40) * 2654435761u : 0);   /* ★ el arcoíris de los títulos se mueve */
+                  ^ (g_fj_arco ? (GetTickCount() / 40) * 2654435761u : 0) ^ (DWORD)g_tr_idi << 29;   /* ★ el arcoíris de los títulos se mueve */
     if (firma != g_pb_firma) {
         pb_armar();
         g_pbd_armar++;
@@ -749,7 +750,7 @@ static int pb_mensaje(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         if (en_barra) {
             int ms = pb_x_a_ms(lx);
             if (ms <= (int)g_pb_a + 1000) {
-                lstrcpyW(g_pb_msj, L"El final (B) tiene que quedar después de A.");
+                lstrcpyW(g_pb_msj, TR(L"El final (B) tiene que quedar después de A."));
                 g_pb_msj_err = 1;
                 InterlockedIncrement(&g_pb_msj_serie);
             } else InterlockedExchange(&g_pb_ped_b, ms);

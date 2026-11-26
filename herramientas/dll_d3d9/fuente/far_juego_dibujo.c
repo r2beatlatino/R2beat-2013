@@ -102,10 +102,10 @@ static void fj_txt_viejo(const RECT *r, const wchar_t *s, HFONT f, COLORREF c, U
     if (g_fj_fondo < 60) {                                     /* ★ 26-nov: con el fondo tenue, una sombra para leerla */
         RECT s1 = { q.left + 1, q.top + 1, q.right + 1, q.bottom + 1 };
         SetTextColor(g_fj_dc, RGB(0, 0, 0));
-        DrawTextW(g_fj_dc, s, -1, &s1, al | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
+        DrawTextW(g_fj_dc, TR(s), -1, &s1, al | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
     }
     SetTextColor(g_fj_dc, c);
-    DrawTextW(g_fj_dc, s, -1, &q, al | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
+    DrawTextW(g_fj_dc, TR(s), -1, &q, al | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
 }
 static void fj_casilla(const RECT *r, const wchar_t *t, int on, int hover)
 {
@@ -147,9 +147,9 @@ static void fj_piezas(COLORREF fondo, int h)
     fj_txt(&r, L"Far", g_fj_fb, RGB(255, 40, 150), DT_LEFT);
     if (af) {
         int f10 = (int)(g_ht_af_far * 10 + 0.5f);
-        if (f10 > 0) wsprintfW(t, L"auto · %d.%d", f10 / 10, f10 % 10); else lstrcpyW(t, L"auto");
+        if (f10 > 0) wsprintfW(t, TR(L"auto · %d.%d"), f10 / 10, f10 % 10); else lstrcpyW(t, TR(L"auto"));
     } else if (fv) wsprintfW(t, L"%d.%d", n2h * 5 / 10, n2h * 5 % 10);
-    else lstrcpyW(t, L"el del juego");
+    else lstrcpyW(t, TR(L"el del juego"));
     RECT rv = { 90, 2, FJ_W - 8, 20 };
     fj_txt(&rv, t, g_fj_fb, RGB(250, 204, 21), DT_RIGHT);
     fj_casilla(&FJ_CHK_FAR, L"Far Vision", fv, g_fj_hover == 1);
@@ -180,7 +180,7 @@ static void fj_txt_pegar(const FJ_TX *t, int h)
     RECT q = t->r;
     SelectObject(g_fj_dc, t->f);
     SetTextColor(g_fj_dc, RGB(255, 255, 255));
-    DrawTextW(g_fj_dc, t->s, -1, &q, t->al | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
+    DrawTextW(g_fj_dc, TR(t->s), -1, &q, t->al | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
     GdiFlush();
     int y0 = -1, y1 = -1;                                        /* dónde está la letra (para el degradé) */
     for (int y = a.top; y < a.bottom; y++)
@@ -316,7 +316,7 @@ static void fj_dibujar(void)
     DWORD firma = ((DWORD)g_op[O_FAR].quiere | (DWORD)g_op[O_AUTOFAR].quiere << 1 | (DWORD)g_ht_far_n2h << 2
                    | (DWORD)(g_fj_hover + 1) << 8 | (DWORD)g_fj_arr << 12 | (DWORD)g_fj_practica << 14
                    | (DWORD)g_e.vel_on << 15 | (DWORD)g_e.vel_pct << 16) ^ (DWORD)f10 * 2654435761u ^ (DWORD)g_fj_fondo * 40503u;
-    firma ^= (DWORD)g_fj_arco << 30;
+    firma ^= (DWORD)g_fj_arco << 30 ^ (DWORD)g_tr_idi << 27;
     if (firma != g_fj_firma) {
         fj_armar(h);
         if (fj_subir()) g_fj_firma = firma;

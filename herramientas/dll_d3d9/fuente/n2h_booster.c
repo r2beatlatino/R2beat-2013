@@ -20,7 +20,7 @@ static void bo_aviso(const wchar_t *t)
 
 static void bo_pos_texto(void)
 {
-    wsprintfW(g_bo_pos_txt, L"Posición: X %+d · Y %+d px", g_bo_dx, g_bo_dy);
+    wsprintfW(g_bo_pos_txt, TR(L"Posición: X %+d · Y %+d px"), g_bo_dx, g_bo_dy);
     if (g_n2_pag[N2P_PIEDRAS]) InvalidateRect(g_n2_pag[N2P_PIEDRAS], NULL, FALSE);
 }
 
@@ -89,8 +89,8 @@ static void bo_elegir(int k)
     bo_mini_armar(k);
     static const wchar_t *QUE[3] = { L"el botón sin carga", L"el botón lleno", L"el marco" };
     wchar_t t[200];
-    wsprintfW(t, L"Puesto %s (%d x %d%s).%s", QUE[k], w, h, cuadros > 1 ? L", animado" : L"",
-              g_bo_activo ? L" Se ve en la carrera." : L" ⚠ El cambio del booster no está enganchado (mira d3d9_proxy.log).");
+    wsprintfW(t, TR(L"Puesto %s (%d x %d%s).%s"), QUE[k], w, h, cuadros > 1 ? TR(L", animado") : L"",
+              g_bo_activo ? TR(L" Se ve en la carrera.") : TR(L" ⚠ El cambio del booster no está enganchado (mira d3d9_proxy.log)."));
     bo_aviso(t);
 }
 
@@ -159,10 +159,10 @@ static LRESULT CALLBACK bo_vista_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
     for (int k = 0; k < 3; k++) {
         int x = 6 + k * 108, y = 6;
         wchar_t tt[40];
-        wsprintfW(tt, L"%s%s", T[k], g_bo_cuadros[k] > 1 ? L" (GIF)" : L"");
+        wsprintfW(tt, L"%s%s", T[k], g_bo_cuadros[k] > 1 ? TR(L" (GIF)") : L"");
         RECT r = { x, y, x + 100, y + 18 };
         SetTextColor(dc, RGB(200, 206, 220));
-        DrawTextW(dc, tt, -1, &r, DT_CENTER | DT_SINGLELINE);
+        DrawTextW(dc, TR(tt), -1, &r, DT_CENTER | DT_SINGLELINE);
         RECT caja = { x + 10, y + 22, x + 10 + 81, y + 22 + 81 };
         HBRUSH bc = CreateSolidBrush(RGB(28, 31, 50)); FillRect(dc, &caja, bc); DeleteObject(bc);
         HBITMAP capas[2] = { g_bo_mini[k], k < 2 ? g_bo_mini[2] : NULL };   /* el marco, encima de los botones */
@@ -178,7 +178,7 @@ static LRESULT CALLBACK bo_vista_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         }
         if (!algo) {
             SetTextColor(dc, RGB(130, 140, 160));
-            DrawTextW(dc, k < 2 ? L"la del\njuego" : L"sin\nmarco", -1, &caja, DT_CENTER | DT_WORDBREAK);
+            DrawTextW(dc, TR(k < 2 ? L"la del\njuego" : L"sin\nmarco"), -1, &caja, DT_CENTER | DT_WORDBREAK);
         }
         if (g_bo_tenir != CLR_INVALID && k < 2) {
             RECT t = { caja.left, caja.bottom + 4, caja.right, caja.bottom + 10 };
@@ -231,8 +231,8 @@ static void bo_maquetar(void)
     y += 30;
     n2_lbl(14, y, 324, 46, NULL, N2_SUAVE, N2_PARR); g_n2l[g_n2nl - 1].dyn = g_bo_estado;
     if (!g_bo_estado[0])
-        lstrcpyW(g_bo_estado, L"Las imágenes se ajustan a 81 x 81; el marco va encima. Mover lleva también el de equipo y "
-                              L"el fuego (4 px; con Mayús, 20; «0» = centrar).");
+        lstrcpyW(g_bo_estado, TR(L"Las imágenes se ajustan a 81 x 81; el marco va encima. Mover lleva también el de equipo y "
+                              L"el fuego (4 px; con Mayús, 20; «0» = centrar)."));
     for (int k = 0; k < 3; k++) bo_mini_armar(k);
     bo_pos_texto();
 }

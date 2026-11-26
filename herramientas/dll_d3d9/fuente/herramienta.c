@@ -789,21 +789,21 @@ static int ht_af_parsear(const wchar_t *t, float *pb, float *pf, int *n, wchar_t
             else break;
         }
         if (!hay) { if (*p) p++; continue; }
-        if (k >= HT_AF_MAX * 2) { wsprintfW(err, L"Como mucho %d puntos.", HT_AF_MAX); return 1; }
+        if (k >= HT_AF_MAX * 2) { wsprintfW(err, TR(L"Como mucho %d puntos."), HT_AF_MAX); return 1; }
         nums[k++] = v;
     }
-    if (k < 2 || (k & 1)) { lstrcpyW(err, L"Escribe pares «BPM Far», uno por línea (por ejemplo: 170 17)."); return 1; }
+    if (k < 2 || (k & 1)) { lstrcpyW(err, TR(L"Escribe pares «BPM Far», uno por línea (por ejemplo: 170 17).")); return 1; }
     int m = k / 2;
     for (int i = 0; i < m; i++) {
         pb[i] = nums[2 * i]; pf[i] = nums[2 * i + 1];
-        if (pb[i] < 30 || pb[i] > 400) { wsprintfW(err, L"El BPM %d está fuera de 30..400.", (int)pb[i]); return 1; }
-        if (pf[i] < 1.0f || pf[i] > 22.0f) { lstrcpyW(err, L"El Far tiene que ser un número entre 1.0 y 22.0."); return 1; }
+        if (pb[i] < 30 || pb[i] > 400) { wsprintfW(err, TR(L"El BPM %d está fuera de 30..400."), (int)pb[i]); return 1; }
+        if (pf[i] < 1.0f || pf[i] > 22.0f) { lstrcpyW(err, TR(L"El Far tiene que ser un número entre 1.0 y 22.0.")); return 1; }
     }
     for (int i = 1; i < m; i++)                      /* inserción por BPM */
         for (int j = i; j > 0 && pb[j - 1] > pb[j]; j--) {
             float tb = pb[j], tf = pf[j]; pb[j] = pb[j - 1]; pf[j] = pf[j - 1]; pb[j - 1] = tb; pf[j - 1] = tf;
         }
-    for (int i = 1; i < m; i++) if (pb[i] == pb[i - 1]) { wsprintfW(err, L"El BPM %d está dos veces.", (int)pb[i]); return 1; }
+    for (int i = 1; i < m; i++) if (pb[i] == pb[i - 1]) { wsprintfW(err, TR(L"El BPM %d está dos veces."), (int)pb[i]); return 1; }
     *n = m;
     return 0;
 }
@@ -1128,6 +1128,7 @@ static void ht_guardar(void)
     wsprintfA(v, "%d", g_ht_tk_alfa_menos); ht_buf_poner(&x, "tk_opacidad_menos", v, eol);
     wsprintfA(v, "%d", g_ht_tk_alfa_mas);   ht_buf_poner(&x, "tk_opacidad_mas", v, eol);
     wsprintfA(v, "%d", g_ht_tema);          ht_buf_poner(&x, "tema", v, eol);
+    wsprintfA(v, "%d", g_tr_idi);           ht_buf_poner(&x, "idioma", v, eol);
     /* las dos filas del teclado: el DIK (código de tecla de DirectInput) en decimal; 0 = ninguna */
     for (int g = 0; g < 2; g++)
         for (int kk = 0; kk < 5; kk++) {
@@ -1175,6 +1176,7 @@ static void ht_leer(void)
     g_ht_tecla_ver = (int)GetPrivateProfileIntA("herramienta", "tecla", VK_F12, g_ht_ini) & 0xFF;
     g_ht_tema = (int)GetPrivateProfileIntA("herramienta", "tema", HT_TEMA_N2H, g_ht_ini);
     if (g_ht_tema < 1 || g_ht_tema > HT_N_TEMAS) g_ht_tema = HT_TEMA_N2H;
+    tr_leer_ini(g_ht_ini);                                   /* ★ 26-nov: el idioma de Ñ2Hock */
     if (!g_ht_tecla_ver) g_ht_tecla_ver = VK_F12;
     for (int g = 0; g < 2; g++)
         for (int kk = 0; kk < 5; kk++) {
@@ -1326,13 +1328,13 @@ static void ht_que_es(int id, wchar_t *s)                       /* s: 64 */
 {
     if (id >= 0 && id < O_N) {
         if (g_op[id].pareja >= 0 && g_op[id].pareja < id && !lstrcmpW(g_op[id].texto, L"Supr"))
-            wsprintfW(s, L"%s · Supr", g_op[g_op[id].pareja].texto);
+            wsprintfW(s, TR(L"%s · Supr"), g_op[g_op[id].pareja].texto);
         else lstrcpyW(s, g_op[id].texto);
-    } else if (id == K_ALFM) lstrcpyW(s, L"Opacidad · bajar");
-    else if (id == K_ALFP) lstrcpyW(s, L"Opacidad · subir");
-    else if (id == K_FARM) lstrcpyW(s, L"Far Vision · bajar");
-    else if (id == K_FARP) lstrcpyW(s, L"Far Vision · subir");
-    else if (ht_es_dik(id)) wsprintfW(s, L"fila %d · %s", (id - 200) / 5 + 1, HT_KB_NOMBRE[(id - 200) % 5]);
+    } else if (id == K_ALFM) lstrcpyW(s, TR(L"Opacidad · bajar"));
+    else if (id == K_ALFP) lstrcpyW(s, TR(L"Opacidad · subir"));
+    else if (id == K_FARM) lstrcpyW(s, TR(L"Far Vision · bajar"));
+    else if (id == K_FARP) lstrcpyW(s, TR(L"Far Vision · subir"));
+    else if (ht_es_dik(id)) wsprintfW(s, TR(L"fila %d · %s"), (id - 200) / 5 + 1, HT_KB_NOMBRE[(id - 200) % 5]);
     else s[0] = 0;
 }
 
@@ -1352,13 +1354,13 @@ static void ht_nombre_vk(int vk, wchar_t *s)                    /* s: 32 */
     };
     if (vk <= 0 || vk > 255) { lstrcpyW(s, L"—"); return; }
     if (vk >= VK_F1 && vk <= VK_F24) { wsprintfW(s, L"F%d", vk - VK_F1 + 1); return; }
-    if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) { wsprintfW(s, L"Num %d", vk - VK_NUMPAD0); return; }
+    if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) { wsprintfW(s, TR(L"Num %d"), vk - VK_NUMPAD0); return; }
     if ((vk >= 'A' && vk <= 'Z') || (vk >= '0' && vk <= '9')) { s[0] = (wchar_t)vk; s[1] = 0; return; }
     for (int i = 0; i < (int)(sizeof(T) / sizeof(T[0])); i++)
         if (T[i].vk == vk) { lstrcpyW(s, T[i].n); return; }
     UINT c = MapVirtualKeyW((UINT)vk, 2 /* MAPVK_VK_TO_CHAR */) & 0x7FFF;
     if (c > 32) { s[0] = (wchar_t)c; s[1] = 0; return; }
-    wsprintfW(s, L"VK %02X", vk);
+    wsprintfW(s, TR(L"VK %02X"), vk);
 }
 
 /* DIK = el código de la tecla FÍSICA que usa DirectInput: el scan code, +0x80 si es «extendida» */
@@ -1404,10 +1406,10 @@ static int ht_vk_a_dik(int vk)
 static void ht_nombre_dik(int dik, wchar_t *s)
 {
     if (dik <= 0 || dik > 255) { lstrcpyW(s, L"—"); return; }
-    if (dik == 0x9C) { lstrcpyW(s, L"Num Enter"); return; }
+    if (dik == 0x9C) { lstrcpyW(s, TR(L"Num Enter")); return; }
     int vk = ht_dik_a_vk(dik);
     if (vk) ht_nombre_vk(vk, s);
-    else wsprintfW(s, L"DIK %02X", dik);
+    else wsprintfW(s, TR(L"DIK %02X"), dik);
 }
 
 static void ht_nombre_tecla(int id, int valor, wchar_t *s)
@@ -1453,15 +1455,15 @@ static int ht_bloqueada(int id, int valor, wchar_t *por)        /* por: 160 · �
     if (!valor) return 0;
     ht_nombre_tecla(id, valor, n);
     if (vk == g_ht_tecla_ver || (dik && dik == ht_vk_a_dik(g_ht_tecla_ver)))
-        wsprintfW(por, L"ojo: %s también abre y cierra esta ventana", n);
+        wsprintfW(por, TR(L"ojo: %s también abre y cierra esta ventana"), n);
     else if (ht_dik_calculadora(dik) || vk == VK_F9 || vk == VK_F10)
-        wsprintfW(por, L"ojo: %s también es de la calculadora", n);
+        wsprintfW(por, TR(L"ojo: %s también es de la calculadora"), n);
     else if (ht_dik_juego(dik) || vk == VK_RETURN || vk == VK_TAB || vk == VK_SPACE || vk == VK_SHIFT
              || vk == VK_LSHIFT || vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU || (vk >= VK_F1 && vk <= VK_F5))
-        wsprintfW(por, L"ojo: %s también la usa el juego", n);
+        wsprintfW(por, TR(L"ojo: %s también la usa el juego"), n);
     else if (!ht_es_dik(id) && (dik == 0xC8 || dik == 0xCB || dik == 0xD0 || dik == 0xCD || dik == 0x1D || dik == 0x9D
                                 || vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL))
-        wsprintfW(por, L"ojo: %s también mueve / es el booster", n);
+        wsprintfW(por, TR(L"ojo: %s también mueve / es el booster"), n);
     return 0;
 }
 
@@ -1707,7 +1709,7 @@ static void ht_maquetar_n2h(void)
     g_ht_pag_armando = 0xFF;
     g_ht_pag_y1 = 488;
     ht_el(E_BOTON, 12, 498, 120, 28, 1, L"APAGAR TODO", L"Apaga todas las opciones (vuelve todo a fábrica)");
-    wsprintfW(g_ht_tema_txt, L"TEMA %d/%d", g_ht_tema, HT_N_TEMAS);
+    wsprintfW(g_ht_tema_txt, TR(L"TEMA %d/%d"), g_ht_tema, HT_N_TEMAS);
     ht_el(E_BOTON, W - 12 - 84, 501, 84, 22, 3, g_ht_tema_txt,
           L"Cambiar el estilo de la ventana: 1 Neón · 2 Sakura · 3 Arcade · 4 Medianoche · 5 Ñ2Hock. Queda guardado.");
     g_ht_h = 498 + 28 + 12;
@@ -1729,7 +1731,7 @@ static void ht_maquetar(void)
     ht_el(E_PILL, W - HT_M - 26 - 10 - 96, 13, 96, 26, O_ANCLAR, g_op[O_ANCLAR].texto, g_op[O_ANCLAR].ayuda);
     ht_el(E_PILL, W - HT_M - 26 - 10 - 96 - 8 - 96, 13, 96, 26, O_HOTKEYS, g_op[O_HOTKEYS].texto, g_op[O_HOTKEYS].ayuda);
     /* ⚠ mientras anonimo03 elige el estilo: recorre los 4 temas (y lo guarda en el ini) */
-    wsprintfW(g_ht_tema_txt, L"TEMA %d/%d", g_ht_tema, HT_N_TEMAS);
+    wsprintfW(g_ht_tema_txt, TR(L"TEMA %d/%d"), g_ht_tema, HT_N_TEMAS);
     ht_el(E_BOTON, W - HT_M - 26 - 10 - 96 - 8 - 96 - 10 - 76, 15, 76, 22, 3, g_ht_tema_txt,
           L"Probar los 4 estilos: 1 Neón · 2 Sakura · 3 Arcade · 4 Medianoche. Queda guardado (sale cuando se elija uno).");
 
@@ -2107,7 +2109,7 @@ static void ht_texto(int x, int y, int w, int h, const wchar_t *s, int f, COLORR
     RECT r = { x, y, x + w, y + h };
     SelectObject(g_ht_dc1, g_ht_f[f]);
     SetTextColor(g_ht_dc1, c);
-    DrawTextW(g_ht_dc1, s, -1, &r, fmt | DT_NOPREFIX);
+    DrawTextW(g_ht_dc1, TR(s), -1, &r, fmt | DT_NOPREFIX);
 }
 
 static int ht_slider_valor(int s, int *min, int *max)
@@ -2206,8 +2208,8 @@ static void ht_pintar_el(int i, int pase)
             else {
                 int rotas = 0;
                 for (int k = 0; k < O_N; k++) if (g_op[k].rota) rotas++;
-                if (rotas) { wsprintfW(t, L"%d opción(es) no disponible(s) con este exe: ver el log", rotas); c = HT_C_ROSA; }
-                else wsprintfW(t, L"todo enganchado · %s", g_ht_sub);
+                if (rotas) { wsprintfW(t, TR(L"%d opción(es) no disponible(s) con este exe: ver el log"), rotas); c = HT_C_ROSA; }
+                else wsprintfW(t, TR(L"todo enganchado · %s"), g_ht_sub);
             }
             ht_texto(e->x, e->y, e->w, e->h, t, F_TEXTO, c, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         }
@@ -2236,7 +2238,7 @@ static void ht_pintar_el(int i, int pase)
         } else {
             wchar_t n[32];
             COLORREF c;
-            if (esp) { lstrcpyW(n, L"tecla…"); c = HT_C_ROSA; }
+            if (esp) { lstrcpyW(n, TR(L"tecla…")); c = HT_C_ROSA; }
             else {
                 ht_nombre_tecla(e->ref, v, n);
                 int activo = ht_es_dik(e->ref) ? g_op[O_TECLADO].quiere : g_op[O_HOTKEYS].quiere;
@@ -2424,7 +2426,7 @@ static LRESULT CALLBACK ht_globo_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         SetTextColor(dc, HT_C_SUAVE);
         SelectObject(dc, g_ht_f[F_CHICO]);
         InflateRect(&r, -8, -5);
-        DrawTextW(dc, t, -1, &r, DT_LEFT | DT_WORDBREAK | DT_NOPREFIX);
+        DrawTextW(dc, TR(t), -1, &r, DT_LEFT | DT_WORDBREAK | DT_NOPREFIX);
         EndPaint(h, &ps);
         return 0;
     }
@@ -2444,15 +2446,15 @@ static void ht_globo_mostrar(int i)
     const wchar_t *t = g_el[i].ayuda;
     wchar_t extra[256];
     if (g_el[i].tipo == E_OPCION && (!g_op[g_el[i].ref].permitida || g_op[g_el[i].ref].rota)) {
-        wsprintfW(extra, L"%s\n%s", t, !g_op[g_el[i].ref].permitida ? L"⛔ Apagada en esta versión de la tool."
-                                                                  : L"⛔ No disponible con este exe (ver el log).");
+        wsprintfW(extra, L"%s\n%s", t, !g_op[g_el[i].ref].permitida ? TR(L"⛔ Apagada en esta versión de la tool.")
+                                                                  : TR(L"⛔ No disponible con este exe (ver el log)."));
         t = extra;
     }
     SetWindowTextW(g_ht_globo, t);
     HDC dc = GetDC(g_ht_globo);
     SelectObject(dc, g_ht_f[F_CHICO]);
     RECT r = { 0, 0, 280, 0 };
-    DrawTextW(dc, t, -1, &r, DT_LEFT | DT_WORDBREAK | DT_CALCRECT | DT_NOPREFIX);
+    DrawTextW(dc, TR(t), -1, &r, DT_LEFT | DT_WORDBREAK | DT_CALCRECT | DT_NOPREFIX);
     ReleaseDC(g_ht_globo, dc);
     POINT p = { g_el[i].x, g_el[i].y + g_el[i].h + 6 };
     ClientToScreen(g_ht_ven, &p);
@@ -3023,7 +3025,7 @@ static void ht_armar_ventana(void)
     {
         wchar_t n[32];
         ht_nombre_vk(g_ht_tecla_ver, n);
-        wsprintfW(g_ht_sub, L"%s · mostrar / ocultar", n);
+        wsprintfW(g_ht_sub, TR(L"%s · mostrar / ocultar"), n);
     }
     ht_maquetar_todo();
 

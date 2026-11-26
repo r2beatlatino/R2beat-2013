@@ -94,7 +94,7 @@ static void pie_textos(void)
 {
     int pags = (g_pie_n + 1 + PIE_POR_PAG - 1) / PIE_POR_PAG;
     wchar_t n[MAX_PATH];
-    if (g_pie_sel == 0) lstrcpyW(n, L"De fábrica (la del juego)");
+    if (g_pie_sel == 0) lstrcpyW(n, TR(L"De fábrica (la del juego)"));
     else {
         lstrcpynW(n, g_pie_nombre[g_pie_sel - 1], MAX_PATH);
         int l = lstrlenW(n);
@@ -156,15 +156,15 @@ static int pie_instalar_una(const wchar_t *origen, wchar_t *por)
     const wchar_t *nombre = origen;
     for (const wchar_t *p = origen; *p; p++) if (*p == L'\\' || *p == L'/') nombre = p + 1;
     lstrcatW(d, nombre);
-    if (!CopyFileW(origen, d, FALSE)) { lstrcpyW(por, L"no se pudo escribir en la carpeta de piedras"); return 0; }
+    if (!CopyFileW(origen, d, FALSE)) { lstrcpyW(por, TR(L"no se pudo escribir en la carpeta de piedras")); return 0; }
     return 1;
 }
 
 static void pie_informe(int ok, int malos, const wchar_t *primer_malo, const wchar_t *por)
 {
     wchar_t t[400];
-    if (!malos) wsprintfW(t, L"Instalada(s): %d.", ok);
-    else wsprintfW(t, L"Instalada(s): %d. No sirven: %d (por ejemplo «%s»: %s).", ok, malos, primer_malo, por);
+    if (!malos) wsprintfW(t, TR(L"Instalada(s): %d."), ok);
+    else wsprintfW(t, TR(L"Instalada(s): %d. No sirven: %d (por ejemplo «%s»: %s)."), ok, malos, primer_malo, por);
     pie_listar();
     pie_textos();
     pie_aviso(t);
@@ -247,8 +247,8 @@ static void pie_quitar(void)
 {
     if (g_pie_sel <= 0 || g_pie_sel > g_pie_n) { pie_aviso(L"Elige primero una piedra tuya (la de fábrica no se quita)."); return; }
     wchar_t t[MAX_PATH + 80], a[MAX_PATH * 2 + 2];
-    wsprintfW(t, L"¿Quitar la piedra «%s»? Va a la papelera.", g_pie_nombre[g_pie_sel - 1]);
-    if (MessageBoxW(g_n2_per ? g_n2_per : g_ht_ven, t, L"Ñ2Hock · Piedras", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+    wsprintfW(t, TR(L"¿Quitar la piedra «%s»? Va a la papelera."), g_pie_nombre[g_pie_sel - 1]);
+    if (MessageBoxW(g_n2_per ? g_n2_per : g_ht_ven, t, TR(L"Ñ2Hock · Piedras"), MB_YESNO | MB_ICONQUESTION) != IDYES) return;
     pdr_carpeta(a);
     lstrcatW(a, g_pie_nombre[g_pie_sel - 1]);
     a[lstrlenW(a) + 1] = 0;                            /* doble cero de SHFileOperation */
@@ -314,7 +314,7 @@ static LRESULT CALLBACK pie_gal_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
             DeleteObject(b);
             if (i == 0) {
                 SetTextColor(dc, RGB(200, 206, 220));
-                DrawTextW(dc, L"De\nfábrica", -1, &r, DT_CENTER | DT_WORDBREAK | DT_NOPREFIX);
+                DrawTextW(dc, TR(L"De\nfábrica"), -1, &r, DT_CENTER | DT_WORDBREAK | DT_NOPREFIX);
             } else if (g_pie_mini[i - 1]) {
                 HDC m2 = CreateCompatibleDC(dc);
                 HGDIOBJ om = SelectObject(m2, g_pie_mini[i - 1]);
@@ -325,7 +325,7 @@ static LRESULT CALLBACK pie_gal_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
                 DeleteDC(m2);
             } else {
                 SetTextColor(dc, RGB(251, 146, 60));
-                DrawTextW(dc, L"?", -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                DrawTextW(dc, TR(L"?"), -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             }
             if (i == g_pie_sel) {
                 HPEN p = CreatePen(PS_SOLID, 2, N2_ACENTO);
@@ -411,7 +411,7 @@ static void pie_maquetar(void)
     n2_boton(180, y, 158, 26, L"Carpeta...", B_PIE_ABRIR);
     y += 30;
     n2_lbl(14, y, 324, 34, NULL, N2_SUAVE, N2_PARR); g_n2l[g_n2nl - 1].dyn = g_pie_estado;
-    if (!g_pie_estado[0]) lstrcpyW(g_pie_estado, L"TGA o PNG con transparencia, de 256 x 256 px (4 x 4 casillas).");
+    if (!g_pie_estado[0]) lstrcpyW(g_pie_estado, TR(L"TGA o PNG con transparencia, de 256 x 256 px (4 x 4 casillas)."));
     pie_listar();
     pie_textos();
 }

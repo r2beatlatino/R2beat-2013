@@ -21,13 +21,13 @@ static int     g_pd_quieto_ui = 0;
 static void pd_textos(void)
 {
     wchar_t a[120], b[40], c[40];
-    wsprintfW(a, L"Panel %s · %s%s", g_calc_oculto ? L"escondido (F9)" : L"a la vista",
-              g_calc_fijo ? L"fijado" : L"se puede mover", g_calc_quieto ? L" · quieto con el impulsor" : L"");
-    wsprintfW(b, L"Tamaño %d %%", g_calc_escala);
-    wsprintfW(c, L"Opacidad %d %%", g_calc_opacidad);
+    wsprintfW(a, TR(L"Panel %s · %s%s"), g_calc_oculto ? TR(L"escondido (F9)") : TR(L"a la vista"),
+              g_calc_fijo ? L"fijado" : TR(L"se puede mover"), g_calc_quieto ? TR(L" · quieto con el impulsor") : L"");
+    wsprintfW(b, TR(L"Tamaño %d %%"), g_calc_escala);
+    wsprintfW(c, TR(L"Opacidad %d %%"), g_calc_opacidad);
     wchar_t d[40], e[40];
-    wsprintfW(d, L"Fondo %d %%", g_pdn_fondo_op);
-    wsprintfW(e, L"Fondo del panel %d %%", g_fj_fondo);
+    wsprintfW(d, TR(L"Fondo %d %%"), g_pdn_fondo_op);
+    wsprintfW(e, TR(L"Fondo del panel %d %%"), g_fj_fondo);
     if (lstrcmpW(e, g_fj_txt_fondo)) { lstrcpyW(g_fj_txt_fondo, e); if (g_n2_pag[6]) InvalidateRect(g_n2_pag[6], NULL, FALSE); }
     int cambio = lstrcmpW(a, g_pd_txt_estado) || lstrcmpW(b, g_pd_txt_tam) || lstrcmpW(c, g_pd_txt_op) || lstrcmpW(d, g_pd_txt_fop);
     lstrcpyW(g_pd_txt_estado, a); lstrcpyW(g_pd_txt_tam, b); lstrcpyW(g_pd_txt_op, c); lstrcpyW(g_pd_txt_fop, d);
