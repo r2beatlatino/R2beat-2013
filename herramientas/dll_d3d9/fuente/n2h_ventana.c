@@ -1510,6 +1510,18 @@ static void n2_e_tick(void)
     pb_tramos_tick();                                /* ★ 26-nov: los tramos desde la Pausa de la práctica */
     pd_tick();
     fj_tick();                                       /* ★ 26-nov: lo que pidió el panel del Far del juego */
+    {   /* ★ 26-nov (anonimo03: «una opción para que aparezca y desaparezca»): la tecla del panel del Far */
+        static int antes_fj = 0;
+        int vk = g_fj_tecla, b = vk > 0 && vk < 256 && (GetAsyncKeyState(vk) & 0x8000) != 0;
+        int flanco = b && !antes_fj;
+        antes_fj = b;
+        if (flanco && ht_con_foco() && !g_ht_apagada && g_ht_esperando < 0 && !calc_escribiendo()
+            && GetForegroundWindow() != g_ht_ven && GetForegroundWindow() != g_n2_per) {
+            g_fj_mostrar = !g_fj_mostrar;
+            ht_pedir_guardar();
+            n2_sincronizar();
+        }
+    }
     if (InterlockedExchange(&g_fj_ped_vel, 0)) { g_e.vel_on = !g_e.vel_on; n2_e_cambio(&g_e.vel_on); }
     {
         LONG pct = InterlockedExchange(&g_fj_ped_pct, -1);
@@ -2267,6 +2279,8 @@ static void n2_per_maquetar(void)
     n2_boton(180, 550, 76, 26, L"Menos", B_FJ_FONDO_MENOS);
     n2_boton(262, 550, 76, 26, L"Más", B_FJ_FONDO_MAS);
     n2_chk_b(14, 582, 320, 20, L"Arcoíris de los crayones (panel del Far y barra de la Pausa)", &g_fj_arco);
+    n2_lbl(14, 612, 160, 22, L"Mostrar / esconder (tecla)", N2_TEXTO, N2_IZQ);   /* ★ 26-nov */
+    n2_combo(180, 610, 158, 22, &g_fj_tecla, NULL);
     n2_chk_b(14, 226, 320, 20, L"Con animación (salta y se desvanece)", &g_n2i.animar);
     n2_chk_b(14, 250, 320, 20, L"Mostrar al conectar con el juego", &g_n2i.conectar);
     n2_chk_b(14, 274, 320, 20, L"Mostrar al empezar cada ronda", &g_n2i.ronda);

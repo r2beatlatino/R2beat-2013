@@ -47,6 +47,8 @@ static void fj_leer_ini(void)
     int fo = (int)GetPrivateProfileIntA("herramienta", "far_juego_fondo", 0, g_ht_ini);
     g_fj_fondo = fo < 0 ? 0 : fo > 100 ? 100 : fo;
     g_fj_arco = GetPrivateProfileIntA("herramienta", "far_juego_arcoiris", 1, g_ht_ini) != 0;
+    int tk = (int)GetPrivateProfileIntA("herramienta", "far_juego_tecla", VK_F7, g_ht_ini);
+    g_fj_tecla = tk >= 0 && tk < 256 ? tk : VK_F7;
     g_fj_x = x >= 0 && x <= 1000 ? x : -1;
     g_fj_y = y >= 0 && y <= 1000 ? y : -1;
 }

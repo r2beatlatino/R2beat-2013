@@ -988,6 +988,7 @@ static void ht_indicador_tick(DWORD ahora)
 static void (*g_ht_por_cuadro_mas)(void) = NULL;
 /* lo llama el HUD de carrera de calculadora.c, una vez por cuadro */
 static int  g_fj_mostrar = 1;                          /* [herramienta] far_juego */
+static int g_fj_tecla = VK_F7;                        /* ★ 26-nov: la tecla que muestra / esconde el panel en la carrera */
 static int g_fj_arco = 1;                             /* ★ 26-nov: las letras del panel con el arcoíris de los crayones */
 static volatile int g_fj_fondo = 0;                   /* ★ 26-nov: cuánto se ve el fondo del panel (0..100 %) */
 static volatile LONG g_fj_x = -1, g_fj_y = -1;         /* la posición en milésimas de la pantalla (-1 = de fábrica) */
@@ -1121,6 +1122,7 @@ static void ht_guardar(void)
     wsprintfA(v, "%ld", (long)g_fj_y);   ht_buf_poner(&x, "far_juego_y", v, eol);
     wsprintfA(v, "%d", g_fj_fondo);      ht_buf_poner(&x, "far_juego_fondo", v, eol);
     wsprintfA(v, "%d", g_fj_arco);       ht_buf_poner(&x, "far_juego_arcoiris", v, eol);
+    wsprintfA(v, "%d", g_fj_tecla);      ht_buf_poner(&x, "far_juego_tecla", v, eol);
     wsprintfA(v, "%d", g_ht_tk_far_menos);  ht_buf_poner(&x, "tk_far_menos", v, eol);
     wsprintfA(v, "%d", g_ht_tk_far_mas);    ht_buf_poner(&x, "tk_far_mas", v, eol);
     wsprintfA(v, "%d", g_ht_tk_alfa_menos); ht_buf_poner(&x, "tk_opacidad_menos", v, eol);
