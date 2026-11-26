@@ -30,6 +30,7 @@ from . import gacha
 from . import antitrampa
 from . import multicuenta                 # ★ 25-nov: tope de cuentas a la vez por IP (farmeo con varias cuentas)
 from . import puerta_ip                   # ★ 26-nov: la IP de verdad cuando el login entra por la puerta (PROXY protocol)
+from . import maquina                    # ★ 25-nov: la PC (huella de la MAC): baneo y tope por máquina
 
 # ═══ ★ 26-nov · EL FF02 DEL LOBBY SÓLO VALE CON UN LOGIN DEL JUEGO ════════════════════════════════════════════════════
 #   El login (FF01 [usn][vcode]) se comprueba contra la sesión del launcher, pero el FF02 del lobby tomaba el `usn` del
@@ -1286,7 +1287,8 @@ def handle_lobby(conn, addr):
                             except OSError:
                                 pass
                             return
-                        if multicuenta.rechazar_por_tope(st, _u):
+                        # ★ MÁQUINA (HWID): PC baneada o tope de cuentas por PC (`maquina.py`). Mismo cierre.
+                        if multicuenta.rechazar_por_tope(st, _u) or maquina.rechazar_al_entrar(st, _u, payload):
                             st.reemplazada = True
                             try:
                                 conn.shutdown(socket.SHUT_RDWR)
@@ -1315,7 +1317,8 @@ def handle_lobby(conn, addr):
                         #     login y el canal, nadie llegaría a este punto y el socket quedaría
                         #     colgado. Ahora es el respaldo, no el mecanismo.
                         cerrar_login_pendiente(_u, " (ya conectó a su canal)")
-                    log("LOBBY", f"  ★★ FF02 LOBBY-LOGIN payload len={len(payload)} : {hx(payload[:48])}"
+                    # ★ 25-nov: sin la MAC (`maquina.sin_mac`): en el log no queda la de nadie.
+                    log("LOBBY", f"  ★★ FF02 LOBBY-LOGIN payload len={len(payload)} : {hx(maquina.sin_mac(payload)[:48])}"
                                  + (f"  -> usn={_u} key_base=0x{st.key_base:08X}" if _u is not None
                                     else "  (VACÍO: no es el de la lobby)"))
                     # ★★★★★ EL CHALLENGE SALE DE ESTE MISMO PAQUETE, no de una constante (ver
