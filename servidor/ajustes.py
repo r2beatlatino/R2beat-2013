@@ -5695,3 +5695,8 @@ ANTITRAMPA_JSONL_MAX_MB = 20             # antitrampa.jsonl se rota a .1 al pasa
 #   ★ El FF02 del LOBBY sólo vale con un login del juego (FF01 con su vcode) desde la MISMA IP en estas horas: antes
 #   se podía entrar al lobby con el usn de otro, echarlo y mandar R2AT a su nombre. 0 = como antes (sin comprobar).
 LOBBY_EXIGE_LOGIN_H = 24
+#   ★ Con una PUERTA delante del login (prod y prueba en la misma máquina) el server ve en el FF01 la IP de la puerta, no
+#   la del jugador, y el chequeo de arriba no deja entrar a NADIE. La puerta manda la IP de verdad en una línea del PROXY
+#   protocol, que se cree SÓLO si viene de acá: ips, redes o nombres (docker) separados por coma. Vacío = no se lee
+#   (todo como antes). Ver `servidor/puerta_ip.py`.
+PUERTA_IPS = os.environ.get("R2_PUERTA_IPS") or ""

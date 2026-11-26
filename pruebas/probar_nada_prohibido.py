@@ -46,7 +46,7 @@ TEXTO = [
 
 def privada(ip):
     a, b = int(ip[0]), int(ip[1])
-    return a == 10 or (a == 192 and b == 168) or (a == 172 and 16 <= b <= 31)
+    return a in (10, 127) or (a == 192 and b == 168) or (a == 172 and 16 <= b <= 31)   # 127.x: la propia máquina
 
 
 def problemas(raiz, archivos):
@@ -107,11 +107,11 @@ def main():
             os.makedirs(os.path.dirname(p), exist_ok=True)
             open(p, "w", encoding="utf-8").write(contenido)
         p = os.path.join(tmp, "limpio.py")
-        open(p, "w", encoding="utf-8").write("IP = '127.0.0.1'  # o 192.168.1.50; ver C:\\Users\\<tu usuario>\n")
+        open(p, "w", encoding="utf-8").write("IP = '127.0.0.1'  # o 127.0.0.2 o 192.168.1.50; ver C:\\Users\\<tu usuario>\n")
         cazados = {rel for rel, _ in problemas(tmp, list(casos) + ["limpio.py"])}
         chequear("★ revés: el detector caza cada cosa prohibida (%d/%d)" % (len(cazados & set(casos)), len(casos)),
                  cazados == set(casos))
-        chequear("★ revés: y deja pasar lo de ejemplo (127.0.0.1, 192.168.1.50, <tu usuario>)",
+        chequear("★ revés: y deja pasar lo de ejemplo (127.0.0.1, 127.0.0.2, 192.168.1.50, <tu usuario>)",
                  "limpio.py" not in cazados)
     # y ahora el repo de verdad
     malos = problemas(RAIZ, archivos_de(RAIZ))
