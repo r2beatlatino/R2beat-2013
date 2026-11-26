@@ -30,6 +30,9 @@ jobs:
       - name: antitrampa (reglas del cartel y que no se pague lo retenido)
         run: python pruebas/probar_antitrampa.py
 
+      - name: antitrampa central (registro de eventos, telemetría de la dll, acciones y el tablero por HTTP)
+        run: python pruebas/probar_antitrampa_central.py
+
       - name: multicuenta (tope de cuentas conectadas a la vez por IP)
         run: python pruebas/probar_multicuenta.py
 
