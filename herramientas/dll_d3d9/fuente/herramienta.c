@@ -764,13 +764,108 @@ static float g_ht_ind_visto = -1.0f;                /* el Far que mostró el car
 static DWORD g_ht_ind_hasta = 0, g_ht_ind_ult_cuadro = 0;
 static char  g_ht_ind_txt[16];
 
+/* ★ 25-nov: LA CURVA EDITABLE (ToolBit 0.6.40, «AutoFar: el Far según el BPM»). Puntos «BPM Far» (hasta HT_AF_MAX),
+ *   en línea recta entre dos puntos y, fuera de los extremos, el Far del extremo. Se guarda en
+ *   [herramienta] autofar_curva=148:18;180:17;277:11 (la de fábrica de Ñ2Hock) y la edita Personalización · AutoFar. */
+#define HT_AF_MAX 16
+static float g_ht_af_pb[HT_AF_MAX], g_ht_af_pf[HT_AF_MAX];
+static int   g_ht_af_np = -1;                       /* -1 = sin leer el ini */
+static const char HT_AF_FABRICA[] = "148:18;180:17;277:11";
+
+/* "148:18; 180 17 / 277=11" (también 16,5) → puntos ordenados por BPM. 0 = bien; si no, el porqué en err (≥ 160) */
+static int ht_af_parsear(const wchar_t *t, float *pb, float *pf, int *n, wchar_t *err)
+{
+    float nums[HT_AF_MAX * 2 + 2];
+    int k = 0;
+    const wchar_t *p = t;
+    while (*p) {
+        while (*p && !((*p >= L'0' && *p <= L'9') || *p == L'.' || *p == L',')) p++;
+        if (!*p) break;
+        float v = 0, d = 0;
+        int hay = 0;
+        for (; *p; p++) {
+            if (*p >= L'0' && *p <= L'9') { hay = 1; if (d) { v += (*p - L'0') * d; d /= 10; } else v = v * 10 + (*p - L'0'); }
+            else if ((*p == L'.' || *p == L',') && !d && p[1] >= L'0' && p[1] <= L'9') d = 0.1f;
+            else break;
+        }
+        if (!hay) { if (*p) p++; continue; }
+        if (k >= HT_AF_MAX * 2) { wsprintfW(err, L"Como mucho %d puntos.", HT_AF_MAX); return 1; }
+        nums[k++] = v;
+    }
+    if (k < 2 || (k & 1)) { lstrcpyW(err, L"Escribe pares «BPM Far», uno por línea (por ejemplo: 170 17)."); return 1; }
+    int m = k / 2;
+    for (int i = 0; i < m; i++) {
+        pb[i] = nums[2 * i]; pf[i] = nums[2 * i + 1];
+        if (pb[i] < 30 || pb[i] > 400) { wsprintfW(err, L"El BPM %d está fuera de 30..400.", (int)pb[i]); return 1; }
+        if (pf[i] < 1.0f || pf[i] > 22.0f) { lstrcpyW(err, L"El Far tiene que ser un número entre 1.0 y 22.0."); return 1; }
+    }
+    for (int i = 1; i < m; i++)                      /* inserción por BPM */
+        for (int j = i; j > 0 && pb[j - 1] > pb[j]; j--) {
+            float tb = pb[j], tf = pf[j]; pb[j] = pb[j - 1]; pf[j] = pf[j - 1]; pb[j - 1] = tb; pf[j - 1] = tf;
+        }
+    for (int i = 1; i < m; i++) if (pb[i] == pb[i - 1]) { wsprintfW(err, L"El BPM %d está dos veces.", (int)pb[i]); return 1; }
+    *n = m;
+    return 0;
+}
+
+static void ht_af_leer_ini(void)
+{
+    char a[400];
+    wchar_t w[400], err[200];
+    GetPrivateProfileStringA("herramienta", "autofar_curva", HT_AF_FABRICA, a, sizeof(a), g_ht_ini);
+    MultiByteToWideChar(CP_ACP, 0, a, -1, w, 400);
+    float pb[HT_AF_MAX], pf[HT_AF_MAX];
+    int n = 0;
+    if (ht_af_parsear(w, pb, pf, &n, err)) { MultiByteToWideChar(CP_ACP, 0, HT_AF_FABRICA, -1, w, 400); ht_af_parsear(w, pb, pf, &n, err); }
+    EnterCriticalSection(&g_ht_cs);
+    CopyMemory(g_ht_af_pb, pb, sizeof(pb)); CopyMemory(g_ht_af_pf, pf, sizeof(pf)); g_ht_af_np = n;
+    LeaveCriticalSection(&g_ht_cs);
+}
+
+/* la ventana pone una curva ya validada */
+static void ht_af_poner(const float *pb, const float *pf, int n)
+{
+    EnterCriticalSection(&g_ht_cs);
+    CopyMemory(g_ht_af_pb, pb, n * sizeof(float)); CopyMemory(g_ht_af_pf, pf, n * sizeof(float)); g_ht_af_np = n;
+    LeaveCriticalSection(&g_ht_cs);
+}
+
+/* "148:18;180:17;277:11" (para el ini y para la caja de texto) */
+static void ht_af_texto(char *s, int multilinea)
+{
+    s[0] = 0;
+    EnterCriticalSection(&g_ht_cs);
+    for (int i = 0; i < g_ht_af_np; i++) {
+        char u[40];
+        int f10 = (int)(g_ht_af_pf[i] * 10 + 0.5f);
+        if (multilinea) {
+            if (f10 % 10) wsprintfA(u, "%d  %d.%d\r\n", (int)g_ht_af_pb[i], f10 / 10, f10 % 10);
+            else wsprintfA(u, "%d  %d\r\n", (int)g_ht_af_pb[i], f10 / 10);
+        } else {
+            if (f10 % 10) wsprintfA(u, "%s%d:%d.%d", i ? ";" : "", (int)g_ht_af_pb[i], f10 / 10, f10 % 10);
+            else wsprintfA(u, "%s%d:%d", i ? ";" : "", (int)g_ht_af_pb[i], f10 / 10);
+        }
+        lstrcatA(s, u);
+    }
+    LeaveCriticalSection(&g_ht_cs);
+}
+
 static float ht_af_curva(float bpm)
 {
+    if (g_ht_af_np < 0) ht_af_leer_ini();
     float f;
-    if (bpm <= 148.0f) f = 18.0f;
-    else if (bpm <= 180.0f) f = 18.0f - (bpm - 148.0f) / 32.0f;
-    else if (bpm <= 277.0f) f = 17.0f - 6.0f * (bpm - 180.0f) / 97.0f;
-    else f = 11.0f;
+    EnterCriticalSection(&g_ht_cs);
+    int n = g_ht_af_np;
+    if (n <= 0) f = 17.0f;
+    else if (bpm <= g_ht_af_pb[0]) f = g_ht_af_pf[0];
+    else if (bpm >= g_ht_af_pb[n - 1]) f = g_ht_af_pf[n - 1];
+    else {
+        int i = 1;
+        while (i < n - 1 && bpm > g_ht_af_pb[i]) i++;
+        float t = (bpm - g_ht_af_pb[i - 1]) / (g_ht_af_pb[i] - g_ht_af_pb[i - 1]);
+        f = g_ht_af_pf[i - 1] + t * (g_ht_af_pf[i] - g_ht_af_pf[i - 1]);
+    }
+    LeaveCriticalSection(&g_ht_cs);
     f = (float)(int)(f * 10.0f + 0.5f) / 10.0f;
     return f < 1.0f ? 1.0f : (f > 22.0f ? 22.0f : f);
 }
@@ -892,6 +987,12 @@ static void ht_indicador_tick(DWORD ahora)
 
 static void (*g_ht_por_cuadro_mas)(void) = NULL;
 /* lo llama el HUD de carrera de calculadora.c, una vez por cuadro */
+static int  g_fj_mostrar = 1;                          /* [herramienta] far_juego */
+static int g_fj_arco = 1;                             /* ★ 26-nov: las letras del panel con el arcoíris de los crayones */
+static volatile int g_fj_fondo = 0;                   /* ★ 26-nov: cuánto se ve el fondo del panel (0..100 %) */
+static volatile LONG g_fj_x = -1, g_fj_y = -1;         /* la posición en milésimas de la pantalla (-1 = de fábrica) */
+static void pb_por_cuadro(void);                     /* ★ 26-nov: la barra de la Pausa (pausa_barra.c) */
+static void fj_dibujar(void);                        /* ★ 26-nov: el panel del Far en la carrera (far_juego_dibujo.c) */
 static void ht_por_cuadro(void)
 {
     if (!g_ht_base) return;
@@ -899,6 +1000,8 @@ static void ht_por_cuadro(void)
     ht_autofar_tick(ahora);
     ht_indicador_tick(ahora);
     if (g_ht_por_cuadro_mas) g_ht_por_cuadro_mas();    /* ★ 19-nov: el chat dentro de la carrera (n2h_chat.c) */
+    pb_por_cuadro();                                 /* ★ 26-nov: la barra de la Pausa, en cada cuadro */
+    fj_dibujar();
 }
 
 /* ═══ 6 · EL INI — sección [herramienta], SIN reescribir lo demás ═════════════
@@ -1013,6 +1116,11 @@ static void ht_guardar(void)
     wsprintfA(v, "%d", g_ht_alfa_nivel); ht_buf_poner(&x, "opacidad_nivel", v, eol);
     wsprintfA(v, "%d", g_ht_far_pct);    ht_buf_poner(&x, "far_pct", v, eol);
     wsprintfA(v, "%d", g_ht_far_n2h);    ht_buf_poner(&x, "far_n2h", v, eol);
+    wsprintfA(v, "%d", g_fj_mostrar);    ht_buf_poner(&x, "far_juego", v, eol);
+    wsprintfA(v, "%ld", (long)g_fj_x);   ht_buf_poner(&x, "far_juego_x", v, eol);
+    wsprintfA(v, "%ld", (long)g_fj_y);   ht_buf_poner(&x, "far_juego_y", v, eol);
+    wsprintfA(v, "%d", g_fj_fondo);      ht_buf_poner(&x, "far_juego_fondo", v, eol);
+    wsprintfA(v, "%d", g_fj_arco);       ht_buf_poner(&x, "far_juego_arcoiris", v, eol);
     wsprintfA(v, "%d", g_ht_tk_far_menos);  ht_buf_poner(&x, "tk_far_menos", v, eol);
     wsprintfA(v, "%d", g_ht_tk_far_mas);    ht_buf_poner(&x, "tk_far_mas", v, eol);
     wsprintfA(v, "%d", g_ht_tk_alfa_menos); ht_buf_poner(&x, "tk_opacidad_menos", v, eol);
@@ -2880,6 +2988,9 @@ static void ht_tema_poner(int n)
 
 #include "n2h_entreno.c"                        /* ★ 19-nov: el motor de Entreno / Tramos de Ñ2Hock (velocidad, bucle A/B, anticaída) */
 #include "n2h_chat.c"                           /* ★ 19-nov: el Chat de Ñ2Hock (lectura del chat del juego) */
+#include "piedras.c"                             /* ★ 25-nov: las piedras del ritmo propias (Personalización · Piedras) */
+#include "booster.c"                             /* ★ 25-nov: el botón del booster propio (Personalización · Booster) */
+#include "far_juego.c"                           /* ★ 26-nov: el panel del Far (y de la velocidad) dentro del juego */
 #include "n2h_ventana.c"                         /* ★ 19-nov: la ventana de Ñ2Hock, hecha de cero */
 
 static void ht_armar_ventana(void)
@@ -2998,6 +3109,9 @@ static void herramienta_iniciar(void)
         HANDLE t = CreateThread(NULL, 0, ht_hilo_aviso, NULL, 0, NULL);
         if (t) CloseHandle(t);
     }
+    piedras_iniciar();                              /* ★ 25-nov: siempre (la piedra elegida vale aunque la ventana esté apagada) */
+    booster_iniciar();                              /* ★ 25-nov: igual, el botón del booster */
+    fj_leer_ini();                                  /* ★ 26-nov: el panel del Far en la carrera */
     if (GetPrivateProfileIntA("herramienta", "activo", 0, g_ht_ini)) ht_arrancar(0);
     else apuntar("  [tool] apagada ([herramienta] activo=0) · el launcher la puede prender en vivo");
 }
