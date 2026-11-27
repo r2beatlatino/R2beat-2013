@@ -27,8 +27,10 @@
  *   ★ PERILLAS en d3d9_proxy.ini (Eñeños: «igual para todos + que sea una opción prendible/apagable en la dll»):
  *       [en_vivo_real]
  *       activo=1        0 = TODO apagado (ni manda, ni corrige, ni dibuja): el juego queda como de fábrica
- *       globos=1        el globo del combo sobre CADA rival, también para los que corren y en todos los modos
- *       pd_tarjetas=1   el PD (96.524%) en la tarjeta de cada corredor
+ *       globos=0        1 = FUERZA el combo en vivo (pruebas). Si no, lo decide la casilla de Ñ2Hock
+ *       pd_tarjetas=0   1 = FUERZA el PD en las tarjetas (pruebas). Si no, lo decide la casilla de Ñ2Hock
+ *     ★ 26-nov: lo que se VE va en Ñ2Hock · Juego · «Experimental» (apagado de fábrica): «Combo en vivo (jugadores y
+ *       espectadores)» y «PD en vivo en las tarjetas». Lo que se MANDA sale siempre que activo=1.
  *       log=0           1 = evr_<pid>.txt con los contadores, cada 3 s · 2 = y evr_rastro_<pid>.txt (el globo, cada 100 ms)
  *     El que mira y los que corren usan el MISMO mecanismo (sin atraso): la falla llega con el ping (~200 ms medido).
  *   ⚠ Se INCLUYE desde d3d9_proxy.c después de globo_combo.c. No se compila suelta.
@@ -52,7 +54,7 @@ static int g_evr_activo = 0, g_evr_log = 0;
  *   en 0. Por eso el punto de control sale SIEMPRE cada EVR_CONTROL_CADA ms: si llega con la MISMA última nota que el
  *   anterior, ese corredor no está juzgando → el globo queda QUIETO en su combo real hasta que vuelva a juzgar. */
 static int g_evr_parado[16], g_evr_ctl_ultima[16];
-static int g_evr_globos = 1;
+static int g_evr_globos = 0;                            /* [en_vivo_real] globos=1 lo fuerza (pruebas); si no, Ñ2Hock */
 static int g_evr_combo[16];
 static DWORD g_evr_combo_t[16];                         /* cuándo se movió (0 = sin datos) */
 static WORD g_evr_mi_clave = 0;
@@ -73,7 +75,11 @@ static int g_evr_n_ctl = 0, g_evr_n_ctl_rec = 0, g_evr_n_cortes = 0;
 #define EVR_SUB_PD 0x74
 #define EVR_FIRMA_PD 0x50u                              /* 'P' */
 #define EVR_PD_CADA 500
-static int g_evr_pd = 1, g_evr_pd_dx = 102, g_evr_pd_dy = -1;
+static int g_evr_pd = 0, g_evr_pd_ok = 0, g_evr_pd_dx = 102, g_evr_pd_dy = -1;   /* pd: forzado por el ini · ok: enganchada */
+/* ★ 26-nov · lo que se VE lo deciden las casillas «Experimental» de Ñ2Hock (apagadas de fábrica) o el ini (pruebas).
+ *   Lo que se MANDA sale siempre: así el que las prende ve a todos, aunque los demás las tengan apagadas */
+static int evr_combo_ver(void) { return g_evr_globos || g_op[O_COMBO_VIVO].quiere; }
+static int evr_pd_ver(void)    { return g_evr_pd || g_op[O_PD_VIVO].quiere; }
 static DWORD g_evr_pd_color = 0xFFFFFFFF;
 static int g_evr_pd_notas[16];
 static DWORD g_evr_pd_suma[16], g_evr_pd_t[16];
@@ -147,6 +153,7 @@ static void evr_antes_juicio(BYTE *obj, int *juicio, int *desvio, int extra, DWO
     if (!evr_clave(extra, &clave)) return;
     g_evr_pil[k][g_evr_pil_f[k]++ % EVR_N] = clave;      /* el piloto pasó por esta nota */
     g_evr_n_pil_total++;
+    if (!evr_combo_ver()) return;                       /* apagado: el juez del juego, como de fábrica */
     DWORD ahora = GetTickCount();
     int real = -1;                                      /* el combo real después de esta nota, si llegó a tiempo */
     for (int i = 0; i < EVR_N; i++) {
@@ -197,7 +204,7 @@ static void evr_mandar(void *red, BYTE *p)
     if (!g_evr_activo) return;
     F_GC_MANDAR mandar = (F_GC_MANDAR)GCV(0x5C7FB0);
     DWORD ahora = GetTickCount();
-    if (g_evr_pd && g_calc_notas > 0 && g_calc_notas != g_evr_pd_env_notas && ahora - g_evr_pd_env_t >= EVR_PD_CADA) {
+    if (g_calc_notas > 0 && g_calc_notas != g_evr_pd_env_notas && ahora - g_evr_pd_env_t >= EVR_PD_CADA) {
         mandar(red, EVR_SUB_PD, (EVR_FIRMA_PD << 24) | ((DWORD)p[0x49] << 16) | ((DWORD)g_calc_notas & 0xFFFF),
                (DWORD)g_calc_suma);
         g_evr_pd_env_notas = g_calc_notas;
@@ -302,6 +309,7 @@ static int evr_recibir(BYTE *g, int sub, DWORD a, DWORD b)
     signed char d = (signed char)((b >> 8) & 0xFF);
     WORD combo = (WORD)(b >> 16);
     g_evr_n_rec++;
+    if (!evr_combo_ver()) return 1;                     /* apagado: no se corrige ni se dibuja nada */
     /* ¿su piloto ya pasó por esa nota? (lo normal: el aviso llega tarde) */
     unsigned f = g_evr_pil_f[k], despues = 0;
     int ya = 0;
@@ -357,7 +365,7 @@ static void __fastcall evr_tarjeta(void *hud, void *nada, int puesto, int pos, i
     int y0 = pos == 0 ? 0xF : *(int *)GCV(0x904BF0);                    /* la tarjeta 0 va en 0xF; las demás, debajo */
     g_evr_tarjeta_real(hud, puesto, pos, asiento);
     BYTE *g = gc_juego();
-    if (!g_evr_activo || !g_evr_pd || !h || !g || asiento < 0 || asiento >= 16) return;
+    if (!g_evr_activo || !evr_pd_ver() || !h || !g || asiento < 0 || asiento >= 16) return;
     long long suma; int notas;
     if (!g[0xC01] && asiento == gc_mi_asiento()) { suma = g_calc_suma; notas = g_calc_notas; }   /* la mía, al día */
     else { suma = g_evr_pd_suma[asiento]; notas = g_evr_pd_notas[asiento]; }
@@ -378,7 +386,7 @@ static void __fastcall evr_tarjeta(void *hud, void *nada, int puesto, int pos, i
 /* ═══ 5 · EL GLOBO DE UN RIVAL (gc_etiqueta, para los que corren): su combo y la opacidad (se apaga sin noticias) ═══ */
 static int evr_globo(int k, int *combo, int *f)
 {
-    if (!g_evr_activo || !g_evr_globos || k < 0 || k >= 16 || !g_evr_combo_t[k]) return 0;
+    if (!g_evr_activo || !evr_combo_ver() || k < 0 || k >= 16 || !g_evr_combo_t[k]) return 0;
     DWORD edad = GetTickCount() - g_evr_combo_t[k];
     *f = edad > GC_SIN_DATOS ? 256 - (int)((edad - GC_SIN_DATOS) * 256 / GC_APAGA) : 256;
     *combo = g_evr_combo[k];
@@ -404,16 +412,17 @@ static void en_vivo_real_iniciar(void)
     g_calc_antes_juicio = evr_antes_juicio;
     g_calc_despues_juicio = evr_despues_juicio;
     apuntar("  [en_vivo_real] ★ las fallas de los rivales, en vivo (sub 0x%02X)", EVR_SUB);
-    g_evr_globos = GetPrivateProfileIntA("en_vivo_real", "globos", 1, ini);
-    apuntar("  [en_vivo_real] globos de los rivales para los que corren: %s", g_evr_globos ? "prendidos" : "apagados");
-    g_evr_pd = GetPrivateProfileIntA("en_vivo_real", "pd_tarjetas", 1, ini);
+    g_evr_globos = GetPrivateProfileIntA("en_vivo_real", "globos", 0, ini);
+    g_evr_pd = GetPrivateProfileIntA("en_vivo_real", "pd_tarjetas", 0, ini);
+    apuntar("  [en_vivo_real] combo / PD en vivo: %s / %s (si no, las casillas «Experimental» de Ñ2Hock)",
+            g_evr_globos ? "forzado por el ini" : "Ñ2Hock", g_evr_pd ? "forzado por el ini" : "Ñ2Hock");
     g_evr_pd_dx = GetPrivateProfileIntA("en_vivo_real", "pd_dx", 102, ini);
     g_evr_pd_dy = GetPrivateProfileIntA("en_vivo_real", "pd_dy", -1, ini);
-    if (g_evr_pd) {
+    {                                                   /* se engancha siempre: dibujar o no, lo decide evr_pd_ver() */
         CALC_ENGANCHE e = { 0x0055A9C0, { 0xA1, 0x64, 0x16, 0x93, 0x00 }, 5,
                             (void *)evr_tarjeta, (void **)&g_evr_tarjeta_real, "la tarjeta del corredor" };
-        if (calc_verificar(&e) && calc_enganchar(&e))
+        if (calc_verificar(&e) && calc_enganchar(&e) && (g_evr_pd_ok = 1))
             apuntar("  [en_vivo_real] ★ el PD en cada tarjeta (sub 0x%02X, dx=%d dy=%d)", EVR_SUB_PD, g_evr_pd_dx, g_evr_pd_dy);
-        else { g_evr_pd = 0; apuntar("  [en_vivo_real] ⛔ la tarjeta no calza: sin PD en las tarjetas"); }
+        else { g_evr_pd = 0; g_evr_pd_ok = 0; apuntar("  [en_vivo_real] ⛔ la tarjeta no calza: sin PD en las tarjetas"); }
     }
 }
