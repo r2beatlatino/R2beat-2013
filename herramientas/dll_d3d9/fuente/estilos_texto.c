@@ -19,7 +19,7 @@
 
 #define EST_MARCA(n) (0xFEA5C000u | (DWORD)(n))
 #define EST_ES(c) (((c) & 0xFFFFFFE0u) == 0xFEA5C000u)
-#define EST_N 11                 /* len(crayon_crear.ESTILOS) */
+#define EST_N 15                 /* len(crayon_crear.ESTILOS) */
 
 /* ★ 24-oct (anonimo03: «los colores, 1 a 1 con los slot ID Mazino y los últimos que añadimos; la única excepción el
  *   arcoíris»): 0..8 = un color por slot (los 6 de la Bruma / Slot Mazino y azul, verde, magenta de la Flama) — el
@@ -37,6 +37,40 @@ static const struct { DWORD letra, brillo, borde; int anim; } g_est[EST_N] = {
     { 0xFFF6B0FF, 0xFFEB50FF, 0xFF3A143F, 0 },   /* 8 Neón Magenta  */
     { 0xFFFFFFFF, 0xFFFF30C0, 0xFF40002A, 1 },   /* 9 Arcoíris Neón */
     { 0xFFFF5050, 0x00000000, 0xFF000000, 3 },   /* 10 Arcoíris (sin brillo: la letra cambia de color) */
+    /* ★ R2 Banner Studio: anim 4 = degradé de g_est_pal que recorre la palabra; 5 = el brillo late (pal[0] -> brillo) */
+    { 0xFFE6D6FF, 0xFF9B2CE0, 0xFF1A0B38, 4 },   /* 11 Galaxia */
+    { 0xFFFFE8B0, 0xFFFF6A00, 0xFF3F1205, 4 },   /* 12 Fuego */
+    { 0xFFF0FCFF, 0xFF5FD8FF, 0xFF0A2A3F, 4 },   /* 13 Hielo */
+    { 0xFFFFF1B8, 0xFFFFC21A, 0xFF3F2C05, 5 },   /* 14 Oro Brillante */
+};
+static const DWORD g_est_pal[EST_N][3] = {
+    [11] = { 0xFF9B2CE0, 0xFF2D5BFF, 0xFFD7A6FF },
+    [12] = { 0xFFFF2A1A, 0xFFFF8A00, 0xFFFFE14D },
+    [13] = { 0xFF5FD8FF, 0xFFFFFFFF, 0xFF8FB8FF },
+    [14] = { 0xFF8A5A00, 0xFFFFC21A, 0xFFFFC21A },
+};
+
+static DWORD est_paleta(int n, float t)
+{
+    t -= (float)(int)t;
+    if (t < 0) t += 1;
+    float p = t * 3.0f;
+    int i = (int)p;
+    if (i > 2) i = 2;
+    DWORD a = g_est_pal[n][i], b = g_est_pal[n][(i + 1) % 3];
+    float f = p - (float)i, out[3];
+    for (int k = 0; k < 3; k++) {
+        float x = (float)((a >> (16 - 8 * k)) & 0xFF), y = (float)((b >> (16 - 8 * k)) & 0xFF);
+        out[k] = x + (y - x) * f;
+    }
+    return 0xFF000000u | ((DWORD)(out[0] + 0.5f) << 16) | ((DWORD)(out[1] + 0.5f) << 8) | (DWORD)(out[2] + 0.5f);
+}
+
+static float est_latido(float fase) { float v = 2.0f * fase; return v <= 1.0f ? v : 2.0f - v; }
+
+/* ★ R2 Banner Studio: la LETRA de cada estilo (cara vacía = la del .ini; tam 0 = el del .ini) */
+static const struct { const char *cara; int peso, tam; } g_est_letra[EST_N] = {
+    [0] = { "", 0, 0 },
 };
 #define EST_ARCO_NEON 9
 #define EST_ARCO 10
@@ -93,6 +127,11 @@ static void est_colores(int n, DWORD *letra, DWORD *brillo, DWORD *borde)
         *borde = est_mezcla(0xFF000000, *brillo, 0.35f);
     } else if (g_est[n].anim == 3) {                           /* arcoíris: la letra da la vuelta */
         *letra = est_hsv(h, 0.85f, 1.0f);
+    } else if (g_est[n].anim == 4) {                           /* R2 Banner Studio: degradé de 3 colores */
+        *brillo = est_paleta(n, h / 6.0f);
+        *letra = est_mezcla(0xFFFFFFFF, *brillo, 0.25f);
+    } else if (g_est[n].anim == 5) {                           /* R2 Banner Studio: latido */
+        *brillo = est_mezcla(g_est_pal[n][0], g_est[n].brillo, est_latido(h / 6.0f));
     }
 }
 
@@ -246,11 +285,15 @@ static int el_armar(EL_ENT *e, const char *s, int alto)
     int nw = id_a_ancho(s, ws, 256);                    /* (126) UTF-8 o 1252, como el juego (antes 949 y la de Windows) */
     if (nw <= 1) return 0;
     nw--;
-    MultiByteToWideChar(CP_ACP, 0, g_el_fuente[g_el_cual], -1, cara, 64);
+    const char *nom = (g_est_letra[e->n].cara && g_est_letra[e->n].cara[0]) ? g_est_letra[e->n].cara
+                                                                             : g_el_fuente[g_el_cual];
+    int peso = (g_est_letra[e->n].cara && g_est_letra[e->n].cara[0]) ? g_est_letra[e->n].peso : g_el_peso[g_el_cual];
+    int tam = g_est_letra[e->n].tam ? g_est_letra[e->n].tam : g_el_tamano;
+    MultiByteToWideChar(CP_ACP, 0, nom, -1, cara, 64);
     HDC dc = CreateCompatibleDC(NULL);
     if (!dc) return 0;
-    int lf = alto * g_el_tamano / 100;
-    HFONT f = CreateFontW(-lf * EL_SS, 0, 0, 0, g_el_peso[g_el_cual], 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS,
+    int lf = alto * tam / 100;
+    HFONT f = CreateFontW(-lf * EL_SS, 0, 0, 0, peso, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS,
                           CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, cara);
     HGDIOBJ viejo = SelectObject(dc, f);
     if (g_el_cara_vista != g_el_cual) {                       /* ⚠ si no la tiene, Windows pone OTRA sin avisar */
@@ -338,6 +381,12 @@ static void el_componer(EL_ENT *e, long long ms)
             h -= (float)(int)h;
             if (h < 0) h += 1;
             DWORD c = est_hsv(h * 6.0f, 1.0f, 1.0f);
+            col[0] = (float)((c >> 16) & 255); col[1] = (float)((c >> 8) & 255); col[2] = (float)(c & 255);
+        } else if (g_est[e->n].anim == 4) {                    /* R2 Banner Studio: el degradé recorre la palabra */
+            DWORD c = est_paleta(e->n, xn * 0.9f - fase);
+            col[0] = (float)((c >> 16) & 255); col[1] = (float)((c >> 8) & 255); col[2] = (float)(c & 255);
+        } else if (g_est[e->n].anim == 5) {                    /* R2 Banner Studio: latido */
+            DWORD c = est_mezcla(g_est_pal[e->n][0], g_est[e->n].brillo, est_latido(fase));
             col[0] = (float)((c >> 16) & 255); col[1] = (float)((c >> 8) & 255); col[2] = (float)(c & 255);
         }
         for (int y = 0; y < e->h; y++) {

@@ -20,13 +20,24 @@
 /* ★ y los ESTILOS (estilos_texto.c): 13..23 = las marcas de estilo 0..10 (crayon_crear.APODO_EST0.., ocultos) */
 #define CRA_EST_ITEM0 1000701    /* crayon_crear.APODO_EST0 */
 #define CRA_EST_COLOR0 13        /* crayon_crear.COLOR_APODO_EST0 */
-#define CRA_COLORES 23
+#define CRA_EST_VIEJOS 11       /* 1000701..711: el rango no crece (1000712.. son de círculo) */
+#define CRA_COLORES 27
+/* ★ R2 Banner Studio: los crayones nuevos (ítem -> color de apodo) */
+static const DWORD g_cra_nuevos[][2] = {
+    { 1000985, 24 },
+    { 1000986, 25 },
+    { 1000987, 26 },
+    { 1000988, 27 },
+
+};
+#define CRA_NUEVOS 4
 static DWORD g_cra_tabla[CRA_COLORES + 4] = {
     0xFF7FC05C, 0xFFF36767, 0xFF50C2EC, 0xFFA9A9A9, 0xFFC175E9, 0xFFFFBF5A,      /* 1..6  los de fábrica */
     0xFFFFD45C, 0xFFFB37A9, 0xFF00FFD5, 0xFFFFFFFF, 0xFF9B2CE0, 0xFFFF2626,      /* 7..12 Mazino: dorado, rosa,
                                                                                     turquesa, blanco, violeta, rojo */
     EST_MARCA(0), EST_MARCA(1), EST_MARCA(2), EST_MARCA(3), EST_MARCA(4),       /* 13..23 los estilos */
     EST_MARCA(5), EST_MARCA(6), EST_MARCA(7), EST_MARCA(8), EST_MARCA(9), EST_MARCA(10),
+    EST_MARCA(11), EST_MARCA(12), EST_MARCA(13), EST_MARCA(14),
     0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF };                           /* (colchón: nunca basura) */
 
 /* los 22 lectores: dónde está el disp32, y a qué apuntaba (la tabla, o la tabla − 4) */
@@ -50,14 +61,16 @@ typedef int (__stdcall *F_CRA_ITEM)(DWORD item);
 static int __stdcall cra_color(DWORD item)               /* 0x50DFC0: ítem → color del apodo (0 = ninguno) */
 {
     if (item >= CRA_ITEM0 && item < CRA_ITEM0 + CRA_N) return CRA_COLOR0 + (int)(item - CRA_ITEM0);
-    if (item >= CRA_EST_ITEM0 && item < CRA_EST_ITEM0 + EST_N) return CRA_EST_COLOR0 + (int)(item - CRA_EST_ITEM0);
+    if (item >= CRA_EST_ITEM0 && item < CRA_EST_ITEM0 + CRA_EST_VIEJOS) return CRA_EST_COLOR0 + (int)(item - CRA_EST_ITEM0);
+    for (int i = 0; i < CRA_NUEVOS; i++) if (g_cra_nuevos[i][0] == item) return (int)g_cra_nuevos[i][1];
     return ((F_CRA_ITEM)g_cra_orig_color)(item) & 0xFF;
 }
 
 static int __stdcall cra_es_lapiz(DWORD item)            /* 0x50E010: ¿es lápiz del apodo? */
 {
     if (item >= CRA_ITEM0 && item < CRA_ITEM0 + CRA_N) return 1;
-    if (item >= CRA_EST_ITEM0 && item < CRA_EST_ITEM0 + EST_N) return 1;
+    if (item >= CRA_EST_ITEM0 && item < CRA_EST_ITEM0 + CRA_EST_VIEJOS) return 1;
+    for (int i = 0; i < CRA_NUEVOS; i++) if (g_cra_nuevos[i][0] == item) return 1;
     return ((F_CRA_ITEM)g_cra_orig_es)(item) & 0xFF;
 }
 
