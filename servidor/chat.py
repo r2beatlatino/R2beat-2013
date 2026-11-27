@@ -119,6 +119,10 @@ def puede_usar_consola(st, comando):
     c = str(comando).lower()
     if c in CONSOLA_SIN_GM or c in COMANDOS_TODOS:          # ★ 16-nov: COMANDOS_TODOS (R2_COMANDOS_TODOS)
         return True
+    if getattr(st, "gm_npc", None):
+        # ★ 27-nov · la GM NPC: SUS comandos y nada más (ni los de GM de más, ni los de desarrollo). `gm_npc.COMANDOS`
+        from . import gm_npc
+        return c in gm_npc.COMANDOS
     if c in COMANDOS_GM:
         return gm.es_gm(st) or (c in COMANDOS_STREAMER and es_streamer(st))
     if CONSOLA_GM_TODOS:
@@ -183,6 +187,9 @@ def comando_chat(st, texto):
         log("LOBBY", f"  · consola: usn={getattr(st, 'usn', None)} escribió '.{c}' y se rechazó: "
                      f"{_por} -> va como chat normal")
         return None
+    if getattr(st, "gm_npc", None):              # ★ 27-nov: cada comando de la GM NPC, a nombre del moderador
+        from . import gm_npc
+        gm_npc.al_comando(st, texto)
 
     if c in ("libre", "todos", "all"):
         # ★★ CANAL LIBRE EN VIVO: el FFC9 con un byte FUERA de 1..8 -> `0x58CEF0` devuelve la

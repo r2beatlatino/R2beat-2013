@@ -29,8 +29,8 @@ def cuentas_de_ip(ip, conexiones, cuenta_de, menos=None):
     ya cerradas o reemplazadas por un doble login no cuentan."""
     cuentas = set()
     for st in list(conexiones.values()):
-        if getattr(st, "cerrado", False) or getattr(st, "reemplazada", False):
-            continue
+        if getattr(st, "cerrado", False) or getattr(st, "reemplazada", False) or getattr(st, "gm_npc", None):
+            continue                          # ★ 27-nov: la GM NPC (del moderador) no le suma a su IP
         addr = getattr(st, "addr", None)
         if not addr or addr[0] != ip:
             continue

@@ -31,6 +31,7 @@ from . import antitrampa
 from . import multicuenta                 # ★ 25-nov: tope de cuentas a la vez por IP (farmeo con varias cuentas)
 from . import puerta_ip                   # ★ 26-nov: la IP de verdad cuando el login entra por la puerta (PROXY protocol)
 from . import maquina                    # ★ 25-nov: la PC (huella de la MAC): baneo y tope por máquina
+from . import gm_npc                     # ★ 27-nov: las cuentas GM NPC (una sesión, sus comandos, sin tope)
 
 # ═══ ★ 26-nov · EL FF02 DEL LOBBY SÓLO VALE CON UN LOGIN DEL JUEGO ════════════════════════════════════════════════════
 #   El login (FF01 [usn][vcode]) se comprueba contra la sesión del launcher, pero el FF02 del lobby tomaba el `usn` del
@@ -885,6 +886,11 @@ def handle_login(conn, addr):
                         conn.sendall(resp_login_launcher(0, 0, ok=False))
                         log("LOGIN", f"  ⛔ LAUNCHER PASE rechazado ({_motivo_p})")
                         continue
+                    _cerr = gm_npc.cerrada(_usn_pase)       # ★ 27-nov: la GM NPC es de UNA sesión
+                    if _cerr:
+                        conn.sendall(resp_login_launcher(0, 0, ok=False))
+                        log("LOGIN", f"  ⛔ LAUNCHER PASE rechazado usn={_usn_pase}: {_cerr}")
+                        continue
                     _vc = sesion_abrir(_usn_pase)
                     conn.sendall(resp_login_launcher(_usn_pase, _vc, ok=True))
                     log("LOGIN", f"  ★★ LAUNCHER PASE OK -> usn={_usn_pase}, "
@@ -964,6 +970,14 @@ def handle_login(conn, addr):
                     _susp = cuenta_suspendida(usn)
                     if _susp:
                         log("LOGIN", f"  ⛔ RECHAZADO usn={usn}: cuenta suspendida por el antitrampa hasta {_susp}")
+                        try:
+                            conn.shutdown(socket.SHUT_RDWR)
+                        except OSError:
+                            pass
+                        return
+                    _cerr = gm_npc.cerrada(usn)          # ★ 27-nov: la GM NPC es de UNA sesión
+                    if _cerr:
+                        log("LOGIN", f"  ⛔ RECHAZADO usn={usn}: {_cerr}")
                         try:
                             conn.shutdown(socket.SHUT_RDWR)
                         except OSError:
@@ -1127,6 +1141,7 @@ def handle_inner(st, cmd, data):
         # `shutdown` y NO `close`: cerrar de una deja al `recv` de este mismo hilo operando sobre un
         # descriptor muerto -> OSError 10038 ("no es un socket"), que ensucia el log con una traza que
         # parece un bug y no lo es. Con `shutdown` el `recv` devuelve b"" y sale por el camino normal.
+        st.cambio_canal = True     # ★ 27-nov: NO se fue — así la GM NPC no se cierra al cambiar de canal
         st.cerrado = True          # ★ corta los envíos que todavía queden en vuelo (ver send_ff55)
         try:
             st.conn.shutdown(socket.SHUT_RDWR)
@@ -1280,6 +1295,8 @@ def handle_lobby(conn, addr):
                             _motivo = "sin un login del juego (FF01) válido desde esta IP"
                         elif cuenta_suspendida(_u):
                             _motivo = "cuenta suspendida por el antitrampa"
+                        else:
+                            _motivo = gm_npc.cerrada(_u)  # ★ 27-nov: la GM NPC ya usada no vuelve a entrar
                         if _motivo:
                             log("LOBBY", f"  ⛔ FF02 RECHAZADO usn={_u} desde {st.addr[0]}: {_motivo}")
                             st.reemplazada = True
@@ -1289,7 +1306,10 @@ def handle_lobby(conn, addr):
                                 pass
                             return
                         # ★ MÁQUINA (HWID): PC baneada o tope de cuentas por PC (`maquina.py`). Mismo cierre.
-                        if multicuenta.rechazar_por_tope(st, _u) or maquina.rechazar_al_entrar(st, _u, payload):
+                        # ★ 27-nov: la GM NPC no cuenta para los topes ni anota la PC (es la del moderador, que ya está
+                        #   conectado con SU cuenta): ver `gm_npc.py`, trampa 3.
+                        if not gm_npc.es_cuenta(_u) and (multicuenta.rechazar_por_tope(st, _u)
+                                                         or maquina.rechazar_al_entrar(st, _u, payload)):
                             st.reemplazada = True
                             try:
                                 conn.shutdown(socket.SHUT_RDWR)
@@ -1298,6 +1318,7 @@ def handle_lobby(conn, addr):
                             return
                         echar_sesion_anterior(_u, st)
                         registrar_conexion(st)
+                        gm_npc.al_entrar(st, _u)          # ★ 27-nov: marca la conexión GM NPC (sus comandos) y la hora
                         antitrampa.al_conectar(st)        # ★ 26-nov: la sesión del antitrampa (para el tablero)
                         # ★★★★★ Y ACÁ SE CIERRA EL LOGIN DE ESTE JUGADOR — LA SEÑAL, NO EL RELOJ.
                         #   El cliente descarta EN SILENCIO todos los clics del selector de canales
@@ -1688,6 +1709,10 @@ def handle_lobby(conn, addr):
                          + (f" (salía de la sala {_rid})" if _rid else ""))
         except Exception as e:
             log("LOBBY", f"  ⚠ limpiando la conexión: {e!r}")
+        try:                                     # ★ 27-nov: la GM NPC se cierra al irse (no al cambiar de canal)
+            gm_npc.al_salir(st)
+        except Exception as e:                   # noqa: BLE001
+            log("LOBBY", f"  ⚠ GM NPC al salir: {e!r}")
         conn.close()
 
 def activar_keepalive(conn, quien=""):
