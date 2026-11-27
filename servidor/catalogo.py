@@ -239,6 +239,13 @@ COLORES_APODO = 13 + ESTILOS_N
 LAPICES_CIRCULO = {1000786 + i: 1 + i for i in range(6)}
 LAPICES_CIRCULO.update({1000712 + i: 7 + i for i in range(ESTILOS_N)})   # ★ los estilos de letra: letras 7..17
 COLORES_CIRCULO = 7 + ESTILOS_N
+# >>> R2 Banner Studio: crayones (generado; no editar a mano)
+#   Galaxia, Fuego, Hielo, Oro Brillante — estilos 11.. de la dll (estilos_texto.c)
+LAPICES_APODO.update({1000985: 24, 1000986: 25, 1000987: 26, 1000988: 27})
+COLORES_APODO = 28
+LAPICES_CIRCULO.update({1000989: 18, 1000990: 19, 1000991: 20, 1000992: 21})
+COLORES_CIRCULO = 22
+# <<< R2 Banner Studio: crayones
 
 
 def _vigente(ch, item):
