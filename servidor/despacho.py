@@ -112,6 +112,7 @@ from .lobby_carrera import (
 )
 from .puzzle import h_ffac as h_ffac_puzzle, h_ffae as h_ffae_puzzle, h_ffaf as h_ffaf_puzzle
 from .puzzle import h_ffb0 as h_ffb0_puzzle, h_ffb1 as h_ffb1_puzzle, h_ffb2 as h_ffb2_puzzle, h_ffb5 as h_ffb5_puzzle
+from .lucky_star import h_ffc7 as h_ffc7_lucky_star
 from .lobby_tienda import (
     h_ff119_canje_gorila,
     h_10_ff111,
@@ -150,6 +151,8 @@ RUTAS = [
     (lambda st, cmd, data: cmd == 0xB1, h_ffb1_puzzle),                   # FFB1         aceptar
     (lambda st, cmd, data: cmd == 0xAE, h_ffae_puzzle),                   # FFAE         rearmar
     (lambda st, cmd, data: cmd == 0xB2, h_ffb2_puzzle),                   # FFB2         avance / cobro
+    # ★ 27-nov: abrir la LUCKY STAR con una llave (`lucky_star.py`); siempre se contesta (el cliente espera el 0xC7)
+    (lambda st, cmd, data: cmd == 0xC7, h_ffc7_lucky_star),               # FFC7         lucky_star
     (lambda st, cmd, data: cmd == 0xB5, h_ffb5_puzzle),                   # FFB5         abandonar  # FFAC círculo                # FFD6         lobby_menu  (donar Rcoin al círculo)
     (lambda st, cmd, data: cmd == 6, h_06_ff06),                          # FF06         lobby_menu
     (lambda st, cmd, data: cmd == 8, h_07_ff08),                          # FF08         lobby_menu

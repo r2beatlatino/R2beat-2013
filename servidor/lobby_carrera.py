@@ -726,6 +726,12 @@ def h_21_ff28(st, cmd, data):
     # ★ `.autoplay`: el que ya reportó terminó de correr — no pedirle más autoplays durante el
     #   cartel (el `en_carrera` sigue prendido hasta que vuelve a la sala). Ver `autoplay_gm.py`.
     st.autoplay_ya_corre = False
+    # ★ 27-nov · LA LUCKY STAR: el byte 56 = «la agarró» (`lucky_star.py`). Se acredita ya; el FFC6, al volver a la sala.
+    try:
+        from . import lucky_star
+        lucky_star.al_fin_de_carrera(st, data)
+    except Exception as _e_ls:                                       # noqa: BLE001
+        log("LOBBY", f"  ⚠ lucky star (FF28): {_e_ls!r}")
     if len(data) >= 10:
         frame = struct.unpack_from("<I", data, 0)[0]
         combo = struct.unpack_from("<H", data, 4)[0]

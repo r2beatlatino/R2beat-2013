@@ -1473,7 +1473,9 @@ CAMPANA_CARTEL_BASE = True
 #     suelta no se podía comprar dos veces.
 #   ★ + el Cupón Coin Up (1200033): se gasta de a una carga por carrera (ver `CUPONES_PREMIO`).
 #     Sin esto, comprarlo SUELTO lo guardaba sin cargas (los packs sí, por su PackCount).
-ITEMS_CON_CARGAS = tuple(CAMPANAS) + (1200033,)
+# ★ 27-nov: + la LUCKY STAR (298) y sus LLAVES (299/300/301 y las «S» 776/777): se juntan (hasta 10 estrellas) y se
+#   gastan de a una al abrir (`lucky_star.py`). Sin cargas el armario no sabría cuántas hay.
+ITEMS_CON_CARGAS = tuple(CAMPANAS) + (1200033,) + (298, 299, 300, 301, 776, 777)
 
 # ★★★★★ LOS SEIS SOSPECHOSOS DEL AVISO DE GM — 2026-09-15. Ver `documentacion/AVISO_DE_GM.md`.
 #
