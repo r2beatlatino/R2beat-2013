@@ -38,5 +38,35 @@
  "Em breve: velocidade de prática (50 a 150 %), repetir um trecho A/B e Anti-queda. Só na prática ou jogando sozinho.",
  "곧 추가: 연습 속도 (50~150 %), A/B 구간 반복, 낙하 방지. 연습 또는 혼자 플레이할 때만.",
  "即将推出：练习速度（50 至 150 %）、重复 A/B 区段和防掉落。仅限练习或单人游戏。",
- "近日公開：練習速度（50〜150 %）、A/B 区間リピート、落下防止。練習中またはソロプレイのみ。"]
+ "近日公開：練習速度（50〜150 %）、A/B 区間リピート、落下防止。練習中またはソロプレイのみ。"],
+"Experimental": [
+ "Experimental",
+ "실험적",
+ "实验性",
+ "実験的"
+],
+"Combo en vivo (jugadores y espectadores)": [
+ "Combo ao vivo (jogadores e espectadores)",
+ "실시간 콤보 (플레이어와 관전자)",
+ "实时连击（玩家和观众）",
+ "ライブコンボ（プレイヤーと観戦者）"
+],
+"PD en vivo en las tarjetas": [
+ "PD ao vivo nos cartões",
+ "카드에 실시간 PD",
+ "卡片上的实时 PD",
+ "カードにライブPD"
+],
+"El globo del combo de cada rival, en vivo y con el BREAK cuando falla: igual para el que corre y el que mira.": [
+ "O balão do combo de cada rival, ao vivo e com o BREAK quando erra: igual para quem corre e quem assiste.",
+ "각 상대의 콤보 말풍선을 실시간으로, 실수하면 BREAK와 함께: 달리는 사람과 관전자 모두 똑같이.",
+ "每个对手的连击气泡，实时显示，失误时显示 BREAK：跑者和观众看到的一样。",
+ "各ライバルのコンボ吹き出しをライブで、ミスするとBREAK付き：走る人も観戦者も同じ。"
+],
+"El porcentaje (PD) de cada corredor en su tarjeta, en vivo.": [
+ "A porcentagem (PD) de cada corredor no seu cartão, ao vivo.",
+ "각 주자의 카드에 퍼센트(PD)를 실시간으로.",
+ "每位跑者卡片上的百分比（PD），实时显示。",
+ "各ランナーのカードにパーセント（PD）をライブで。"
+]
 }

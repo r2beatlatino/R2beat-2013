@@ -357,6 +357,11 @@ static void n2_maquetar(void)
             if (i < 4) n2_chk(152, 20 + i * 23, 132, 20, DT[i], D[i], 0);
         }
     }
+    /* ★ 26-nov · Experimental (Eñeños: «abajo de Visual, apagado por defecto»): lo de en_vivo_real.c */
+    n2_lienzo(0);
+    n2_grupo(L"Experimental", 331, 70);
+    n2_chk(8, 20, 280, 20, NULL, O_COMBO_VIVO, 0);
+    n2_chk(8, 43, 280, 20, NULL, O_PD_VIVO, 0);
 
     /* ── Controles ── */
     n2_lienzo(1);

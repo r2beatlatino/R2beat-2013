@@ -221,6 +221,7 @@ enum {
     O_OPACIDAD, O_FAR, O_AUTOFAR, O_FAR_IND, O_CAMARA,
     O_VELOCIDAD, O_BOOSTER, O_GHOST, O_CARRILES, O_NOMBRES, O_RESULTADOS,
     O_AUTOCTRL, O_TECLADO, O_ANCLAR, O_HOTKEYS,
+    O_COMBO_VIVO, O_PD_VIVO,                 /* ★ 26-nov · «Experimental» (en_vivo_real.c): apagadas de fábrica */
     O_N
 };
 
@@ -296,6 +297,12 @@ static HT_OP g_op[O_N] = {
       L"La ventana queda encima aunque cambies de programa." },
     { "hotkeys",          L"ATAJOS",                -1, NULL, 0,             1, 0,
       L"Prende las teclas de atajo de cada opción (las que muestran los botoncitos)." },
+    /* ★ 26-nov (Eñeños: «abajo de Visual, una columna experimental, apagado por defecto»): lo de en_vivo_real.c. Lo que
+     *   se MANDA sale siempre (así el que las prende ve a todos); estas dos sólo deciden qué ve uno */
+    { "combo_en_vivo",    L"Combo en vivo (jugadores y espectadores)", -1, NULL, 0, 1, 0,
+      L"El globo del combo de cada rival, en vivo y con el BREAK cuando falla: igual para el que corre y el que mira." },
+    { "pd_en_vivo",       L"PD en vivo en las tarjetas", -1, NULL, 0,    1, 0,
+      L"El porcentaje (PD) de cada corredor en su tarjeta, en vivo." },
 };
 
 /* los niveles de los dos deslizadores */
@@ -1650,6 +1657,12 @@ static void ht_maquetar_n2h(void)
         }
         y += 5 * 23 + 6 + 6;
     }
+    /* ★ 26-nov · Experimental: lo de en_vivo_real.c, apagado de fábrica */
+    ht_carta("n2h.exper", GX, y, GW, 20 + 2 * 23 + 6, L"Experimental", NULL);
+    y += 20;
+    ht_n2h_op(O_COMBO_VIVO, X, y, 290);
+    ht_n2h_op(O_PD_VIVO, X, y + 23, 290);
+    y += 2 * 23 + 6 + 6;
     ht_tx("n2h.nota", GX + 2, y, GW, 16, L"Efectos: marcado = se apaga · PD Valofe: lo decide la sala (.pd on/off)",
           F_CHICO, HT_C_GRIS, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
 
