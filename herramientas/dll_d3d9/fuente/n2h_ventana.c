@@ -58,12 +58,12 @@ enum { L_TRAMO_VEL = 20 };
 /* ★ Entreno y Tramos (n2h_entreno.c): lo que muestra y guarda la ventana */
 enum { E_TK_VEL, E_TK_MENOS, E_TK_MAS, E_TK_BUCLE, E_TK_A, E_TK_B, E_TK_REIN, E_TK_TRAMOS, E_TK_MARCA, E_TK_MOVER0, E_TK_N = E_TK_MOVER0 + 4 };
 typedef struct {
-    int confirmo, habilitar, anticaida, vel_on, vel_pct, bucle_on, tramos_on;
+    int confirmo, habilitar, anticaida, latino, vel_on, vel_pct, bucle_on, tramos_on;
     int tk[E_TK_N];
     wchar_t desde[16], hasta[16], cuenta[8], sin[8], tde[N2_TRAMOS][16], tha[N2_TRAMOS][16];
     int tvel[N2_TRAMOS];
 } N2_ENTRENO;
-static N2_ENTRENO g_e = { 0, 0, 0, 0, 55, 0, 0,
+static N2_ENTRENO g_e = { 0, 0, 0, 0, 0, 55, 0, 0,
                           { VK_F2, '1', '2', VK_F1, VK_INSERT, VK_DELETE, VK_END, 0, 0, 0, 0, 0, 0 },
                           L"00:20", L"00:40", L"3", L"2", { { 0 } }, { { 0 } }, { 100, 100, 100, 100, 100, 100 } };
 static wchar_t g_e_tx[NE_TX_N][320], g_e_pct_txt[16];
@@ -394,8 +394,9 @@ static void n2_maquetar(void)
     n2_lienzo(2);
     n2_chk_b(6, 4, 170, 20, L"Confirmo práctica offline", &g_e.confirmo);
     n2_chk_b(196, 4, 90, 20, L"Habilitar", &g_e.habilitar);
-    n2_chk_b(6, 27, 90, 20, L"Anticaída", &g_e.anticaida);
-    n2_lbl(98, 28, 190, 18, NULL, N2_SUAVE, N2_IZQ); g_n2l[g_n2nl - 1].dyn = g_e_tx[NE_TX_ANTICAIDA];
+    n2_chk_b(6, 27, 92, 20, L"Sin chocar", &g_e.anticaida);            /* ★ 26-nov: los dos modos de choque */
+    n2_chk_b(100, 27, 112, 20, L"Choque latino", &g_e.latino);
+    n2_lbl(214, 28, 76, 18, NULL, N2_SUAVE, N2_IZQ); g_n2l[g_n2nl - 1].dyn = g_e_tx[NE_TX_ANTICAIDA];
     n2_lbl(6, 50, 286, 30, L"Solo entrenamiento y misiones offline; nunca en partidas puntuables.", N2_AVISO, N2_PARR);
     n2_grupo(L"Velocidad", 82, 140);
     n2_chk_b(8, 20, 150, 20, L"Activar velocidad", &g_e.vel_on);
@@ -920,7 +921,7 @@ static int n2_comun(HWND h, UINT m, WPARAM wp, LPARAM lp, LRESULT *res)
         } else if (c->tipo == C_BOTON && code == BN_CLICKED) {
             if (c->ref == B_CONECTAR || c->ref == B_RESTAURAR) {
                 g_ht_apagada = c->ref == B_RESTAURAR;
-                if (g_ht_apagada) { ne_apagar_todo(); g_e.habilitar = g_e.anticaida = g_e.vel_on = g_e.bucle_on = g_e.tramos_on = 0; }
+                if (g_ht_apagada) { ne_apagar_todo(); g_e.habilitar = g_e.anticaida = g_e.latino = g_e.vel_on = g_e.bucle_on = g_e.tramos_on = 0; }
                 for (int k = 0; k < O_N; k++) ht_aplicar(k);
                 ht_avisar(0, 3000, g_ht_apagada ? L"Parches restaurados · desconectado" : L"Conectado: opciones aplicadas");
                 ht_refrescar();
@@ -1384,12 +1385,17 @@ static int n2_e_tramos_poner(int on)
 static void n2_e_cambio(int *pb)
 {
     if (pb == &g_e.confirmo) {
-        if (!g_e.confirmo) { ne_apagar_todo(); g_e.habilitar = g_e.anticaida = g_e.vel_on = g_e.bucle_on = g_e.tramos_on = 0; }
-    } else if (pb == &g_e.habilitar || pb == &g_e.anticaida || pb == &g_e.vel_on || pb == &g_e.bucle_on || pb == &g_e.tramos_on) {
+        if (!g_e.confirmo) { ne_apagar_todo(); g_e.habilitar = g_e.anticaida = g_e.latino = g_e.vel_on = g_e.bucle_on = g_e.tramos_on = 0; }
+    } else if (pb == &g_e.habilitar || pb == &g_e.anticaida || pb == &g_e.latino || pb == &g_e.vel_on || pb == &g_e.bucle_on
+               || pb == &g_e.tramos_on) {
         int quiere = *pb;
         if (quiere && !g_e.confirmo) { *pb = 0; n2_e_falta_confirmo(); n2_sincronizar(); return; }
         if (pb == &g_e.habilitar) { ne_preparar(quiere); g_e.habilitar = ne_preparado(); }
-        else if (pb == &g_e.anticaida) { ne_anticaida(quiere); g_e.anticaida = ne_anticaida_activa(); }
+        else if (pb == &g_e.anticaida || pb == &g_e.latino) {      /* uno u otro: marcar uno desmarca el otro */
+            int modo = pb == &g_e.latino ? 2 : 1;
+            ne_anticaida(quiere ? modo : (ne_anticaida_activa() == modo ? 0 : ne_anticaida_activa()));
+            g_e.anticaida = ne_anticaida_activa() == 1; g_e.latino = ne_anticaida_activa() == 2;
+        }
         else if (pb == &g_e.vel_on) { ne_velocidad_poner(g_e.vel_pct); ne_velocidad_activar(quiere); g_e.vel_on = ne_velocidad_activa(); }
         else if (pb == &g_e.bucle_on) {
             if (quiere && !n2_e_bucle_configurar()) g_e.bucle_on = 0;
@@ -1572,15 +1578,15 @@ static void n2_e_tick(void)
         wchar_t t[320];
         int err = ne_texto(k, t, 320);
         if (k == NE_TX_VELOCIDAD && !t[0] && !g_e_tx[k][0]) { lstrcpyW(t, TR(L"Motor nativo · conecta una cuenta e inicia práctica offline.")); }
-        if (k == NE_TX_ANTICAIDA && !t[0]) lstrcpyW(t, TR(L"el choque del Latino"));
         if (k == NE_TX_TRAMOS && !t[0]) lstrcpyW(t, TR(L"Tramos desactivados."));
         if (k == NE_TX_MOVER && !t[0]) lstrcpyW(t, TR(L"Vuelve a un segundo ya tocado para ver dónde poner un tramo lento."));
         if (!t[0]) continue;
         if (lstrcmpW(t, g_e_tx[k]) || err != g_e_tx_err[k]) { lstrcpyW(g_e_tx[k], t); g_e_tx_err[k] = err; cambio = 1; }
     }
-    int h = ne_preparado(), a = ne_anticaida_activa(), v = ne_velocidad_activa(), bu = ne_bucle_activo(), tr = ne_tramos_activos();
-    if (h != g_e.habilitar || a != g_e.anticaida || v != g_e.vel_on || bu != g_e.bucle_on || tr != g_e.tramos_on) {
-        g_e.habilitar = h; g_e.anticaida = a; g_e.vel_on = v; g_e.bucle_on = bu; g_e.tramos_on = tr;
+    int h = ne_preparado(), a = ne_anticaida_activa() == 1, la = ne_anticaida_activa() == 2, v = ne_velocidad_activa(),
+        bu = ne_bucle_activo(), tr = ne_tramos_activos();
+    if (h != g_e.habilitar || a != g_e.anticaida || la != g_e.latino || v != g_e.vel_on || bu != g_e.bucle_on || tr != g_e.tramos_on) {
+        g_e.habilitar = h; g_e.anticaida = a; g_e.latino = la; g_e.vel_on = v; g_e.bucle_on = bu; g_e.tramos_on = tr;
         cambio = 1;
     }
     {

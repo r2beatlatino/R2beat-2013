@@ -361,10 +361,20 @@ static int gc_real_se_corto(int k)                            /* 1 = se cortó d
     return previo <= 2;
 }
 
-/* la llama la cueva de 0x50C4D7 (con el cPlayer); != 0 ⇒ sin tropiezo */
+/* la llama la cueva de 0x50C4D7 (con el cPlayer): 0 = de fábrica · 1 = sin tropiezo (ni empujón ni auras apagadas)
+ *   · 2 = ★ 26-nov, la ANTICAÍDA de Entreno: sin el tropiezo ni el empujón (lo que frenaba más de un segundo), pero la
+ *     nota fallada corta el combo y apaga las auras como siempre · 3 = el CHOQUE LATINO: el tropiezo sí, el empujón no. */
+static volatile LONG g_gc_trop_res;
+static LONG g_gc_anticaidas;
 static int __cdecl gc_tropiezo_falso(BYTE *p)
 {
     BYTE *g = gc_juego();
+    if (g_ne_q_ac && p) {                                     /* sólo con la Anticaída puesta: práctica a solas, corriendo */
+        int latino = g_ne_ac_quiere == 2;
+        if (g_gc_anticaidas++ < 3) apuntar("  [entreno] nota fallada: %s (asiento %d)",
+                                           latino ? "choque latino (tropiezo sin empujón)" : "sin chocar", p[0x49]);
+        return latino ? 3 : 2;
+    }
     if (!g_gc_activo || !p || !g || !g[0xC01]) return 0;     /* sólo en el que mira */
     if (gc_real_se_corto(p[0x49])) { g_gc_trop_si++; return 0; }
     if (g_gc_log && g_gc_trop_no < 5) apuntar("  [globo] tropiezo FALSO del asiento %d: el real venía sumando (no se muestra)", p[0x49]);
@@ -379,20 +389,38 @@ static void gc_tropiezo_instalar(void)
         apuntar("  [globo] ⚠ el tropiezo del tick (0x50C4D7) no es el esperado: los tropiezos quedan de fábrica");
         return;
     }
-    BYTE *k = (BYTE *)VirtualAlloc(NULL, 64, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    BYTE *k = (BYTE *)VirtualAlloc(NULL, 128, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     if (!k) return;
     int i = 0, a;
+    int b;
+    DWORD res = (DWORD)&g_gc_trop_res;
     k[i++] = 0x60;                                                                  /* pushad */
     k[i++] = 0x56;                                                                  /* push esi (el cPlayer) */
     k[i++] = 0xE8; *(int *)(k + i) = (int)((DWORD)gc_tropiezo_falso - (DWORD)(k + i + 4)); i += 4;
     k[i++] = 0x83; k[i++] = 0xC4; k[i++] = 0x04;                                    /* add esp,4 */
-    k[i++] = 0x85; k[i++] = 0xC0;                                                   /* test eax,eax */
-    k[i++] = 0x61;                                                                  /* popad (no toca las banderas) */
-    k[i++] = 0x75; a = i++;                                                         /* jnz sin_tropiezo */
+    k[i++] = 0xA3; *(DWORD *)(k + i) = res; i += 4;                                 /* mov [res],eax */
+    k[i++] = 0x61;                                                                  /* popad */
+    k[i++] = 0x83; k[i++] = 0x3D; *(DWORD *)(k + i) = res; i += 4; k[i++] = 0x00;  /* cmp dword [res],0 */
+    k[i++] = 0x75; a = i++;                                                         /* jnz otro */
     CopyMemory(k + i, e, 5); i += 5;                                                /* lo de fábrica */
     k[i++] = 0xE9; *(int *)(k + i) = (int)((DWORD)GCV(0x50C4DC) - (DWORD)(k + i + 4)); i += 4;
-    k[a] = (BYTE)(i - (a + 1));
+    k[a] = (BYTE)(i - (a + 1));                                                     /* otro: */
+    k[i++] = 0x83; k[i++] = 0x3D; *(DWORD *)(k + i) = res; i += 4; k[i++] = 0x02;  /* cmp dword [res],2 */
+    k[i++] = 0x74; b = i++;                                                         /* je anticaida */
+    int c3;
+    k[i++] = 0x83; k[i++] = 0x3D; *(DWORD *)(k + i) = res; i += 4; k[i++] = 0x03;  /* cmp dword [res],3 */
+    k[i++] = 0x74; c3 = i++;                                                        /* je latino */
     k[i++] = 0xE9; *(int *)(k + i) = (int)((DWORD)GCV(0x50C520) - (DWORD)(k + i + 4)); i += 4;   /* sin_tropiezo */
+    k[b] = (BYTE)(i - (b + 1));                                                     /* anticaida: las auras sí */
+    k[i++] = 0xE9; *(int *)(k + i) = (int)((DWORD)GCV(0x50C4F6) - (DWORD)(k + i + 4)); i += 4;
+    k[c3] = (BYTE)(i - (c3 + 1));                                                   /* latino: el tropiezo de fábrica */
+    {   /* 0x50C4D7..0x50C4EA tal cual (fldz · push 1 · push ecx · mov ecx,[esp+0C] · fstp [esp] · push ecx · mov ecx,esi
+         *   · call 0x50ACD0) y después, sin el empujón (0x502BD0(5,0)), a las auras */
+        static const BYTE t[15] = { 0xD9, 0xEE, 0x6A, 0x01, 0x51, 0x8B, 0x4C, 0x24, 0x0C, 0xD9, 0x1C, 0x24, 0x51, 0x8B, 0xCE };
+        CopyMemory(k + i, t, 15); i += 15;
+        k[i++] = 0xE8; *(int *)(k + i) = (int)((DWORD)GCV(0x50ACD0) - (DWORD)(k + i + 4)); i += 4;
+        k[i++] = 0xE9; *(int *)(k + i) = (int)((DWORD)GCV(0x50C4F6) - (DWORD)(k + i + 4)); i += 4;
+    }
     BYTE s[5] = { 0xE9, 0, 0, 0, 0 };
     *(int *)(s + 1) = (int)((DWORD)k - ((DWORD)GCV(0x50C4D7) + 5));
     gc_escribir(0x50C4D7, s, 5);

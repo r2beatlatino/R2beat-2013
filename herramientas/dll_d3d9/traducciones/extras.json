@@ -1,42 +1,74 @@
 {
-"Cambia los textos de Ñ2Hock (los del juego no).": [
- "Muda os textos do Ñ2Hock (os do jogo não).",
- "Ñ2Hock의 글자만 바뀝니다 (게임은 그대로).",
- "仅更改 Ñ2Hock 的文字（游戏本身不变）。",
- "Ñ2Hock の表示だけ変わります（ゲームは変わりません）。"],
-"Incluye las entradas enviadas y recibidas que muestra el juego. Un mensaje largo puede ocupar varias líneas. Solo se leen, se conservan durante esta sesión y no se guardan en ningún archivo.": [
- "Inclui as mensagens enviadas e recebidas que o jogo mostra. Uma mensagem longa pode ocupar várias linhas. Só são lidas, ficam durante esta sessão e não são salvas em nenhum arquivo.",
- "게임에 표시되는 보낸 메시지와 받은 메시지를 포함합니다. 긴 메시지는 여러 줄을 차지할 수 있습니다. 읽기만 하며, 이번 세션 동안만 유지되고 파일로 저장되지 않습니다.",
- "包括游戏中显示的已发送和已接收消息。较长的消息可能占用多行。仅读取，只在本次会话中保留，不会保存到任何文件。",
- "ゲームに表示される送信・受信メッセージを含みます。長いメッセージは複数行になることがあります。読み取るだけで、このセッション中のみ保持され、ファイルには保存されません。"],
-"Clic en la barra = siguiente punto (A, B, C…). Clic en un tramo = elegir velocidad o quitarlo. Arrastra un borde para moverlo. El triángulo verde es tu posición en la canción.": [
- "Clique na barra = próximo ponto (A, B, C…). Clique num trecho = escolher a velocidade ou removê-lo. Arraste uma borda para movê-la. O triângulo verde é sua posição na música.",
- "바 클릭 = 다음 지점 (A, B, C…). 구간 클릭 = 속도 선택 또는 삭제. 경계를 드래그하면 이동합니다. 초록 삼각형은 곡에서의 현재 위치입니다.",
- "点击进度条 = 下一个点（A、B、C…）。点击区段 = 选择速度或删除。拖动边界可移动。绿色三角形是你在歌曲中的位置。",
- "バーをクリック = 次のポイント（A、B、C…）。区間をクリック = 速度を選ぶか削除。境界をドラッグで移動。緑の三角は曲の現在位置です。"],
-"Un punto por línea: «BPM Far» (por ejemplo 170 17 o 185 16.5). Entre dos puntos va en línea recta; fuera de los extremos, el Far del extremo.": [
- "Um ponto por linha: «BPM Far» (por exemplo 170 17 ou 185 16.5). Entre dois pontos vai em linha reta; fora das pontas, o Far da ponta.",
- "한 줄에 한 점: «BPM Far» (예: 170 17 또는 185 16.5). 두 점 사이는 직선으로, 범위 밖은 끝점의 Far를 씁니다.",
- "每行一个点：«BPM Far»（例如 170 17 或 185 16.5）。两点之间按直线变化；超出两端时使用端点的 Far。",
- "1行に1点：«BPM Far»（例：170 17 や 185 16.5）。2点の間は直線で、範囲外は端の Far を使います。"],
-"Las imágenes se ajustan a 81 x 81; el marco va encima. Mover lleva también el de equipo y el fuego (4 px; con Mayús, 20; «0» = centrar).": [
- "As imagens se ajustam a 81 x 81; a moldura fica por cima. Mover leva também o de equipe e o fogo (4 px; com Shift, 20; «0» = centralizar).",
- "이미지는 81 x 81에 맞춰지고 테두리가 위에 겹칩니다. 이동하면 팀용과 불꽃도 함께 움직입니다 (4 px; Shift는 20; «0» = 가운데).",
- "图片会缩放到 81 x 81，边框叠在上面。移动时团队用的和火焰也一起移动（4 px；按 Shift 为 20；«0» = 居中）。",
- "画像は 81 x 81 に合わせられ、枠が上に重なります。移動するとチーム用と炎も一緒に動きます（4 px、Shift で 20、«0» = 中央）。"],
-"A ya pasó y no está grabado: sigues sin bucle hasta la meta. En la próxima carrera (o con «Repetir» de la Pausa) corres hasta A y desde ahí sigue el bucle.": [
- "A já passou e não foi gravado: você segue sem loop até a chegada. Na próxima corrida (ou com «Repetir» da Pausa) você corre até A e dali segue o loop.",
- "A는 이미 지났고 기록되지 않았습니다: 결승까지 반복 없이 진행합니다. 다음 레이스(또는 일시정지의 «다시 하기»)에서 A까지 달리면 그때부터 반복됩니다.",
- "A 已经过去且未记录：将不循环直到终点。下一局（或暂停菜单的«重来»）跑到 A 后开始循环。",
- "A はすでに過ぎていて記録されていません：ゴールまでループなしで進みます。次のレース（またはポーズの«リトライ»）で A まで走ると、そこからループします。"],
-"En la carrera: F9 lo esconde · Z lo fija · X / C más grande o más chico · V / B a la izquierda o a la derecha · N / M arriba o abajo.": [
- "Na corrida: F9 esconde · Z fixa · X / C maior ou menor · V / B para a esquerda ou direita · N / M para cima ou baixo.",
- "레이스 중: F9 숨기기 · Z 고정 · X / C 크게 또는 작게 · V / B 왼쪽 또는 오른쪽 · N / M 위 또는 아래.",
- "比赛中：F9 隐藏 · Z 固定 · X / C 放大或缩小 · V / B 向左或向右 · N / M 向上或向下。",
- "レース中：F9 で隠す · Z で固定 · X / C で拡大・縮小 · V / B で左右 · N / M で上下。"],
-"Próximamente: velocidad de práctica (50 a 150 %), repetir un tramo A/B y Anticaída. Sólo en práctica o jugando solo.": [
- "Em breve: velocidade de prática (50 a 150 %), repetir um trecho A/B e Anti-queda. Só na prática ou jogando sozinho.",
- "곧 추가: 연습 속도 (50~150 %), A/B 구간 반복, 낙하 방지. 연습 또는 혼자 플레이할 때만.",
- "即将推出：练习速度（50 至 150 %）、重复 A/B 区段和防掉落。仅限练习或单人游戏。",
- "近日公開：練習速度（50〜150 %）、A/B 区間リピート、落下防止。練習中またはソロプレイのみ。"]
+ "Cambia los textos de Ñ2Hock (los del juego no).": [
+  "Muda os textos do Ñ2Hock (os do jogo não).",
+  "Ñ2Hock의 글자만 바뀝니다 (게임은 그대로).",
+  "仅更改 Ñ2Hock 的文字（游戏本身不变）。",
+  "Ñ2Hock の表示だけ変わります（ゲームは変わりません）。"
+ ],
+ "Incluye las entradas enviadas y recibidas que muestra el juego. Un mensaje largo puede ocupar varias líneas. Solo se leen, se conservan durante esta sesión y no se guardan en ningún archivo.": [
+  "Inclui as mensagens enviadas e recebidas que o jogo mostra. Uma mensagem longa pode ocupar várias linhas. Só são lidas, ficam durante esta sessão e não são salvas em nenhum arquivo.",
+  "게임에 표시되는 보낸 메시지와 받은 메시지를 포함합니다. 긴 메시지는 여러 줄을 차지할 수 있습니다. 읽기만 하며, 이번 세션 동안만 유지되고 파일로 저장되지 않습니다.",
+  "包括游戏中显示的已发送和已接收消息。较长的消息可能占用多行。仅读取，只在本次会话中保留，不会保存到任何文件。",
+  "ゲームに表示される送信・受信メッセージを含みます。長いメッセージは複数行になることがあります。読み取るだけで、このセッション中のみ保持され、ファイルには保存されません。"
+ ],
+ "Clic en la barra = siguiente punto (A, B, C…). Clic en un tramo = elegir velocidad o quitarlo. Arrastra un borde para moverlo. El triángulo verde es tu posición en la canción.": [
+  "Clique na barra = próximo ponto (A, B, C…). Clique num trecho = escolher a velocidade ou removê-lo. Arraste uma borda para movê-la. O triângulo verde é sua posição na música.",
+  "바 클릭 = 다음 지점 (A, B, C…). 구간 클릭 = 속도 선택 또는 삭제. 경계를 드래그하면 이동합니다. 초록 삼각형은 곡에서의 현재 위치입니다.",
+  "点击进度条 = 下一个点（A、B、C…）。点击区段 = 选择速度或删除。拖动边界可移动。绿色三角形是你在歌曲中的位置。",
+  "バーをクリック = 次のポイント（A、B、C…）。区間をクリック = 速度を選ぶか削除。境界をドラッグで移動。緑の三角は曲の現在位置です。"
+ ],
+ "Un punto por línea: «BPM Far» (por ejemplo 170 17 o 185 16.5). Entre dos puntos va en línea recta; fuera de los extremos, el Far del extremo.": [
+  "Um ponto por linha: «BPM Far» (por exemplo 170 17 ou 185 16.5). Entre dois pontos vai em linha reta; fora das pontas, o Far da ponta.",
+  "한 줄에 한 점: «BPM Far» (예: 170 17 또는 185 16.5). 두 점 사이는 직선으로, 범위 밖은 끝점의 Far를 씁니다.",
+  "每行一个点：«BPM Far»（例如 170 17 或 185 16.5）。两点之间按直线变化；超出两端时使用端点的 Far。",
+  "1行に1点：«BPM Far»（例：170 17 や 185 16.5）。2点の間は直線で、範囲外は端の Far を使います。"
+ ],
+ "Las imágenes se ajustan a 81 x 81; el marco va encima. Mover lleva también el de equipo y el fuego (4 px; con Mayús, 20; «0» = centrar).": [
+  "As imagens se ajustam a 81 x 81; a moldura fica por cima. Mover leva também o de equipe e o fogo (4 px; com Shift, 20; «0» = centralizar).",
+  "이미지는 81 x 81에 맞춰지고 테두리가 위에 겹칩니다. 이동하면 팀용과 불꽃도 함께 움직입니다 (4 px; Shift는 20; «0» = 가운데).",
+  "图片会缩放到 81 x 81，边框叠在上面。移动时团队用的和火焰也一起移动（4 px；按 Shift 为 20；«0» = 居中）。",
+  "画像は 81 x 81 に合わせられ、枠が上に重なります。移動するとチーム用と炎も一緒に動きます（4 px、Shift で 20、«0» = 中央）。"
+ ],
+ "A ya pasó y no está grabado: sigues sin bucle hasta la meta. En la próxima carrera (o con «Repetir» de la Pausa) corres hasta A y desde ahí sigue el bucle.": [
+  "A já passou e não foi gravado: você segue sem loop até a chegada. Na próxima corrida (ou com «Repetir» da Pausa) você corre até A e dali segue o loop.",
+  "A는 이미 지났고 기록되지 않았습니다: 결승까지 반복 없이 진행합니다. 다음 레이스(또는 일시정지의 «다시 하기»)에서 A까지 달리면 그때부터 반복됩니다.",
+  "A 已经过去且未记录：将不循环直到终点。下一局（或暂停菜单的«重来»）跑到 A 后开始循环。",
+  "A はすでに過ぎていて記録されていません：ゴールまでループなしで進みます。次のレース（またはポーズの«リトライ»）で A まで走ると、そこからループします。"
+ ],
+ "En la carrera: F9 lo esconde · Z lo fija · X / C más grande o más chico · V / B a la izquierda o a la derecha · N / M arriba o abajo.": [
+  "Na corrida: F9 esconde · Z fixa · X / C maior ou menor · V / B para a esquerda ou direita · N / M para cima ou baixo.",
+  "레이스 중: F9 숨기기 · Z 고정 · X / C 크게 또는 작게 · V / B 왼쪽 또는 오른쪽 · N / M 위 또는 아래.",
+  "比赛中：F9 隐藏 · Z 固定 · X / C 放大或缩小 · V / B 向左或向右 · N / M 向上或向下。",
+  "レース中：F9 で隠す · Z で固定 · X / C で拡大・縮小 · V / B で左右 · N / M で上下。"
+ ],
+ "Próximamente: velocidad de práctica (50 a 150 %), repetir un tramo A/B y Anticaída. Sólo en práctica o jugando solo.": [
+  "Em breve: velocidade de prática (50 a 150 %), repetir um trecho A/B e Anti-queda. Só na prática ou jogando sozinho.",
+  "곧 추가: 연습 속도 (50~150 %), A/B 구간 반복, 낙하 방지. 연습 또는 혼자 플레이할 때만.",
+  "即将推出：练习速度（50 至 150 %）、重复 A/B 区段和防掉落。仅限练习或单人游戏。",
+  "近日公開：練習速度（50〜150 %）、A/B 区間リピート、落下防止。練習中またはソロプレイのみ。"
+ ],
+ "Sin chocar": [
+  "Sem bater",
+  "충돌 없음",
+  "不碰撞",
+  "ぶつからない"
+ ],
+ "Choque latino": [
+  "Batida latina",
+  "라티노 충돌",
+  "拉丁碰撞",
+  "ラテン式衝突"
+ ],
+ "Armada": [
+  "Pronta",
+  "대기 중",
+  "已就绪",
+  "待機中"
+ ],
+ "Activa": [
+  "Ativa",
+  "활성",
+  "已启用",
+  "有効"
+ ]
 }

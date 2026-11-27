@@ -1,5 +1,5 @@
 /* traducciones.h — GENERADO por herramientas/dll_d3d9/traducciones/armar_tabla.py: no editar a mano */
-#define TR_N 580
+#define TR_N 584
 static const wchar_t *const TR_TABLA[TR_N][TR_N_IDIOMAS] = {
     { L"Not", L"Nenhuma", L"없음", L"无", L"なし" },
     { L"NUM%d", L"NUM%d", L"NUM%d", L"NUM%d", L"NUM%d" },
@@ -581,4 +581,8 @@ static const wchar_t *const TR_TABLA[TR_N][TR_N_IDIOMAS] = {
     { L"A ya pasó y no está grabado: sigues sin bucle hasta la meta. En la próxima carrera (o con «Repetir» de la Pausa) corres hasta A y desde ahí sigue el bucle.", L"A já passou e não foi gravado: você segue sem loop até a chegada. Na próxima corrida (ou com «Repetir» da Pausa) você corre até A e dali segue o loop.", L"A는 이미 지났고 기록되지 않았습니다: 결승까지 반복 없이 진행합니다. 다음 레이스(또는 일시정지의 «다시 하기»)에서 A까지 달리면 그때부터 반복됩니다.", L"A 已经过去且未记录：将不循环直到终点。下一局（或暂停菜单的«重来»）跑到 A 后开始循环。", L"A はすでに過ぎていて記録されていません：ゴールまでループなしで進みます。次のレース（またはポーズの«リトライ»）で A まで走ると、そこからループします。" },
     { L"En la carrera: F9 lo esconde · Z lo fija · X / C más grande o más chico · V / B a la izquierda o a la derecha · N / M arriba o abajo.", L"Na corrida: F9 esconde · Z fixa · X / C maior ou menor · V / B para a esquerda ou direita · N / M para cima ou baixo.", L"레이스 중: F9 숨기기 · Z 고정 · X / C 크게 또는 작게 · V / B 왼쪽 또는 오른쪽 · N / M 위 또는 아래.", L"比赛中：F9 隐藏 · Z 固定 · X / C 放大或缩小 · V / B 向左或向右 · N / M 向上或向下。", L"レース中：F9 で隠す · Z で固定 · X / C で拡大・縮小 · V / B で左右 · N / M で上下。" },
     { L"Próximamente: velocidad de práctica (50 a 150 %), repetir un tramo A/B y Anticaída. Sólo en práctica o jugando solo.", L"Em breve: velocidade de prática (50 a 150 %), repetir um trecho A/B e Anti-queda. Só na prática ou jogando sozinho.", L"곧 추가: 연습 속도 (50~150 %), A/B 구간 반복, 낙하 방지. 연습 또는 혼자 플레이할 때만.", L"即将推出：练习速度（50 至 150 %）、重复 A/B 区段和防掉落。仅限练习或单人游戏。", L"近日公開：練習速度（50〜150 %）、A/B 区間リピート、落下防止。練習中またはソロプレイのみ。" },
+    { L"Sin chocar", L"Sem bater", L"충돌 없음", L"不碰撞", L"ぶつからない" },
+    { L"Choque latino", L"Batida latina", L"라티노 충돌", L"拉丁碰撞", L"ラテン式衝突" },
+    { L"Armada", L"Pronta", L"대기 중", L"已就绪", L"待機中" },
+    { L"Activa", L"Ativa", L"활성", L"已启用", L"有効" },
 };
