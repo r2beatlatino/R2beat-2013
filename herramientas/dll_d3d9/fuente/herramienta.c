@@ -764,13 +764,108 @@ static float g_ht_ind_visto = -1.0f;                /* el Far que mostró el car
 static DWORD g_ht_ind_hasta = 0, g_ht_ind_ult_cuadro = 0;
 static char  g_ht_ind_txt[16];
 
+/* ★ 25-nov: LA CURVA EDITABLE (ToolBit 0.6.40, «AutoFar: el Far según el BPM»). Puntos «BPM Far» (hasta HT_AF_MAX),
+ *   en línea recta entre dos puntos y, fuera de los extremos, el Far del extremo. Se guarda en
+ *   [herramienta] autofar_curva=148:18;180:17;277:11 (la de fábrica de Ñ2Hock) y la edita Personalización · AutoFar. */
+#define HT_AF_MAX 16
+static float g_ht_af_pb[HT_AF_MAX], g_ht_af_pf[HT_AF_MAX];
+static int   g_ht_af_np = -1;                       /* -1 = sin leer el ini */
+static const char HT_AF_FABRICA[] = "148:18;180:17;277:11";
+
+/* "148:18; 180 17 / 277=11" (también 16,5) → puntos ordenados por BPM. 0 = bien; si no, el porqué en err (≥ 160) */
+static int ht_af_parsear(const wchar_t *t, float *pb, float *pf, int *n, wchar_t *err)
+{
+    float nums[HT_AF_MAX * 2 + 2];
+    int k = 0;
+    const wchar_t *p = t;
+    while (*p) {
+        while (*p && !((*p >= L'0' && *p <= L'9') || *p == L'.' || *p == L',')) p++;
+        if (!*p) break;
+        float v = 0, d = 0;
+        int hay = 0;
+        for (; *p; p++) {
+            if (*p >= L'0' && *p <= L'9') { hay = 1; if (d) { v += (*p - L'0') * d; d /= 10; } else v = v * 10 + (*p - L'0'); }
+            else if ((*p == L'.' || *p == L',') && !d && p[1] >= L'0' && p[1] <= L'9') d = 0.1f;
+            else break;
+        }
+        if (!hay) { if (*p) p++; continue; }
+        if (k >= HT_AF_MAX * 2) { wsprintfW(err, TR(L"Como mucho %d puntos."), HT_AF_MAX); return 1; }
+        nums[k++] = v;
+    }
+    if (k < 2 || (k & 1)) { lstrcpyW(err, TR(L"Escribe pares «BPM Far», uno por línea (por ejemplo: 170 17).")); return 1; }
+    int m = k / 2;
+    for (int i = 0; i < m; i++) {
+        pb[i] = nums[2 * i]; pf[i] = nums[2 * i + 1];
+        if (pb[i] < 30 || pb[i] > 400) { wsprintfW(err, TR(L"El BPM %d está fuera de 30..400."), (int)pb[i]); return 1; }
+        if (pf[i] < 1.0f || pf[i] > 22.0f) { lstrcpyW(err, TR(L"El Far tiene que ser un número entre 1.0 y 22.0.")); return 1; }
+    }
+    for (int i = 1; i < m; i++)                      /* inserción por BPM */
+        for (int j = i; j > 0 && pb[j - 1] > pb[j]; j--) {
+            float tb = pb[j], tf = pf[j]; pb[j] = pb[j - 1]; pf[j] = pf[j - 1]; pb[j - 1] = tb; pf[j - 1] = tf;
+        }
+    for (int i = 1; i < m; i++) if (pb[i] == pb[i - 1]) { wsprintfW(err, TR(L"El BPM %d está dos veces."), (int)pb[i]); return 1; }
+    *n = m;
+    return 0;
+}
+
+static void ht_af_leer_ini(void)
+{
+    char a[400];
+    wchar_t w[400], err[200];
+    GetPrivateProfileStringA("herramienta", "autofar_curva", HT_AF_FABRICA, a, sizeof(a), g_ht_ini);
+    MultiByteToWideChar(CP_ACP, 0, a, -1, w, 400);
+    float pb[HT_AF_MAX], pf[HT_AF_MAX];
+    int n = 0;
+    if (ht_af_parsear(w, pb, pf, &n, err)) { MultiByteToWideChar(CP_ACP, 0, HT_AF_FABRICA, -1, w, 400); ht_af_parsear(w, pb, pf, &n, err); }
+    EnterCriticalSection(&g_ht_cs);
+    CopyMemory(g_ht_af_pb, pb, sizeof(pb)); CopyMemory(g_ht_af_pf, pf, sizeof(pf)); g_ht_af_np = n;
+    LeaveCriticalSection(&g_ht_cs);
+}
+
+/* la ventana pone una curva ya validada */
+static void ht_af_poner(const float *pb, const float *pf, int n)
+{
+    EnterCriticalSection(&g_ht_cs);
+    CopyMemory(g_ht_af_pb, pb, n * sizeof(float)); CopyMemory(g_ht_af_pf, pf, n * sizeof(float)); g_ht_af_np = n;
+    LeaveCriticalSection(&g_ht_cs);
+}
+
+/* "148:18;180:17;277:11" (para el ini y para la caja de texto) */
+static void ht_af_texto(char *s, int multilinea)
+{
+    s[0] = 0;
+    EnterCriticalSection(&g_ht_cs);
+    for (int i = 0; i < g_ht_af_np; i++) {
+        char u[40];
+        int f10 = (int)(g_ht_af_pf[i] * 10 + 0.5f);
+        if (multilinea) {
+            if (f10 % 10) wsprintfA(u, "%d  %d.%d\r\n", (int)g_ht_af_pb[i], f10 / 10, f10 % 10);
+            else wsprintfA(u, "%d  %d\r\n", (int)g_ht_af_pb[i], f10 / 10);
+        } else {
+            if (f10 % 10) wsprintfA(u, "%s%d:%d.%d", i ? ";" : "", (int)g_ht_af_pb[i], f10 / 10, f10 % 10);
+            else wsprintfA(u, "%s%d:%d", i ? ";" : "", (int)g_ht_af_pb[i], f10 / 10);
+        }
+        lstrcatA(s, u);
+    }
+    LeaveCriticalSection(&g_ht_cs);
+}
+
 static float ht_af_curva(float bpm)
 {
+    if (g_ht_af_np < 0) ht_af_leer_ini();
     float f;
-    if (bpm <= 148.0f) f = 18.0f;
-    else if (bpm <= 180.0f) f = 18.0f - (bpm - 148.0f) / 32.0f;
-    else if (bpm <= 277.0f) f = 17.0f - 6.0f * (bpm - 180.0f) / 97.0f;
-    else f = 11.0f;
+    EnterCriticalSection(&g_ht_cs);
+    int n = g_ht_af_np;
+    if (n <= 0) f = 17.0f;
+    else if (bpm <= g_ht_af_pb[0]) f = g_ht_af_pf[0];
+    else if (bpm >= g_ht_af_pb[n - 1]) f = g_ht_af_pf[n - 1];
+    else {
+        int i = 1;
+        while (i < n - 1 && bpm > g_ht_af_pb[i]) i++;
+        float t = (bpm - g_ht_af_pb[i - 1]) / (g_ht_af_pb[i] - g_ht_af_pb[i - 1]);
+        f = g_ht_af_pf[i - 1] + t * (g_ht_af_pf[i] - g_ht_af_pf[i - 1]);
+    }
+    LeaveCriticalSection(&g_ht_cs);
     f = (float)(int)(f * 10.0f + 0.5f) / 10.0f;
     return f < 1.0f ? 1.0f : (f > 22.0f ? 22.0f : f);
 }
@@ -892,6 +987,13 @@ static void ht_indicador_tick(DWORD ahora)
 
 static void (*g_ht_por_cuadro_mas)(void) = NULL;
 /* lo llama el HUD de carrera de calculadora.c, una vez por cuadro */
+static int  g_fj_mostrar = 1;                          /* [herramienta] far_juego */
+static int g_fj_tecla = VK_F7;                        /* ★ 26-nov: la tecla que muestra / esconde el panel en la carrera */
+static int g_fj_arco = 1;                             /* ★ 26-nov: las letras del panel con el arcoíris de los crayones */
+static volatile int g_fj_fondo = 0;                   /* ★ 26-nov: cuánto se ve el fondo del panel (0..100 %) */
+static volatile LONG g_fj_x = -1, g_fj_y = -1;         /* la posición en milésimas de la pantalla (-1 = de fábrica) */
+static void pb_por_cuadro(void);                     /* ★ 26-nov: la barra de la Pausa (pausa_barra.c) */
+static void fj_dibujar(void);                        /* ★ 26-nov: el panel del Far en la carrera (far_juego_dibujo.c) */
 static void ht_por_cuadro(void)
 {
     if (!g_ht_base) return;
@@ -899,6 +1001,8 @@ static void ht_por_cuadro(void)
     ht_autofar_tick(ahora);
     ht_indicador_tick(ahora);
     if (g_ht_por_cuadro_mas) g_ht_por_cuadro_mas();    /* ★ 19-nov: el chat dentro de la carrera (n2h_chat.c) */
+    pb_por_cuadro();                                 /* ★ 26-nov: la barra de la Pausa, en cada cuadro */
+    fj_dibujar();
 }
 
 /* ═══ 6 · EL INI — sección [herramienta], SIN reescribir lo demás ═════════════
@@ -1013,11 +1117,18 @@ static void ht_guardar(void)
     wsprintfA(v, "%d", g_ht_alfa_nivel); ht_buf_poner(&x, "opacidad_nivel", v, eol);
     wsprintfA(v, "%d", g_ht_far_pct);    ht_buf_poner(&x, "far_pct", v, eol);
     wsprintfA(v, "%d", g_ht_far_n2h);    ht_buf_poner(&x, "far_n2h", v, eol);
+    wsprintfA(v, "%d", g_fj_mostrar);    ht_buf_poner(&x, "far_juego", v, eol);
+    wsprintfA(v, "%ld", (long)g_fj_x);   ht_buf_poner(&x, "far_juego_x", v, eol);
+    wsprintfA(v, "%ld", (long)g_fj_y);   ht_buf_poner(&x, "far_juego_y", v, eol);
+    wsprintfA(v, "%d", g_fj_fondo);      ht_buf_poner(&x, "far_juego_fondo", v, eol);
+    wsprintfA(v, "%d", g_fj_arco);       ht_buf_poner(&x, "far_juego_arcoiris", v, eol);
+    wsprintfA(v, "%d", g_fj_tecla);      ht_buf_poner(&x, "far_juego_tecla", v, eol);
     wsprintfA(v, "%d", g_ht_tk_far_menos);  ht_buf_poner(&x, "tk_far_menos", v, eol);
     wsprintfA(v, "%d", g_ht_tk_far_mas);    ht_buf_poner(&x, "tk_far_mas", v, eol);
     wsprintfA(v, "%d", g_ht_tk_alfa_menos); ht_buf_poner(&x, "tk_opacidad_menos", v, eol);
     wsprintfA(v, "%d", g_ht_tk_alfa_mas);   ht_buf_poner(&x, "tk_opacidad_mas", v, eol);
     wsprintfA(v, "%d", g_ht_tema);          ht_buf_poner(&x, "tema", v, eol);
+    wsprintfA(v, "%d", g_tr_idi);           ht_buf_poner(&x, "idioma", v, eol);
     /* las dos filas del teclado: el DIK (código de tecla de DirectInput) en decimal; 0 = ninguna */
     for (int g = 0; g < 2; g++)
         for (int kk = 0; kk < 5; kk++) {
@@ -1065,6 +1176,7 @@ static void ht_leer(void)
     g_ht_tecla_ver = (int)GetPrivateProfileIntA("herramienta", "tecla", VK_F12, g_ht_ini) & 0xFF;
     g_ht_tema = (int)GetPrivateProfileIntA("herramienta", "tema", HT_TEMA_N2H, g_ht_ini);
     if (g_ht_tema < 1 || g_ht_tema > HT_N_TEMAS) g_ht_tema = HT_TEMA_N2H;
+    tr_leer_ini(g_ht_ini);                                   /* ★ 26-nov: el idioma de Ñ2Hock */
     if (!g_ht_tecla_ver) g_ht_tecla_ver = VK_F12;
     for (int g = 0; g < 2; g++)
         for (int kk = 0; kk < 5; kk++) {
@@ -1216,13 +1328,13 @@ static void ht_que_es(int id, wchar_t *s)                       /* s: 64 */
 {
     if (id >= 0 && id < O_N) {
         if (g_op[id].pareja >= 0 && g_op[id].pareja < id && !lstrcmpW(g_op[id].texto, L"Supr"))
-            wsprintfW(s, L"%s · Supr", g_op[g_op[id].pareja].texto);
+            wsprintfW(s, TR(L"%s · Supr"), g_op[g_op[id].pareja].texto);
         else lstrcpyW(s, g_op[id].texto);
-    } else if (id == K_ALFM) lstrcpyW(s, L"Opacidad · bajar");
-    else if (id == K_ALFP) lstrcpyW(s, L"Opacidad · subir");
-    else if (id == K_FARM) lstrcpyW(s, L"Far Vision · bajar");
-    else if (id == K_FARP) lstrcpyW(s, L"Far Vision · subir");
-    else if (ht_es_dik(id)) wsprintfW(s, L"fila %d · %s", (id - 200) / 5 + 1, HT_KB_NOMBRE[(id - 200) % 5]);
+    } else if (id == K_ALFM) lstrcpyW(s, TR(L"Opacidad · bajar"));
+    else if (id == K_ALFP) lstrcpyW(s, TR(L"Opacidad · subir"));
+    else if (id == K_FARM) lstrcpyW(s, TR(L"Far Vision · bajar"));
+    else if (id == K_FARP) lstrcpyW(s, TR(L"Far Vision · subir"));
+    else if (ht_es_dik(id)) wsprintfW(s, TR(L"fila %d · %s"), (id - 200) / 5 + 1, HT_KB_NOMBRE[(id - 200) % 5]);
     else s[0] = 0;
 }
 
@@ -1242,13 +1354,13 @@ static void ht_nombre_vk(int vk, wchar_t *s)                    /* s: 32 */
     };
     if (vk <= 0 || vk > 255) { lstrcpyW(s, L"—"); return; }
     if (vk >= VK_F1 && vk <= VK_F24) { wsprintfW(s, L"F%d", vk - VK_F1 + 1); return; }
-    if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) { wsprintfW(s, L"Num %d", vk - VK_NUMPAD0); return; }
+    if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) { wsprintfW(s, TR(L"Num %d"), vk - VK_NUMPAD0); return; }
     if ((vk >= 'A' && vk <= 'Z') || (vk >= '0' && vk <= '9')) { s[0] = (wchar_t)vk; s[1] = 0; return; }
     for (int i = 0; i < (int)(sizeof(T) / sizeof(T[0])); i++)
         if (T[i].vk == vk) { lstrcpyW(s, T[i].n); return; }
     UINT c = MapVirtualKeyW((UINT)vk, 2 /* MAPVK_VK_TO_CHAR */) & 0x7FFF;
     if (c > 32) { s[0] = (wchar_t)c; s[1] = 0; return; }
-    wsprintfW(s, L"VK %02X", vk);
+    wsprintfW(s, TR(L"VK %02X"), vk);
 }
 
 /* DIK = el código de la tecla FÍSICA que usa DirectInput: el scan code, +0x80 si es «extendida» */
@@ -1294,10 +1406,10 @@ static int ht_vk_a_dik(int vk)
 static void ht_nombre_dik(int dik, wchar_t *s)
 {
     if (dik <= 0 || dik > 255) { lstrcpyW(s, L"—"); return; }
-    if (dik == 0x9C) { lstrcpyW(s, L"Num Enter"); return; }
+    if (dik == 0x9C) { lstrcpyW(s, TR(L"Num Enter")); return; }
     int vk = ht_dik_a_vk(dik);
     if (vk) ht_nombre_vk(vk, s);
-    else wsprintfW(s, L"DIK %02X", dik);
+    else wsprintfW(s, TR(L"DIK %02X"), dik);
 }
 
 static void ht_nombre_tecla(int id, int valor, wchar_t *s)
@@ -1343,15 +1455,15 @@ static int ht_bloqueada(int id, int valor, wchar_t *por)        /* por: 160 · �
     if (!valor) return 0;
     ht_nombre_tecla(id, valor, n);
     if (vk == g_ht_tecla_ver || (dik && dik == ht_vk_a_dik(g_ht_tecla_ver)))
-        wsprintfW(por, L"ojo: %s también abre y cierra esta ventana", n);
+        wsprintfW(por, TR(L"ojo: %s también abre y cierra esta ventana"), n);
     else if (ht_dik_calculadora(dik) || vk == VK_F9 || vk == VK_F10)
-        wsprintfW(por, L"ojo: %s también es de la calculadora", n);
+        wsprintfW(por, TR(L"ojo: %s también es de la calculadora"), n);
     else if (ht_dik_juego(dik) || vk == VK_RETURN || vk == VK_TAB || vk == VK_SPACE || vk == VK_SHIFT
              || vk == VK_LSHIFT || vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU || (vk >= VK_F1 && vk <= VK_F5))
-        wsprintfW(por, L"ojo: %s también la usa el juego", n);
+        wsprintfW(por, TR(L"ojo: %s también la usa el juego"), n);
     else if (!ht_es_dik(id) && (dik == 0xC8 || dik == 0xCB || dik == 0xD0 || dik == 0xCD || dik == 0x1D || dik == 0x9D
                                 || vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL))
-        wsprintfW(por, L"ojo: %s también mueve / es el booster", n);
+        wsprintfW(por, TR(L"ojo: %s también mueve / es el booster"), n);
     return 0;
 }
 
@@ -1597,7 +1709,7 @@ static void ht_maquetar_n2h(void)
     g_ht_pag_armando = 0xFF;
     g_ht_pag_y1 = 488;
     ht_el(E_BOTON, 12, 498, 120, 28, 1, L"APAGAR TODO", L"Apaga todas las opciones (vuelve todo a fábrica)");
-    wsprintfW(g_ht_tema_txt, L"TEMA %d/%d", g_ht_tema, HT_N_TEMAS);
+    wsprintfW(g_ht_tema_txt, TR(L"TEMA %d/%d"), g_ht_tema, HT_N_TEMAS);
     ht_el(E_BOTON, W - 12 - 84, 501, 84, 22, 3, g_ht_tema_txt,
           L"Cambiar el estilo de la ventana: 1 Neón · 2 Sakura · 3 Arcade · 4 Medianoche · 5 Ñ2Hock. Queda guardado.");
     g_ht_h = 498 + 28 + 12;
@@ -1619,7 +1731,7 @@ static void ht_maquetar(void)
     ht_el(E_PILL, W - HT_M - 26 - 10 - 96, 13, 96, 26, O_ANCLAR, g_op[O_ANCLAR].texto, g_op[O_ANCLAR].ayuda);
     ht_el(E_PILL, W - HT_M - 26 - 10 - 96 - 8 - 96, 13, 96, 26, O_HOTKEYS, g_op[O_HOTKEYS].texto, g_op[O_HOTKEYS].ayuda);
     /* ⚠ mientras anonimo03 elige el estilo: recorre los 4 temas (y lo guarda en el ini) */
-    wsprintfW(g_ht_tema_txt, L"TEMA %d/%d", g_ht_tema, HT_N_TEMAS);
+    wsprintfW(g_ht_tema_txt, TR(L"TEMA %d/%d"), g_ht_tema, HT_N_TEMAS);
     ht_el(E_BOTON, W - HT_M - 26 - 10 - 96 - 8 - 96 - 10 - 76, 15, 76, 22, 3, g_ht_tema_txt,
           L"Probar los 4 estilos: 1 Neón · 2 Sakura · 3 Arcade · 4 Medianoche. Queda guardado (sale cuando se elija uno).");
 
@@ -1997,7 +2109,7 @@ static void ht_texto(int x, int y, int w, int h, const wchar_t *s, int f, COLORR
     RECT r = { x, y, x + w, y + h };
     SelectObject(g_ht_dc1, g_ht_f[f]);
     SetTextColor(g_ht_dc1, c);
-    DrawTextW(g_ht_dc1, s, -1, &r, fmt | DT_NOPREFIX);
+    DrawTextW(g_ht_dc1, TR(s), -1, &r, fmt | DT_NOPREFIX);
 }
 
 static int ht_slider_valor(int s, int *min, int *max)
@@ -2096,8 +2208,8 @@ static void ht_pintar_el(int i, int pase)
             else {
                 int rotas = 0;
                 for (int k = 0; k < O_N; k++) if (g_op[k].rota) rotas++;
-                if (rotas) { wsprintfW(t, L"%d opción(es) no disponible(s) con este exe: ver el log", rotas); c = HT_C_ROSA; }
-                else wsprintfW(t, L"todo enganchado · %s", g_ht_sub);
+                if (rotas) { wsprintfW(t, TR(L"%d opción(es) no disponible(s) con este exe: ver el log"), rotas); c = HT_C_ROSA; }
+                else wsprintfW(t, TR(L"todo enganchado · %s"), g_ht_sub);
             }
             ht_texto(e->x, e->y, e->w, e->h, t, F_TEXTO, c, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         }
@@ -2126,7 +2238,7 @@ static void ht_pintar_el(int i, int pase)
         } else {
             wchar_t n[32];
             COLORREF c;
-            if (esp) { lstrcpyW(n, L"tecla…"); c = HT_C_ROSA; }
+            if (esp) { lstrcpyW(n, TR(L"tecla…")); c = HT_C_ROSA; }
             else {
                 ht_nombre_tecla(e->ref, v, n);
                 int activo = ht_es_dik(e->ref) ? g_op[O_TECLADO].quiere : g_op[O_HOTKEYS].quiere;
@@ -2314,7 +2426,7 @@ static LRESULT CALLBACK ht_globo_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         SetTextColor(dc, HT_C_SUAVE);
         SelectObject(dc, g_ht_f[F_CHICO]);
         InflateRect(&r, -8, -5);
-        DrawTextW(dc, t, -1, &r, DT_LEFT | DT_WORDBREAK | DT_NOPREFIX);
+        DrawTextW(dc, TR(t), -1, &r, DT_LEFT | DT_WORDBREAK | DT_NOPREFIX);
         EndPaint(h, &ps);
         return 0;
     }
@@ -2334,15 +2446,15 @@ static void ht_globo_mostrar(int i)
     const wchar_t *t = g_el[i].ayuda;
     wchar_t extra[256];
     if (g_el[i].tipo == E_OPCION && (!g_op[g_el[i].ref].permitida || g_op[g_el[i].ref].rota)) {
-        wsprintfW(extra, L"%s\n%s", t, !g_op[g_el[i].ref].permitida ? L"⛔ Apagada en esta versión de la tool."
-                                                                  : L"⛔ No disponible con este exe (ver el log).");
+        wsprintfW(extra, L"%s\n%s", t, !g_op[g_el[i].ref].permitida ? TR(L"⛔ Apagada en esta versión de la tool.")
+                                                                  : TR(L"⛔ No disponible con este exe (ver el log)."));
         t = extra;
     }
     SetWindowTextW(g_ht_globo, t);
     HDC dc = GetDC(g_ht_globo);
     SelectObject(dc, g_ht_f[F_CHICO]);
     RECT r = { 0, 0, 280, 0 };
-    DrawTextW(dc, t, -1, &r, DT_LEFT | DT_WORDBREAK | DT_CALCRECT | DT_NOPREFIX);
+    DrawTextW(dc, TR(t), -1, &r, DT_LEFT | DT_WORDBREAK | DT_CALCRECT | DT_NOPREFIX);
     ReleaseDC(g_ht_globo, dc);
     POINT p = { g_el[i].x, g_el[i].y + g_el[i].h + 6 };
     ClientToScreen(g_ht_ven, &p);
@@ -2880,6 +2992,9 @@ static void ht_tema_poner(int n)
 
 #include "n2h_entreno.c"                        /* ★ 19-nov: el motor de Entreno / Tramos de Ñ2Hock (velocidad, bucle A/B, anticaída) */
 #include "n2h_chat.c"                           /* ★ 19-nov: el Chat de Ñ2Hock (lectura del chat del juego) */
+#include "piedras.c"                             /* ★ 25-nov: las piedras del ritmo propias (Personalización · Piedras) */
+#include "booster.c"                             /* ★ 25-nov: el botón del booster propio (Personalización · Booster) */
+#include "far_juego.c"                           /* ★ 26-nov: el panel del Far (y de la velocidad) dentro del juego */
 #include "n2h_ventana.c"                         /* ★ 19-nov: la ventana de Ñ2Hock, hecha de cero */
 
 static void ht_armar_ventana(void)
@@ -2910,7 +3025,7 @@ static void ht_armar_ventana(void)
     {
         wchar_t n[32];
         ht_nombre_vk(g_ht_tecla_ver, n);
-        wsprintfW(g_ht_sub, L"%s · mostrar / ocultar", n);
+        wsprintfW(g_ht_sub, TR(L"%s · mostrar / ocultar"), n);
     }
     ht_maquetar_todo();
 
@@ -2998,6 +3113,9 @@ static void herramienta_iniciar(void)
         HANDLE t = CreateThread(NULL, 0, ht_hilo_aviso, NULL, 0, NULL);
         if (t) CloseHandle(t);
     }
+    piedras_iniciar();                              /* ★ 25-nov: siempre (la piedra elegida vale aunque la ventana esté apagada) */
+    booster_iniciar();                              /* ★ 25-nov: igual, el botón del booster */
+    fj_leer_ini();                                  /* ★ 26-nov: el panel del Far en la carrera */
     if (GetPrivateProfileIntA("herramienta", "activo", 0, g_ht_ini)) ht_arrancar(0);
     else apuntar("  [tool] apagada ([herramienta] activo=0) · el launcher la puede prender en vivo");
 }

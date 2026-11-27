@@ -172,7 +172,11 @@
       "origen": "dll",
       "gravedad": 4,
       "nombre": "Juego automático",
-      "descripcion": "El «juego automático» de Ñ2Hock/ToolBit (gancho automatico)."
+      "descripcion": "El «juego automático» de Ñ2Hock/ToolBit (gancho automatico).",
+      "categoria": "juego_automatico",
+      "riesgo": "critico",
+      "confianza": 85,
+      "comprobado_por": "cliente"
     },
     {
       "id": "sala_automatica",
@@ -180,7 +184,11 @@
       "origen": "dll",
       "gravedad": 4,
       "nombre": "Sala automática",
-      "descripcion": "Auto Listo / Inicio, Anfitrión al azar o Misma canción (gancho sala)."
+      "descripcion": "Auto Listo / Inicio, Anfitrión al azar o Misma canción (gancho sala).",
+      "categoria": "bots",
+      "riesgo": "alto",
+      "confianza": 85,
+      "comprobado_por": "cliente"
     },
     {
       "id": "relevo_automatico",
@@ -188,7 +196,11 @@
       "origen": "dll",
       "gravedad": 4,
       "nombre": "Relevo automático",
-      "descripcion": "Alguien pisó el gancho del relevo (Auto Relevo)."
+      "descripcion": "Alguien pisó el gancho del relevo (Auto Relevo).",
+      "categoria": "juego_automatico",
+      "riesgo": "alto",
+      "confianza": 85,
+      "comprobado_por": "cliente"
     },
     {
       "id": "modulo_prohibido",
@@ -196,15 +208,23 @@
       "origen": "dll",
       "gravedad": 4,
       "nombre": "Módulo de trampas",
-      "descripcion": "Tiene cargado un módulo de trampas (ToolBit, R2Mods, Cheat Engine…)."
+      "descripcion": "Tiene cargado un módulo de trampas (ToolBit, R2Mods, Cheat Engine…).",
+      "categoria": "dll_no_autorizada",
+      "riesgo": "alto",
+      "confianza": 70,
+      "comprobado_por": "cliente"
     },
     {
       "id": "proceso_prohibido",
-      "accion": "expulsar",
+      "accion": "avisar",
       "origen": "dll",
       "gravedad": 4,
       "nombre": "Programa de trampas",
-      "descripcion": "Tiene abierto un programa de trampas."
+      "descripcion": "Un programa de trampas ABIERTO con el juego (Cheat Engine, ToolBit, R2TR, un acelerador…). ★ 26-nov: solo AVISA: tenerlo abierto no prueba que se use. Con una alteración del juego en la misma sesión da manipulacion_correlacionada.",
+      "categoria": "herramienta_memoria",
+      "riesgo": "bajo",
+      "confianza": 30,
+      "comprobado_por": "cliente"
     },
     {
       "id": "farmeo",
@@ -212,7 +232,11 @@
       "origen": "farmeo",
       "gravedad": 4,
       "nombre": "Farmeo",
-      "descripcion": "Dos o más señales de farmeo distintas en la misma sesión."
+      "descripcion": "Dos o más señales de farmeo distintas en la misma sesión.",
+      "categoria": "bots",
+      "riesgo": "alto",
+      "confianza": 75,
+      "comprobado_por": "servidor"
     },
     {
       "id": "combo_imposible",
@@ -220,7 +244,11 @@
       "origen": "cartel",
       "gravedad": 3,
       "nombre": "Combo imposible",
-      "descripcion": "Más combo que notas tiene la canción."
+      "descripcion": "Más combo que notas tiene la canción.",
+      "categoria": "resultado_imposible",
+      "riesgo": "alto",
+      "confianza": 95,
+      "comprobado_por": "servidor"
     },
     {
       "id": "porcentaje_imposible",
@@ -228,7 +256,11 @@
       "origen": "cartel",
       "gravedad": 3,
       "nombre": "Porcentaje imposible",
-      "descripcion": "PD o estrellas por encima de 100."
+      "descripcion": "PD o estrellas por encima de 100.",
+      "categoria": "paquetes",
+      "riesgo": "alto",
+      "confianza": 95,
+      "comprobado_por": "servidor"
     },
     {
       "id": "codigo_modificado",
@@ -236,7 +268,11 @@
       "origen": "dll",
       "gravedad": 2,
       "nombre": "Código modificado",
-      "descripcion": "El exe fue tocado desde afuera (otros parches de Ñ2Hock: far, teclado…)."
+      "descripcion": "El exe fue tocado desde afuera (otros parches de Ñ2Hock: far, teclado…).",
+      "categoria": "memoria_alterada",
+      "riesgo": "alto",
+      "confianza": 70,
+      "comprobado_por": "cliente"
     },
     {
       "id": "codigo_previo",
@@ -244,7 +280,11 @@
       "origen": "dll",
       "gravedad": 2,
       "nombre": "Exe tocado al abrir",
-      "descripcion": "El exe ya estaba tocado antes de que arrancara la dll."
+      "descripcion": "El exe ya estaba tocado antes de que arrancara la dll.",
+      "categoria": "memoria_alterada",
+      "riesgo": "medio",
+      "confianza": 55,
+      "comprobado_por": "cliente"
     },
     {
       "id": "reloj_rapido",
@@ -252,7 +292,11 @@
       "origen": "cartel",
       "gravedad": 2,
       "nombre": "Reloj rápido",
-      "descripcion": "El reloj del juego corrió más que el tiempo real desde el GO (speedhack)."
+      "descripcion": "El reloj del juego corrió más que el tiempo real desde el GO (speedhack).",
+      "categoria": "speed_hack",
+      "riesgo": "medio",
+      "confianza": 70,
+      "comprobado_por": "servidor"
     },
     {
       "id": "reloj_lento",
@@ -260,15 +304,23 @@
       "origen": "cartel",
       "gravedad": 2,
       "nombre": "Reloj lento",
-      "descripcion": "El reloj del juego corrió bastante menos que el tiempo real."
+      "descripcion": "El reloj del juego corrió bastante menos que el tiempo real.",
+      "categoria": "speed_hack",
+      "riesgo": "bajo",
+      "confianza": 45,
+      "comprobado_por": "servidor"
     },
     {
       "id": "animaciones_tocadas",
       "accion": "avisar",
-      "origen": "cartel",
+      "origen": "ff3d",
       "gravedad": 2,
       "nombre": "Animaciones tocadas",
-      "descripcion": "Las animaciones de tropezar no coinciden con las del server."
+      "descripcion": "Las animaciones de tropezar no coinciden con las del server.",
+      "categoria": "archivos_protegidos",
+      "riesgo": "medio",
+      "confianza": 65,
+      "comprobado_por": "servidor"
     },
     {
       "id": "teclas_inyectadas",
@@ -276,7 +328,11 @@
       "origen": "dll",
       "gravedad": 2,
       "nombre": "Teclas inyectadas",
-      "descripcion": "Teclas mandadas por un programa (cuenta como señal de farmeo)."
+      "descripcion": "Teclas mandadas por un programa (cuenta como señal de farmeo).",
+      "categoria": "macros",
+      "riesgo": "bajo",
+      "confianza": 40,
+      "comprobado_por": "cliente"
     },
     {
       "id": "hilo_ajeno",
@@ -284,7 +340,11 @@
       "origen": "dll",
       "gravedad": 2,
       "nombre": "Hilo ajeno",
-      "descripcion": "Un hilo del juego arranca en código inyectado."
+      "descripcion": "Un hilo del juego arranca en código inyectado.",
+      "categoria": "dll_no_autorizada",
+      "riesgo": "medio",
+      "confianza": 50,
+      "comprobado_por": "cliente"
     },
     {
       "id": "listo_automatico",
@@ -292,7 +352,11 @@
       "origen": "farmeo",
       "gravedad": 2,
       "nombre": "Listo automático",
-      "descripcion": "«Listo»/«Iniciar» siempre al mismo instante tras la carrera."
+      "descripcion": "«Listo»/«Iniciar» siempre al mismo instante tras la carrera.",
+      "categoria": "bots",
+      "riesgo": "medio",
+      "confianza": 60,
+      "comprobado_por": "servidor"
     },
     {
       "id": "carreras_sin_hablar",
@@ -300,7 +364,11 @@
       "origen": "farmeo",
       "gravedad": 1,
       "nombre": "Carreras sin hablar",
-      "descripcion": "Muchas carreras seguidas sin una línea de chat."
+      "descripcion": "Muchas carreras seguidas sin una línea de chat.",
+      "categoria": "bots",
+      "riesgo": "bajo",
+      "confianza": 20,
+      "comprobado_por": "servidor"
     },
     {
       "id": "misma_cancion",
@@ -308,7 +376,11 @@
       "origen": "farmeo",
       "gravedad": 1,
       "nombre": "Misma canción",
-      "descripcion": "La misma canción muchas veces seguidas."
+      "descripcion": "La misma canción muchas veces seguidas.",
+      "categoria": "bots",
+      "riesgo": "bajo",
+      "confianza": 20,
+      "comprobado_por": "servidor"
     },
     {
       "id": "campanas_automaticas",
@@ -316,7 +388,11 @@
       "origen": "farmeo",
       "gravedad": 2,
       "nombre": "Campanas automáticas",
-      "descripcion": "Tocó campana en cada ronda, muchas rondas seguidas."
+      "descripcion": "Tocó campana en cada ronda, muchas rondas seguidas.",
+      "categoria": "macros",
+      "riesgo": "medio",
+      "confianza": 55,
+      "comprobado_por": "servidor"
     },
     {
       "id": "combo_repetido",
@@ -324,7 +400,11 @@
       "origen": "farmeo",
       "gravedad": 2,
       "nombre": "Combo repetido",
-      "descripcion": "El mismo combo en canciones distintas (fallar a propósito al llegar a N)."
+      "descripcion": "El mismo combo en canciones distintas (fallar a propósito al llegar a N).",
+      "categoria": "auto_perfect",
+      "riesgo": "medio",
+      "confianza": 55,
+      "comprobado_por": "servidor"
     },
     {
       "id": "precision_constante",
@@ -332,7 +412,11 @@
       "origen": "farmeo",
       "gravedad": 2,
       "nombre": "Precisión constante",
-      "descripcion": "La misma precisión en canciones de niveles muy distintos."
+      "descripcion": "La misma precisión en canciones de niveles muy distintos.",
+      "categoria": "auto_perfect",
+      "riesgo": "medio",
+      "confianza": 55,
+      "comprobado_por": "servidor"
     },
     {
       "id": "modulo_permitido",
@@ -340,7 +424,11 @@
       "origen": "dll",
       "gravedad": 0,
       "nombre": "Módulo permitido",
-      "descripcion": "Un módulo con nombre «de trampa» que no lo es: el motor de práctica de Ñ2Hock (ToolBitPracticeEngine)."
+      "descripcion": "Un módulo con nombre «de trampa» que no lo es: el motor de práctica de Ñ2Hock (ToolBitPracticeEngine).",
+      "categoria": "dll_no_autorizada",
+      "riesgo": "informativo",
+      "confianza": 10,
+      "comprobado_por": "cliente"
     },
     {
       "id": "exe_desconocido",
@@ -348,7 +436,11 @@
       "origen": "dll",
       "gravedad": 1,
       "nombre": "Exe desconocido",
-      "descripcion": "El R2Beat.exe no es uno de los aceptados."
+      "descripcion": "El R2Beat.exe no es uno de los aceptados.",
+      "categoria": "archivos_protegidos",
+      "riesgo": "medio",
+      "confianza": 55,
+      "comprobado_por": "cliente"
     },
     {
       "id": "memoria_ajena",
@@ -356,7 +448,11 @@
       "origen": "dll",
       "gravedad": 1,
       "nombre": "Memoria ajena",
-      "descripcion": "Hay código inyectado (Ñ2Hock lo tiene siempre)."
+      "descripcion": "Hay código inyectado (Ñ2Hock lo tiene siempre).",
+      "categoria": "memoria_alterada",
+      "riesgo": "bajo",
+      "confianza": 35,
+      "comprobado_por": "cliente"
     },
     {
       "id": "depurador",
@@ -364,7 +460,11 @@
       "origen": "dll",
       "gravedad": 1,
       "nombre": "Depurador",
-      "descripcion": "Un depurador pegado al juego."
+      "descripcion": "Un depurador pegado al juego.",
+      "categoria": "herramienta_memoria",
+      "riesgo": "bajo",
+      "confianza": 40,
+      "comprobado_por": "cliente"
     },
     {
       "id": "sin_antitrampa",
@@ -372,7 +472,11 @@
       "origen": "cartel",
       "gravedad": 1,
       "nombre": "Sin antitrampa",
-      "descripcion": "Terminó una carrera sin que su dll mandara el «hola»."
+      "descripcion": "Terminó una carrera sin que su dll mandara el «hola».",
+      "categoria": "integridad_antitrampa",
+      "riesgo": "bajo",
+      "confianza": 35,
+      "comprobado_por": "servidor"
     },
     {
       "id": "expulsa_espectadores",
@@ -380,7 +484,11 @@
       "origen": "farmeo",
       "gravedad": 1,
       "nombre": "Echa espectadores",
-      "descripcion": "El anfitrión echa espectadores en serie."
+      "descripcion": "El anfitrión echa espectadores en serie.",
+      "categoria": "conducta_anormal",
+      "riesgo": "bajo",
+      "confianza": 30,
+      "comprobado_por": "servidor"
     },
     {
       "id": "resultado_alterado",
@@ -388,7 +496,11 @@
       "origen": "dll",
       "gravedad": 4,
       "nombre": "Resultado alterado",
-      "descripcion": "El armado del resultado (FF28 o el de Juego Solo) reescrito en el cliente: precisión o combo personalizados."
+      "descripcion": "El armado del resultado (FF28 o el de Juego Solo) reescrito en el cliente: precisión o combo personalizados.",
+      "categoria": "auto_perfect",
+      "riesgo": "critico",
+      "confianza": 85,
+      "comprobado_por": "cliente"
     },
     {
       "id": "precision_imposible",
@@ -396,7 +508,11 @@
       "origen": "cartel",
       "gravedad": 3,
       "nombre": "Precisión imposible",
-      "descripcion": "Milésimas mayores que 999, o 100 % con milésimas (el tope es 100.000)."
+      "descripcion": "Milésimas mayores que 999, o 100 % con milésimas (el tope es 100.000).",
+      "categoria": "resultado_imposible",
+      "riesgo": "alto",
+      "confianza": 90,
+      "comprobado_por": "servidor"
     },
     {
       "id": "llegada_anticipada",
@@ -404,7 +520,11 @@
       "origen": "cartel",
       "gravedad": 2,
       "nombre": "Llegada anticipada",
-      "descripcion": "Llegó a la meta mucho antes de lo que tarda esa canción (menos del 75 % de la mediana de sus llegadas limpias): «Simular llegada»."
+      "descripcion": "Llegó a la meta mucho antes de lo que tarda esa canción (menos del 75 % de la mediana de sus llegadas limpias): «Simular llegada».",
+      "categoria": "juego_automatico",
+      "riesgo": "medio",
+      "confianza": 60,
+      "comprobado_por": "servidor"
     },
     {
       "id": "llegada_imposible",
@@ -412,7 +532,11 @@
       "origen": "cartel",
       "gravedad": 3,
       "nombre": "Llegada imposible",
-      "descripcion": "Llegó a la meta en menos de la mitad de lo que dura como poco su canción según el chart (última nota con su BPM más rápido): «Simular llegada», aunque la canción no tenga historia."
+      "descripcion": "Llegó a la meta en menos de la mitad de lo que dura como poco su canción según el chart (última nota con su BPM más rápido): «Simular llegada», aunque la canción no tenga historia.",
+      "categoria": "resultado_imposible",
+      "riesgo": "alto",
+      "confianza": 90,
+      "comprobado_por": "servidor"
     },
     {
       "id": "manija_escritura",
@@ -420,7 +544,95 @@
       "origen": "dll",
       "gravedad": 1,
       "nombre": "Manija de escritura",
-      "descripcion": "Un programa tiene abierto el juego con permiso de escribir su memoria o crearle hilos (así trabajan Candy y R2AutoRouteLab, sin inyectarse). El sistema no cuenta."
+      "descripcion": "Un programa tiene abierto el juego con permiso de escribir su memoria o crearle hilos (así trabajan Candy y R2AutoRouteLab, sin inyectarse). El sistema no cuenta.",
+      "categoria": "herramienta_memoria",
+      "riesgo": "medio",
+      "confianza": 55,
+      "comprobado_por": "cliente"
+    },
+    {
+      "id": "manipulacion_correlacionada",
+      "accion": "expulsar",
+      "origen": "servidor",
+      "gravedad": 4,
+      "nombre": "Manipulación correlacionada",
+      "descripcion": "Una herramienta (Cheat Engine, manija con permiso de escritura, depurador) y una alteración comprobada del juego en la MISMA sesión. La herramienta sola sólo avisa.",
+      "categoria": "herramienta_memoria",
+      "riesgo": "critico",
+      "confianza": 85,
+      "comprobado_por": "servidor"
+    },
+    {
+      "id": "telemetria_interrumpida",
+      "accion": "avisar",
+      "origen": "servidor",
+      "gravedad": 2,
+      "nombre": "Telemetría interrumpida",
+      "descripcion": "La dll dijo que late (lat=) y lleva ANTITRAMPA_LATIDO_TOPE_S sin latir con el juego conectado: suspendida, colgada o quitada.",
+      "categoria": "telemetria",
+      "riesgo": "medio",
+      "confianza": 45,
+      "comprobado_por": "servidor"
+    },
+    {
+      "id": "telemetria_inundada",
+      "accion": "registrar",
+      "origen": "servidor",
+      "gravedad": 2,
+      "nombre": "Telemetría inundada",
+      "descripcion": "Más renglones R2AT por minuto que los que manda una dll de verdad; los de más se descartan.",
+      "categoria": "paquetes",
+      "riesgo": "medio",
+      "confianza": 60,
+      "comprobado_por": "servidor"
+    },
+    {
+      "id": "telemetria_repetida",
+      "accion": "avisar",
+      "origen": "servidor",
+      "gravedad": 2,
+      "nombre": "Telemetría repetida",
+      "descripcion": "Un renglón R2AT con un número de secuencia (s=) ya visto: repetido o fabricado.",
+      "categoria": "paquetes",
+      "riesgo": "medio",
+      "confianza": 65,
+      "comprobado_por": "servidor"
+    },
+    {
+      "id": "reloj_cliente",
+      "accion": "avisar",
+      "origen": "servidor",
+      "gravedad": 2,
+      "nombre": "Reloj de la PC distinto",
+      "descripcion": "Entre dos latidos, el reloj de la PC (t=) corrió más de ±15 % distinto que el del server, ANTITRAMPA_RELOJ_CLIENTE_VECES veces seguidas (speed hack).",
+      "categoria": "speed_hack",
+      "riesgo": "medio",
+      "confianza": 60,
+      "comprobado_por": "servidor"
+    },
+    {
+      "id": "antitrampa_apagado",
+      "accion": "registrar",
+      "origen": "dll",
+      "gravedad": 2,
+      "nombre": "Antitrampa apagado",
+      "descripcion": "La dll avisa que la apagaron en su ini ([antitrampa] activo=0).",
+      "categoria": "integridad_antitrampa",
+      "riesgo": "medio",
+      "confianza": 50,
+      "comprobado_por": "cliente"
+    },
+    {
+      "id": "vigia_parado",
+      "accion": "avisar",
+      "origen": "dll",
+      "gravedad": 3,
+      "nombre": "Vigía del antitrampa parado",
+      "descripcion": "El hilo del antitrampa dejó de correr dentro del juego (suspendido o colgado).",
+      "categoria": "integridad_antitrampa",
+      "riesgo": "alto",
+      "confianza": 60,
+      "comprobado_por": "cliente"
     }
   ],
   "silencioso": {
@@ -439,5 +651,28 @@
       ".sanciones perdonar <apodo|usn|cuenta>"
     ],
     "descripcion": "Lo que expulsaría no echa a nadie al momento: el jugador no se entera, sus carreras dejan de cobrar y la detección queda pendiente. La escalera se aplica en tanda, una falta por cuenta."
-  }
+  },
+  "categorias": {
+    "herramienta_memoria": "Cheat Engine y herramientas de memoria",
+    "juego_automatico": "Auto play / juego automático",
+    "auto_perfect": "Auto perfect",
+    "bots": "Bots",
+    "macros": "Macros y entradas automatizadas",
+    "speed_hack": "Speed hack",
+    "dll_no_autorizada": "DLL no autorizadas",
+    "memoria_alterada": "Alteraciones de memoria del juego",
+    "archivos_protegidos": "Archivos protegidos modificados",
+    "integridad_antitrampa": "Integridad del antitrampa",
+    "conducta_anormal": "Comportamiento anormal en partidas",
+    "paquetes": "Manipulación de paquetes",
+    "resultado_imposible": "Resultados o puntuaciones imposibles",
+    "telemetria": "Interrupciones de la telemetría"
+  },
+  "riesgos": [
+    "informativo",
+    "bajo",
+    "medio",
+    "alto",
+    "critico"
+  ]
 }

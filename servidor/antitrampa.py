@@ -17,6 +17,7 @@ import socket
 import statistics
 import threading
 import time
+import uuid
 from collections import deque
 
 from .ajustes import (
@@ -56,7 +57,17 @@ from .ajustes import (
     ANTITRAMPA_SILENCIOSO,
     ANTITRAMPA_SUELO_FACTOR,
     ANTITRAMPA_TANDA_DEMORA_H,
+    ANTITRAMPA_AVISOS_GM_POR_MINUTO,
+    ANTITRAMPA_CORRELACION_ALTERACION,
+    ANTITRAMPA_CORRELACION_HERRAMIENTA,
+    ANTITRAMPA_JSONL_MAX_MB,
+    ANTITRAMPA_LATIDO_TOPE_S,
+    ANTITRAMPA_R2AT_POR_MINUTO,
+    ANTITRAMPA_RELOJ_CLIENTE_TOLERANCIA,
+    ANTITRAMPA_RELOJ_CLIENTE_VECES,
+    ANTITRAMPA_SENALES_DEBILES,
 )
+from . import antitrampa_eventos as eventos
 from .registro import log
 
 FPS = 60
@@ -67,6 +78,38 @@ _archivo_lock = threading.Lock()
 _CUENTAS = {}
 _cuentas_lock = threading.Lock()
 _R2AT = re.compile(r"R2AT((?: \w+=\S+)+)")
+#   ★ 26-nov: un FF59 puede traer VARIOS renglones R2AT, y un valor puede tener espacios («proceso=Cheat Engine.exe»):
+#   cada renglón se lee entero y el valor llega hasta la próxima « clave=».
+_R2AT_LINEA = re.compile(r"R2AT((?: \w+=[^\r\n]*?)+)[ \t]*(?=[\r\n]|$)")
+_R2AT_PAR = re.compile(r"(\w+)=(.*?)(?= \w+=|$)")
+
+
+def _sesion(usn):
+    """El estado de esta cuenta EN ESTA SESIÓN DEL JUEGO (de «hola» a «hola»). ⚠ Con `_cuentas_lock` tomado."""
+    c = _CUENTAS.get(usn)
+    if c is None:
+        c = _CUENTAS[usn] = {"hola": False, "retener": False, "sin_hola_avisado": False}
+    c.setdefault("sesion", uuid.uuid4().hex[:16])
+    c.setdefault("reglas", set())                 # las reglas vistas en esta sesión (para la correlación)
+    c.setdefault("gm_avisados", set())
+    c.setdefault("r2at", deque(maxlen=max(ANTITRAMPA_R2AT_POR_MINUTO + 1, 2)))
+    c.setdefault("visto", time.monotonic())
+    return c
+
+
+def _contexto(st):
+    """Lo que lleva cada evento de esta conexión: sesión, partida y versiones."""
+    usn = getattr(st, "usn", None)
+    with _cuentas_lock:
+        c = _sesion(usn) if usn else {}
+        sesion, exe, v, dll = c.get("sesion"), c.get("exe"), c.get("v"), c.get("dll")
+    rid, magic = getattr(st, "room_id", None), getattr(st, "game_magic", None)
+    partida = f"{rid}:{magic:08x}" if rid is not None and isinstance(magic, int) else (str(rid) if rid else None)
+    ver_at = None
+    if v:
+        ver_at = f"r2at v{v}" + (f" · dll {dll}" if dll else "")
+    return {"sesion": sesion, "partida": partida, "version_cliente": f"exe {exe}" if exe else None,
+            "version_antitrampa": ver_at}
 
 
 def marcar_salida(conn, ahora=None):
@@ -210,7 +253,8 @@ def _revisar_cuenta(st):
     if not usn:
         return False
     with _cuentas_lock:
-        c = _CUENTAS.setdefault(usn, {"hola": False, "retener": False, "sin_hola_avisado": False})
+        c = _sesion(usn)
+        c["visto"] = time.monotonic()
         avisar_sin_hola = not c["hola"] and not c["sin_hola_avisado"]
         c["sin_hola_avisado"] |= avisar_sin_hola
         retener = c["retener"] or _BLOQUEADOS.get(usn, 0) > time.monotonic()
@@ -236,57 +280,274 @@ def _va(texto):
         return -1
 
 
+def leer_r2at(texto):
+    """Los renglones R2AT de un FF59 -> [(dict de claves, renglón crudo), …]. Pura (para las pruebas)."""
+    out = []
+    for m in _R2AT_LINEA.finditer(texto or ""):
+        cuerpo = m.group(1).strip()
+        d = {k: v.strip() for k, v in _R2AT_PAR.findall(cuerpo)}
+        if d:
+            out.append((d, m.group(0)[:300]))
+    return out
+
+
 def al_ff59(st, texto):
-    """Un renglón «R2AT …» de la dll (antitrampa.c). Devuelve True si era uno (el FF59 ya está atendido)."""
-    m = _R2AT.search(texto)
-    if not m:
+    """Los renglones «R2AT …» de la dll (antitrampa.c). Devuelve True si había alguno (el FF59 ya está atendido).
+    ★ 26-nov: TODOS los renglones del FF59 (antes sólo el primero), con tope por minuto, número de secuencia (`s=`,
+    anti-repetición) y el LATIDO (`latido=`). Cada uno termina como evento en el registro central."""
+    renglones = leer_r2at(texto)
+    if not renglones:
         return False
     if not ANTITRAMPA or not getattr(st, "usn", None):
         return True
-    d = dict(par.split("=", 1) for par in m.group(1).split())
+    for d, crudo in renglones:
+        if _admitir_r2at(st, d):
+            _un_r2at(st, d, crudo)
+    return True
+
+
+def _admitir_r2at(st, d, ahora=None):
+    """El tope de renglones por minuto y la secuencia (`s=`). False = el renglón se descarta; la primera vez de cada
+    cosa en la sesión queda anotada (`telemetria_inundada`, `telemetria_repetida`)."""
+    t = time.monotonic() if ahora is None else ahora
+    marca = None
+    with _cuentas_lock:
+        c = _sesion(st.usn)
+        c["visto"] = t
+        ventana = c["r2at"]
+        while ventana and t - ventana[0] > 60:
+            ventana.popleft()
+        if len(ventana) >= ANTITRAMPA_R2AT_POR_MINUTO and "v" not in d:
+            c["descartados"] = c.get("descartados", 0) + 1
+            if not c.get("inundado"):
+                c["inundado"] = True
+                marca = "inundada"
+            admitido = False
+        else:
+            ventana.append(t)
+            admitido = True
+            s = d.get("s", "")
+            if s.isdigit():
+                s = int(s)
+                ultimo = c.get("seq")
+                if "v" in d:
+                    c["seq"] = s                       # el «hola»: la secuencia de ESTA corrida del juego
+                elif ultimo is not None and s <= ultimo:
+                    c["repetidos"] = c.get("repetidos", 0) + 1
+                    admitido = False
+                    if not c.get("repetido"):
+                        c["repetido"] = True
+                        marca = "repetida"
+                else:
+                    if ultimo is not None and s > ultimo + 1:
+                        c["perdidos"] = c.get("perdidos", 0) + (s - ultimo - 1)
+                    c["seq"] = s
+    if marca == "inundada":
+        anotar(st, "telemetria_inundada", f"más de {ANTITRAMPA_R2AT_POR_MINUTO} renglones del antitrampa por minuto: "
+                                          "los de más se descartan", {},
+               evidencia={"tope_por_minuto": ANTITRAMPA_R2AT_POR_MINUTO})
+    elif marca == "repetida":
+        anotar(st, "telemetria_repetida", f"un renglón del antitrampa con la secuencia {d.get('s')} ya vista "
+                                          "(repetido o fabricado)", {}, evidencia={"s": d.get("s")})
+    return admitido
+
+
+def _un_r2at(st, d, crudo):
+    ev = {"r2at": crudo}
     if "v" in d:
-        with _cuentas_lock:
-            _CUENTAS[st.usn] = {"hola": True, "retener": False, "sin_hola_avisado": False}
-        log("TRAMP", f"  ★ usn={st.usn}: antitrampa del cliente v{d['v']} · exe {d.get('exe')} · previo={d.get('previo')}")
-        if d.get("exe") not in ANTITRAMPA_EXE_MD5:
-            anotar(st, "exe_desconocido", f"R2Beat.exe con md5 {d.get('exe')}", {"exe": d.get("exe")})
-        if d.get("previo", "0") not in ("0", "-1"):
-            anotar(st, "codigo_previo", f"{d['previo']} página(s) del exe ya tocadas al abrir el juego, la primera "
-                                        f"en {d.get('previo_va')}", {})
+        _al_hola(st, d, crudo)
+    elif "latido" in d:
+        _al_latido(st, d)
+    elif "apagado" in d:
+        anotar(st, "antitrampa_apagado", "la dll del antitrampa avisa que la apagaron en su ini", {}, evidencia=ev)
+    elif "vigia" in d:
+        anotar(st, "vigia_parado", "el hilo del antitrampa dejó de correr dentro del juego", {}, evidencia=ev)
     elif "gancho" in d:                                    # un gancho conocido de un programa de trampas
         regla = _GANCHOS.get(d["gancho"], "codigo_modificado")
-        anotar(st, regla, f"gancho «{d['gancho']}» en {d.get('va')}: {d.get('bytes', '').replace('_', ' ')}", {})
+        anotar(st, regla, f"gancho «{d['gancho']}» en {d.get('va')}: {d.get('bytes', '').replace('_', ' ')}", {},
+               evidencia=ev, firma=d["gancho"])
     elif "codigo" in d and _va(d["codigo"]) in ANTITRAMPA_GANCHOS:   # dll sin «gancho=»: por la dirección
         anotar(st, _GANCHOS[ANTITRAMPA_GANCHOS[_va(d["codigo"])]],
                f"gancho «{ANTITRAMPA_GANCHOS[_va(d['codigo'])]}» en {d['codigo']}: "
-               f"{d.get('bytes', '').replace('_', ' ')}", {})
+               f"{d.get('bytes', '').replace('_', ' ')}", {}, evidencia=ev, firma=d["codigo"])
     elif "codigo" in d:
         anotar(st, "codigo_modificado", f"{d.get('paginas')} página(s) del exe tocadas por fuera, la primera en "
-                                        f"{d['codigo']}: {d.get('bytes', '').replace('_', ' ')}", {})
+                                        f"{d['codigo']}: {d.get('bytes', '').replace('_', ' ')}", {},
+               evidencia=ev, firma=d["codigo"])
     elif "modulo" in d and d["modulo"].lower().startswith(ANTITRAMPA_MODULOS_PERMITIDOS):
         # ★ 19-nov: el motor de práctica de Ñ2Hock (ToolBitPracticeEngine_<hash>.dll): la dll del launcher
         #   todavía lo informa como «toolbit», pero NO es el ToolBit de trampas. Sólo queda registrado.
-        anotar(st, "modulo_permitido", f"tiene cargado {d['modulo']} (permitido)", {})
+        anotar(st, "modulo_permitido", f"tiene cargado {d['modulo']} (permitido)", {}, evidencia=ev,
+               firma=d["modulo"].lower())
     elif "modulo" in d:
-        anotar(st, "modulo_prohibido", f"tiene cargado {d['modulo']}", {})
+        anotar(st, "modulo_prohibido", f"tiene cargado {d['modulo']}", {}, evidencia=ev, firma=d["modulo"].lower())
     elif "memoria" in d:
         anotar(st, "memoria_ajena", f"{d.get('regiones')} región(es) de memoria ejecutable ajena, "
-                                    f"la primera en {d['memoria']}", {})
+                                    f"la primera en {d['memoria']}", {}, evidencia=ev)
     elif "depurador" in d:
-        anotar(st, "depurador", "un depurador enganchado al juego", {})
+        anotar(st, "depurador", "un depurador enganchado al juego", {}, evidencia=ev)
     elif "inyectadas" in d:
-        _senal(st, "teclas_inyectadas", f"{d['inyectadas']} de {d.get('teclas', '?')} teclas las mandó un programa")
+        _senal(st, "teclas_inyectadas", f"{d['inyectadas']} de {d.get('teclas', '?')} teclas las mandó un programa",
+               evidencia=ev)
     elif "hilo" in d:
-        anotar(st, "hilo_ajeno", f"un hilo del juego arranca en memoria inyectada ({d['hilo']})", {})
+        anotar(st, "hilo_ajeno", f"un hilo del juego arranca en memoria inyectada ({d['hilo']})", {}, evidencia=ev)
     elif "proceso" in d:
         firma = f" (firma {d['firma']})" if "firma" in d else ""
-        anotar(st, "proceso_prohibido", f"tiene abierto {d['proceso']}{firma}", {})
+        anotar(st, "proceso_prohibido", f"tiene abierto {d['proceso']}{firma}", {}, evidencia=ev,
+               firma=d["proceso"].lower())
     elif "manija" in d:                                    # ★ 24-nov: un programa con permiso de escribir el juego
         anotar(st, "manija_escritura", f"{d['manija']} tiene abierto el juego con permiso de escribir su memoria "
-                                       f"(acceso {d.get('acceso', '?')})", {})
+                                       f"(acceso {d.get('acceso', '?')})", {}, evidencia=ev,
+               firma=d["manija"].lower())
     else:
-        log("TRAMP", f"  ? usn={st.usn}: renglón R2AT que no conozco: {m.group(0)!r}")
-    return True
+        log("TRAMP", f"  ? usn={st.usn}: renglón R2AT que no conozco: {crudo!r}")
+
+
+def _al_hola(st, d, crudo):
+    """El «hola» de la dll: una corrida NUEVA del juego (sesión nueva). ★ 26-nov: ya NO limpia la retención si la
+    cuenta tiene detecciones pendientes (un «hola» fabricado la borraba: el tramposo volvía a cobrar)."""
+    pendientes = _tiene_pendientes(st.usn)
+    with _cuentas_lock:
+        viejo = _CUENTAS.get(st.usn) or {}
+        nuevo = {"hola": True, "retener": bool(viejo.get("retener")) and pendientes, "sin_hola_avisado": False}
+        if nuevo["retener"]:
+            nuevo["expulsado"] = viejo.get("expulsado")
+            nuevo["reglas_pendientes"] = set(viejo.get("reglas_pendientes") or ())
+        _CUENTAS[st.usn] = nuevo
+        c = _sesion(st.usn)
+        c.update({"v": d.get("v"), "exe": d.get("exe"), "dll": d.get("dll") or d.get("dllmd5"),
+                  "lat": int(d["lat"]) if d.get("lat", "").isdigit() else 0, "ult_latido": time.monotonic(),
+                  "seq": int(d["s"]) if d.get("s", "").isdigit() else None})
+    log("TRAMP", f"  ★ usn={st.usn}: antitrampa del cliente v{d['v']} · exe {d.get('exe')} · previo={d.get('previo')}"
+                 f"{' · dll ' + str(d.get('dll')) if d.get('dll') else ''}{' · retención conservada' if nuevo['retener'] else ''}")
+    ev = {"r2at": crudo}
+    if d.get("exe") not in ANTITRAMPA_EXE_MD5:
+        anotar(st, "exe_desconocido", f"R2Beat.exe con md5 {d.get('exe')}", {"exe": d.get("exe")}, evidencia=ev,
+               firma=d.get("exe"))
+    if d.get("previo", "0") not in ("0", "-1"):
+        anotar(st, "codigo_previo", f"{d['previo']} página(s) del exe ya tocadas al abrir el juego, la primera "
+                                    f"en {d.get('previo_va')}", {}, evidencia=ev)
+
+
+def _tiene_pendientes(usn):
+    """¿La cuenta de este personaje tiene detecciones esperando la tanda?"""
+    try:
+        from . import almacen
+        cuenta = almacen.cuenta_de_uid(usn)[0]
+        return any(f.get("cuenta") == cuenta or f.get("usn") == usn for f in almacen.antitrampa_pendientes(0))
+    except Exception:                         # noqa: BLE001
+        return False
+
+
+def _al_latido(st, d, ahora=None):
+    """★ 26-nov · el LATIDO de la dll (cada 60 s): que sigue viva, cuántos renglones perdió, y su reloj. El reloj de la
+    PC entre dos latidos (`t=`, GetTickCount al MANDAR) se compara con el del server: un speed hack que acelera el
+    juego acelera también ese reloj."""
+    t = time.monotonic() if ahora is None else ahora
+    marca = None
+    with _cuentas_lock:
+        c = _sesion(st.usn)
+        c["ult_latido"] = t
+        c["latidos"] = c.get("latidos", 0) + 1
+        c["interrumpida"] = False
+        for k in ("perdidas", "abiertas", "teclado"):
+            if d.get(k, "").isdigit():
+                c[f"lat_{k}"] = int(d[k])
+        tc = int(d["t"]) if d.get("t", "").isdigit() else None
+        prev = c.get("reloj_ref")
+        if tc is not None:
+            if prev is None:
+                c["reloj_ref"] = (t, tc)
+            else:
+                srv = t - prev[0]
+                cli = ((tc - prev[1]) & 0xFFFFFFFF) / 1000.0
+                if srv >= 50:                                   # con menos, el retraso de la red pesa demasiado
+                    razon = cli / srv
+                    if abs(razon - 1) > ANTITRAMPA_RELOJ_CLIENTE_TOLERANCIA:
+                        c["reloj_malos"] = c.get("reloj_malos", 0) + 1
+                    else:
+                        c["reloj_malos"] = 0
+                    c["reloj_razon"] = round(razon, 3)
+                    c["reloj_ref"] = (t, tc)
+                    if c["reloj_malos"] >= ANTITRAMPA_RELOJ_CLIENTE_VECES:
+                        marca = (razon, srv, cli)
+                        c["reloj_malos"] = 0
+    if marca:
+        razon, srv, cli = marca
+        anotar(st, "reloj_cliente", f"el reloj del juego corrió al {razon:.0%} del del server "
+                                    f"({cli:.0f} s contra {srv:.0f} s entre latidos)", {},
+               evidencia={"razon": round(razon, 3), "cliente_s": round(cli, 1), "server_s": round(srv, 1)})
+
+
+def al_conectar(st):
+    """El lobby registró esta conexión (FF02): la sesión del antitrampa existe desde ya (para el tablero)."""
+    usn = getattr(st, "usn", None)
+    if ANTITRAMPA and usn:
+        with _cuentas_lock:
+            _sesion(usn)["visto"] = time.monotonic()
+
+
+def estado_de(usn):
+    """El estado del antitrampa de un jugador, para el tablero: activo | sin_antitrampa | callado | apagado."""
+    with _cuentas_lock:
+        c = dict(_CUENTAS.get(usn) or {})
+    if not c:
+        return {"estado": "sin_datos"}
+    t = time.monotonic()
+    if c.get("apagado"):
+        est = "apagado"
+    elif not c.get("hola"):
+        est = "sin_antitrampa"
+    elif c.get("lat") and t - c.get("ult_latido", t) > ANTITRAMPA_LATIDO_TOPE_S:
+        est = "callado"
+    else:
+        est = "activo"
+    return {"estado": est, "sesion": c.get("sesion"), "version": c.get("v"), "dll": c.get("dll"), "exe": c.get("exe"),
+            "latido_hace_s": round(t - c["ult_latido"]) if c.get("ult_latido") and c.get("lat") else None,
+            "latidos": c.get("latidos", 0), "perdidos": c.get("perdidos", 0), "descartados": c.get("descartados", 0),
+            "reloj": c.get("reloj_razon"), "retenido": bool(c.get("retener")), "reglas": sorted(c.get("reglas") or ()),
+            "pendiente": bool(c.get("expulsado"))}
+
+
+def revisar_latidos(conectados, ahora=None):
+    """El vigilante (cada 30 s): la dll que dijo que late (`lat=`) y lleva ANTITRAMPA_LATIDO_TOPE_S sin latir con el
+    juego conectado -> `telemetria_interrumpida` (una vez; se rearma cuando vuelve a latir). `conectados` = {usn: st}.
+    También olvida el estado de los que hace 6 h que no se ven (la memoria no crece sin fin)."""
+    t = time.monotonic() if ahora is None else ahora
+    marcar = []
+    with _cuentas_lock:
+        for usn, c in list(_CUENTAS.items()):
+            st = conectados.get(usn)
+            if st is None:
+                if t - c.get("visto", t) > 6 * 3600:
+                    _CUENTAS.pop(usn, None)
+                    with _farmeo_lock:
+                        _FARMEO.pop(usn, None)
+                continue
+            if c.get("hola") and c.get("lat") and not c.get("interrumpida") \
+                    and t - c.get("ult_latido", t) > ANTITRAMPA_LATIDO_TOPE_S:
+                c["interrumpida"] = True
+                marcar.append((st, t - c.get("ult_latido", t)))
+    for st, hace in marcar:
+        anotar(st, "telemetria_interrumpida", f"la dll del antitrampa no late hace {hace:.0f} s con el juego "
+                                              "conectado (suspendida, colgada o quitada)", {},
+               evidencia={"sin_latido_s": round(hace)})
+    return len(marcar)
+
+
+def arrancar_vigilancia(conexiones, cada=30.0):
+    """El hilo del vigilante de latidos. `conexiones` = salas.CONEXIONES (usn -> conexión)."""
+    def _ciclo():
+        while True:
+            time.sleep(cada)
+            try:
+                revisar_latidos({u: c for u, c in list(conexiones.items()) if c is not None
+                                 and not getattr(c, "cerrado", False)})
+            except Exception as e:            # noqa: BLE001 — el hilo no se puede morir
+                log("TRAMP", f"  ⚠ vigilante de latidos: {e!r}")
+    t = threading.Thread(target=_ciclo, daemon=True, name="antitrampa-latidos")
+    t.start()
+    return t
 
 
 def al_ff3d(st, data):
@@ -300,26 +561,69 @@ def al_ff3d(st, data):
                f"{n} FF3D(0): las 112 animaciones de tropezar no coinciden con las del server", {})
 
 
-def anotar(st, regla, detalle, extra):
-    """Aplica la acción de la regla. Devuelve la acción (`"retener"`, `"avisar"`, …)."""
+def anotar(st, regla, detalle, extra, evidencia=None, firma=""):
+    """Aplica la acción de la regla y la deja en el REGISTRO CENTRAL. Devuelve la acción (`"retener"`, `"avisar"`, …).
+    `extra` va al jsonl de siempre; `evidencia` (más `extra`) va al evento; `firma` separa detecciones distintas de la
+    misma regla (dos programas distintos) de la MISMA detección repetida (que sólo suma repeticiones)."""
     accion = ANTITRAMPA_REGLAS.get(regla, "registrar")
     if accion == "apagado":
         return accion
     usn = getattr(st, "usn", None)
     nick = _nick(usn)
+    ctx = _contexto(st)
+    cuenta = _cuenta_de(st) if usn else None
+    modulo = _MODULO_DE.get(regla, "dll" if evidencia and "r2at" in evidencia else "servidor")
+    evento, nuevo = eventos.registrar(regla, detalle, usn=usn, cuenta=cuenta, nick=nick, sesion=ctx["sesion"],
+                                      partida=ctx["partida"], modulo=modulo, accion=accion,
+                                      evidencia={**(evidencia or {}), **extra}, firma=firma,
+                                      version_cliente=ctx["version_cliente"],
+                                      version_antitrampa=ctx["version_antitrampa"])
+    if not nuevo:                                          # la misma detección persistente: sólo suma repeticiones
+        return accion
     log("TRAMP", f"  🚩 {regla} [{accion}] usn={usn} {nick!r}: {detalle}")
-    _guardar({"cuando": datetime.datetime.now().isoformat(timespec="seconds"), "regla": regla,
-              "accion": accion, "usn": usn, "nick": nick, "sala": getattr(st, "room_id", None),
-              "detalle": detalle, **extra})
-    if accion == "retener" and regla in _REGLAS_DE_CUENTA and usn:
+    _guardar({"cuando": datetime.datetime.now().isoformat(timespec="seconds"), "evento": evento, "regla": regla,
+              "accion": accion, "usn": usn, "nick": nick, "cuenta": cuenta, "sala": getattr(st, "room_id", None),
+              "sesion": ctx["sesion"], "detalle": detalle, **extra})
+    correlacion = None
+    if usn:
         with _cuentas_lock:
-            _CUENTAS.setdefault(usn, {"hola": True, "retener": False, "sin_hola_avisado": False})["retener"] = True
-    if accion in ("retener", "avisar"):
+            c = _sesion(usn)
+            c["reglas"].add(regla)
+            if accion == "retener" and regla in _REGLAS_DE_CUENTA:
+                c["retener"] = True
+            if regla == "antitrampa_apagado":
+                c["apagado"] = True
+            herr = sorted(c["reglas"] & set(ANTITRAMPA_CORRELACION_HERRAMIENTA))
+            alt = sorted(c["reglas"] & set(ANTITRAMPA_CORRELACION_ALTERACION))
+            if herr and alt and not c.get("correlacionado"):
+                c["correlacionado"] = True
+                correlacion = (herr, alt)
+            gm_nuevo = regla not in c["gm_avisados"]
+            c["gm_avisados"].add(regla)
+    else:
+        gm_nuevo = True
+    if accion in ("retener", "avisar") and gm_nuevo:
         _avisar_gms(f"ANTITRAMPA {regla}: {nick or usn} — {detalle}"
                     + (" (premio retenido)" if accion == "retener" else ""))
     if accion == "expulsar":
-        _expulsar(st, usn, nick, regla, detalle)
+        _expulsar(st, usn, nick, regla, detalle, evento=evento)
+    if correlacion:
+        herr, alt = correlacion
+        anotar(st, "manipulacion_correlacionada", f"herramienta ({', '.join(herr)}) y alteración del juego "
+                                                  f"({', '.join(alt)}) en la misma sesión", {},
+               evidencia={"herramientas": herr, "alteraciones": alt})
     return accion
+
+
+# Qué módulo del antitrampa vio cada regla (el resto: «dll» si vino de un R2AT, si no «servidor»).
+_MODULO_DE = {"combo_imposible": "cartel", "porcentaje_imposible": "cartel", "precision_imposible": "cartel",
+              "llegada_imposible": "cartel", "llegada_anticipada": "cartel", "reloj_rapido": "cartel",
+              "reloj_lento": "cartel", "sin_antitrampa": "cartel", "animaciones_tocadas": "ff3d",
+              "listo_automatico": "farmeo", "carreras_sin_hablar": "farmeo", "misma_cancion": "farmeo",
+              "campanas_automaticas": "farmeo", "combo_repetido": "farmeo", "precision_constante": "farmeo",
+              "expulsa_espectadores": "farmeo", "farmeo": "farmeo", "manipulacion_correlacionada": "correlacion",
+              "telemetria_interrumpida": "telemetria", "telemetria_inundada": "telemetria",
+              "telemetria_repetida": "telemetria", "reloj_cliente": "telemetria"}
 
 
 # Las que informa el cliente fuera de una carrera: si son «retener», retienen todas las de la sesión.
@@ -328,6 +632,7 @@ _REGLAS_DE_CUENTA = {"modulo_prohibido", "juego_automatico", "sala_automatica", 
                      "animaciones_tocadas"}
 _QUE_RETIENEN = ("retener", "expulsar")
 _BLOQUEADOS = {}                              # usn -> time.monotonic() hasta el que no puede jugar
+_ESCALON_FALLO = {}                           # usn -> True si su última falta NO se pudo sumar (ver `_escalon`)
 _EXPULSADOS = {}                              # usn -> cuántas faltas tenía su cuenta al expulsarlo (esta sesión del server)
 
 
@@ -367,13 +672,17 @@ def _escalon(usn, regla, detalle="", nick=""):
     """★ 19-nov — LA ESCALERA: suma la falta a la CUENTA y dice qué toca.
     Con pases y Coordinador configurado, sólo AVISA a Cuenta Eñeños (él cuenta las faltas y banea en `baneos`);
     sin pases o en cuentas viejas sin Eñeños ID, cuenta y banea en la base local como siempre.
-    -> (faltas, cuenta, baneada). Sin base o sin cuenta cuenta como la primera."""
+    -> (faltas, cuenta, baneada). Sin base o sin cuenta cuenta como la primera.
+    ★ 26-nov: si NO pudo sumar la falta (sin base, sin cuenta, el Coordinador no contestó) deja `_ESCALON_FALLO[usn]`:
+    la tanda no marca esas detecciones como sancionadas (antes se perdían)."""
+    _ESCALON_FALLO.pop(usn, None)
     if _usa_coordinador():
         try:
             from . import almacen
             cuenta, _ = almacen.cuenta_de_uid(usn)
         except Exception as e:                # noqa: BLE001
             log("TRAMP", f"  ⚠ no pude buscar la cuenta de usn={usn}: {e!r}")
+            _ESCALON_FALLO[usn] = True
             return 1, None, False
         eid = _enenos_id_de_cuenta(cuenta)
         if eid is not None:
@@ -382,10 +691,12 @@ def _escalon(usn, regla, detalle="", nick=""):
                 res = pase.avisar_antitrampa_interno(eid, regla, detalle=detalle, nick=nick, timeout=3.0)
             except Exception as e:            # noqa: BLE001
                 log("TRAMP", f"  ⚠ no pude avisar al Coordinador (usn={usn}, eid={eid}): {e!r}")
+                _ESCALON_FALLO[usn] = True
                 return 1, cuenta, False
             if res.get("estado") != "ok" or not isinstance(res.get("datos"), dict):
                 log("TRAMP", f"  ⚠ no pude avisar al Coordinador (usn={usn}, eid={eid}): "
                              f"{res.get('error') or res.get('codigo')}")
+                _ESCALON_FALLO[usn] = True
                 return 1, cuenta, False
             d = res["datos"]
             try:
@@ -399,8 +710,10 @@ def _escalon(usn, regla, detalle="", nick=""):
         cuenta, n = almacen.antitrampa_sumar_falta(usn, regla)
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude sumar la falta de usn={usn}: {e!r}")
+        _ESCALON_FALLO[usn] = True
         return 1, None, False
     if not cuenta:
+        _ESCALON_FALLO[usn] = True
         return 1, None, False
     baneada = False
     if ANTITRAMPA_BANEO_EN and n >= ANTITRAMPA_BANEO_EN:
@@ -412,14 +725,14 @@ def _escalon(usn, regla, detalle="", nick=""):
     return n, cuenta, baneada
 
 
-def _expulsar(st, usn, nick, regla, detalle):
+def _expulsar(st, usn, nick, regla, detalle, evento=None):
     """Lo que hace una regla «expulsar».
     ★ 24-nov — con `ANTITRAMPA_SILENCIOSO` (de fábrica) NO expulsa: retiene el premio en silencio y deja la detección
     pendiente para la tanda de un GM (`_detener_en_silencio`). Sin él, la expulsión al instante de siempre."""
     # ★ UNA falta por sesión del juego (de «hola» a «hola»): con dos funciones prendidas llegan dos ganchos en el mismo
     #   segundo (medido 19-nov: automático + sala ⇒ 1.ª y 2.ª juntas). Lo que llegue después sólo vuelve a cerrar.
     with _cuentas_lock:
-        sesion = _CUENTAS.setdefault(usn, {"hola": True, "retener": False, "sin_hola_avisado": False}) if usn else {}
+        sesion = _sesion(usn) if usn else {}
         ya = sesion.get("expulsado")
         sesion["expulsado"] = True
         reglas = sesion.setdefault("reglas_pendientes", set())
@@ -429,7 +742,7 @@ def _expulsar(st, usn, nick, regla, detalle):
         if ya and not nueva:
             log("TRAMP", f"  🤫 usn={usn}: {regla} otra vez en la misma sesión: ya está pendiente")
             return
-        _detener_en_silencio(usn, nick, regla, detalle)
+        _detener_en_silencio(usn, nick, regla, detalle, evento=evento)
         return
     if ya:
         log("TRAMP", f"  ⛔ usn={usn}: {regla} en la misma sesión ya expulsada: no suma otra falta, sólo cierra")
@@ -438,18 +751,26 @@ def _expulsar(st, usn, nick, regla, detalle):
     _sancionar(st, usn, nick, regla, detalle)
 
 
-def _detener_en_silencio(usn, nick, regla, detalle):
+def _detener_en_silencio(usn, nick, regla, detalle, evento=None):
     """★ 24-nov — EL MODO SILENCIOSO: el jugador no se entera de nada. Lo que quede de esta sesión no cobra (ni exp,
     ni Rcoin, ni récord, ni medallas, ni misiones: `retenido`), los GM conectados lo ven y la detección queda en
     `antitrampa_pendientes` hasta la tanda (`sancionar_tanda`, `.sanciones aplicar`)."""
     with _cuentas_lock:
-        _CUENTAS.setdefault(usn, {"hola": True, "retener": False, "sin_hola_avisado": False})["retener"] = True
+        _sesion(usn)["retener"] = True
     pid = None
     try:
         from . import almacen
-        pid, _ = almacen.antitrampa_dejar_pendiente(usn, regla, detalle=detalle, nick=nick)
+        # ★ 26-nov: UN pendiente por cuenta y regla mientras espere la tanda (antes: uno por cada «hola»)
+        cuenta = almacen.cuenta_de_uid(usn)[0]
+        ya = next((f["id"] for f in almacen.antitrampa_pendientes(0)
+                   if f["regla"] == regla and (f.get("cuenta") == cuenta if cuenta else f.get("usn") == usn)), None)
+        if ya is not None:
+            pid = ya
+        else:
+            pid, _ = almacen.antitrampa_dejar_pendiente(usn, regla, detalle=detalle, nick=nick)
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude dejar pendiente la detección de usn={usn}: {e!r}")
+    eventos.poner_pendiente(evento, pid)
     log("TRAMP", f"  🤫 usn={usn} {nick!r}: {regla} DETECTADO en silencio (pendiente #{pid}, premio retenido)")
     _avisar_gms(f"ANTITRAMPA {regla}: {nick or usn} detectado en silencio (premio retenido, "
                 f"sancion pendiente #{pid}) — {detalle}")
@@ -468,7 +789,7 @@ def _sancionar(st, usn, nick, regla, detalle, otros_usns=()):
         if ANTITRAMPA_BLOQUEO_S:
             _BLOQUEADOS[usn] = time.monotonic() + ANTITRAMPA_BLOQUEO_S
         with _cuentas_lock:                   # lo que quede de esta sesión no cobra (al reabrir limpio, sí)
-            _CUENTAS.setdefault(usn, {"hola": True, "retener": False, "sin_hola_avisado": False})["retener"] = True
+            _sesion(usn)["retener"] = True
         _FARMEO.pop(usn, None)                # al volver, el farmeo se cuenta de cero (y puede volver a saltar)
     if baneada:
         al_jugador = (f"Fuiste expulsado por el antitrampa ({regla}). Es la {faltas}.ª vez: "
@@ -547,19 +868,36 @@ def sancionar_tanda(quien="", ya=False):
         usns = list(dict.fromkeys(f["usn"] for f in reversed(fs)))      # el más reciente primero
         nick = next((f["nick"] for f in reversed(fs) if f.get("nick")), "") or _nick(usns[0])
         detalle = f"{len(fs)} deteccion(es): {', '.join(reglas)}"
+        grave = max(reglas, key=_gravedad)
         try:
-            faltas, cuenta, baneada, que = _sancionar(None, usns[0], nick, reglas[0], detalle, otros_usns=usns[1:])
+            faltas, cuenta, baneada, que = _sancionar(None, usns[0], nick, grave, detalle, otros_usns=usns[1:])
         except Exception as e:                # noqa: BLE001
             log("TRAMP", f"  ⚠ no pude sancionar {clave!r}: {e!r}")
             lineas.append(f"- {nick}: ERROR ({e!r}), queda pendiente")
             continue
+        if _ESCALON_FALLO.pop(usns[0], None):
+            lineas.append(f"- {nick or clave}: la falta NO se pudo sumar (sin base, sin cuenta o el Coordinador no "
+                          f"contestó): queda pendiente")
+            continue
         almacen.antitrampa_resolver([f["id"] for f in fs], "sancionada", quien)
-        _guardar({"cuando": datetime.datetime.now().isoformat(timespec="seconds"), "regla": reglas[0],
+        try:
+            almacen.ev_marcar(pendientes=[f["id"] for f in fs], estado="sancionado", por=quien or "tanda",
+                              nota=que)
+            almacen.at_accion(quien or "tanda", "tanda", cuenta, usns[0], None, f"{que}: {detalle}")
+        except Exception as e:                # noqa: BLE001
+            log("TRAMP", f"  ⚠ no pude marcar los eventos de la tanda: {e!r}")
+        _guardar({"cuando": datetime.datetime.now().isoformat(timespec="seconds"), "regla": grave,
                   "accion": "sancion_en_tanda", "usn": usns[0], "nick": nick, "cuenta": cuenta, "faltas": faltas,
                   "baneada": baneada, "quien": quien, "detalle": detalle})
         lineas.append(f"- {nick or clave}: {que}")
     log("TRAMP", f"  ⚖ tanda de sanciones de {quien!r}: {len(lineas)} cuenta(s)")
     return [f"antitrampa: tanda aplicada a {len(lineas)} cuenta(s)"] + lineas
+
+
+def _gravedad(regla):
+    from .antitrampa_eventos import RIESGOS, clasificar
+    _cat, riesgo, confianza, _origen = clasificar(regla)
+    return (RIESGOS.index(riesgo) if riesgo in RIESGOS else 0, confianza)
 
 
 def perdonar_pendientes(quien_es, quien=""):
@@ -571,6 +909,11 @@ def perdonar_pendientes(quien_es, quien=""):
     if not fs:
         return [f"antitrampa: {quien_es!r} no tiene detecciones pendientes"]
     n = almacen.antitrampa_resolver([f["id"] for f in fs], "perdonada", quien)
+    try:
+        almacen.ev_marcar(pendientes=[f["id"] for f in fs], estado="descartado", por=quien or "gm", nota="perdonado")
+        almacen.at_accion(quien or "gm", "perdonar", fs[0].get("cuenta"), fs[0].get("usn"), None, f"{n} pendiente(s)")
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude marcar los eventos perdonados: {e!r}")
     log("TRAMP", f"  🕊 {quien!r} perdonó {n} detección(es) de {quien_es!r}")
     return [f"antitrampa: {n} deteccion(es) de {quien_es} descartada(s)"]
 
@@ -624,7 +967,7 @@ def _ahora(ahora):
     return time.monotonic() if ahora is None else ahora
 
 
-def _senal(st, regla, detalle):
+def _senal(st, regla, detalle, evidencia=None):
     """Anota una señal (una vez por sesión) y, si ya van las suficientes, el «farmeo». Devuelve la acción más dura."""
     usn = getattr(st, "usn", None)
     with _farmeo_lock:
@@ -634,10 +977,12 @@ def _senal(st, regla, detalle):
         e["senales"].add(regla)
         reales = sorted(s for s in e["senales"] if s != "farmeo"
                         and ANTITRAMPA_REGLAS.get(s, "registrar") not in ("apagado", "registrar"))
-        farmeo = len(reales) >= ANTITRAMPA_FARMEO_SENALES and "farmeo" not in e["senales"]
+        # ★ 26-nov: callado + teclado en pantalla (o la misma canción) no es un bot: hace falta una señal fuerte
+        fuertes = [s for s in reales if s not in ANTITRAMPA_SENALES_DEBILES]
+        farmeo = len(reales) >= ANTITRAMPA_FARMEO_SENALES and fuertes and "farmeo" not in e["senales"]
         if farmeo:
             e["senales"].add("farmeo")
-    accion = anotar(st, regla, detalle, {})
+    accion = anotar(st, regla, detalle, {}, evidencia=evidencia)
     if farmeo:
         accion = anotar(st, "farmeo", "señales: " + ", ".join(reales), {})
     return accion
@@ -753,13 +1098,31 @@ def _guardar(fila):
     try:
         with _archivo_lock:
             os.makedirs(os.path.dirname(ANTITRAMPA_ARCHIVO), exist_ok=True)
+            try:                                  # ★ 26-nov: rota a .1 al pasar ANTITRAMPA_JSONL_MAX_MB
+                if os.path.getsize(ANTITRAMPA_ARCHIVO) > ANTITRAMPA_JSONL_MAX_MB * 1024 * 1024:
+                    os.replace(ANTITRAMPA_ARCHIVO, ANTITRAMPA_ARCHIVO + ".1")
+            except OSError:
+                pass
             with open(ANTITRAMPA_ARCHIVO, "a", encoding="utf-8") as f:
                 f.write(json.dumps(fila, ensure_ascii=False) + "\n")
     except OSError as e:
         log("TRAMP", f"  ⚠ no pude escribir {ANTITRAMPA_ARCHIVO}: {e!r}")
 
 
+_avisos_gm = deque()
+_avisos_gm_lock = threading.Lock()
+
+
 def _avisar_gms(texto):
+    """★ 26-nov: con tope (ANTITRAMPA_AVISOS_GM_POR_MINUTO): una inundación de detecciones no inunda el chat de los
+    GM; todo queda igual en el tablero."""
+    t = time.monotonic()
+    with _avisos_gm_lock:
+        while _avisos_gm and t - _avisos_gm[0] > 60:
+            _avisos_gm.popleft()
+        if len(_avisos_gm) >= ANTITRAMPA_AVISOS_GM_POR_MINUTO:
+            return
+        _avisos_gm.append(t)
     try:
         from .gm import es_gm
         from .salas import CONEXIONES, avisar_a_uno

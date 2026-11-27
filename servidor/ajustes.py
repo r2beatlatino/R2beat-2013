@@ -1057,7 +1057,9 @@ COMANDOS_GM = ("rate", "rates", "gm",
                "record",
                # ★ 24-nov · `.sanciones`: las detecciones del antitrampa silencioso, y aplicarlas en tanda.
                #   Banea cuentas: por eso es de GM. Ver `ANTITRAMPA_SILENCIOSO`.
-               "sanciones")
+               "sanciones",
+               # ★ 25-nov · `.maquina`: qué cuentas entraron desde la misma PC, y perdonar un baneo de PC.
+               "maquina")
 # ★★ 04-oct — LOS STREAMERS TAMBIÉN ANUNCIAN. anonimo03: *"que los streamers también puedan usar el comando
 #   .gm1 .anuncio"*. Son de `COMANDOS_GM` y se abren ADEMÁS a los de `streamers.txt` (el mismo archivo del
 #   panel, `panel_admin.streamers`). ⚠ Sólo esos DOS, a propósito: `.aviso` (mismo comando que `.anuncio`),
@@ -4154,6 +4156,21 @@ DOBLE_LOGIN_ECHA_AL_ANTERIOR = True
 MAX_CUENTAS_POR_IP = int(os.environ.get("R2_MAX_CUENTAS_IP", "2") or 0)
 IPS_SIN_TOPE = frozenset(i.strip() for i in os.environ.get("R2_IPS_SIN_TOPE", "").split(",") if i.strip())
 
+# ★ 25-nov · LA MÁQUINA (HWID). En el `FF02` de la lobby el cliente manda la MAC de su placa de red (`maquina.py`).
+#   El server NO la guarda: guarda una huella (HMAC-SHA256 con una clave del server, `R2_SAL_MAQUINA` o, si no hay,
+#   `datos.maquina.key` al lado de la base, que se crea sola). Sirve para tres cosas:
+#     · `MAX_CUENTAS_POR_MAQUINA`: tope de cuentas a la vez desde la misma PC aunque cada una salga por otra IP
+#       (VPN/proxy por cliente). 0 = sin tope.
+#     · `BANEO_POR_MAQUINA`: banear una cuenta banea también las PC desde las que entró en los últimos
+#       `MAQUINA_GUARDAR_DIAS`; una cuenta nueva desde esa PC no entra. `.maquina perdonar <apodo>` lo deshace.
+#     · `.maquina <apodo>` (GM): qué otras cuentas entraron desde la misma PC.
+#   ⚠ ES UNA SEÑAL BLANDA: la MAC la manda el cliente y un cliente tocado la puede cambiar o mandar vacía. Frena
+#     al que no se toma el trabajo, no al decidido. Sin MAC válida no se aplica nada (`MAQUINA_EXIGIR` = 1 rechaza).
+MAX_CUENTAS_POR_MAQUINA = int(os.environ.get("R2_MAX_CUENTAS_MAQUINA", "2") or 0)
+BANEO_POR_MAQUINA = os.environ.get("R2_BANEO_MAQUINA", "1").strip().lower() not in ("0", "no", "false", "")
+MAQUINA_EXIGIR = os.environ.get("R2_MAQUINA_EXIGIR", "0").strip().lower() in ("1", "si", "sí", "true")
+MAQUINA_GUARDAR_DIAS = int(os.environ.get("R2_MAQUINA_DIAS", "90") or 90)
+
 # ★★★★ REPONER LA CANCIÓN DESPUÉS DEL `type 5` DEL PICKER — 2026-09-09.
 #   Reportado por anonimo03: *"el picker funciona bien hasta empezar el juego, pero al regresar a la
 #   sala se resetea"*. El `type 5` es lo que el cliente manda al SOLTAR el picker, y su handler
@@ -5605,3 +5622,106 @@ ANTITRAMPA_REGLAS.update({
     "hilo_ajeno":        "avisar",        # un hilo del juego que arranca en memoria inyectada
     "proceso_prohibido": "expulsar",      # Cheat Engine, ToolBit, R2TR, un acelerador… abiertos con el juego
 })
+
+# ── ★ 26-nov · EL REGISTRO CENTRAL (`antitrampa_eventos.py`) Y EL TABLERO (`tablero_antitrampa.py`) ───────────────
+#   Toda detección, venga de donde venga (dll, cartel, farmeo, servidor), es un EVENTO en `antitrampa_eventos` con su
+#   categoría, riesgo, confianza, reincidencias, sesión, partida, versiones y estado de revisión. Ver ANTITRAMPA.md § 10.
+#
+#   ⚖ «Tener Cheat Engine abierto» NO prueba que se use: `proceso_prohibido` baja de «expulsar» a «avisar». Lo que
+#   SÍ va a la tanda es la CORRELACIÓN: una herramienta (proceso o manija con permiso de escritura) MÁS una alteración
+#   comprobada del juego en la misma sesión (`manipulacion_correlacionada`).
+ANTITRAMPA_REGLAS.update({
+    "proceso_prohibido":          "avisar",
+    "manipulacion_correlacionada": "expulsar",   # herramienta + alteración del juego en la misma sesión
+    "telemetria_interrumpida":    "avisar",      # la dll dejó de mandar su latido con el juego conectado
+    "telemetria_inundada":        "registrar",   # más renglones R2AT por minuto que los que manda una dll de verdad
+    "telemetria_repetida":        "avisar",      # renglones con un número de secuencia ya visto (repetición)
+    "reloj_cliente":              "avisar",      # el reloj de la PC (entre latidos) corre distinto que el del server
+    "antitrampa_apagado":         "registrar",   # la dll avisa que la apagaron en su ini ([antitrampa] activo=0)
+    "vigia_parado":               "avisar",      # el hilo del antitrampa dejó de correr (suspendido o colgado)
+})
+
+#   categoría (la del tablero) · riesgo (informativo | bajo | medio | alto | critico) · confianza (0-100: qué tan
+#   probable es que sea trampa DE VERDAD) · origen («servidor» = lo comprobó el server con lo suyo; «cliente» = lo
+#   declara la dll y se puede falsear: nunca vale solo como prueba).
+ANTITRAMPA_CATEGORIAS = {
+    "herramienta_memoria":  "Cheat Engine y herramientas de memoria",
+    "juego_automatico":     "Auto play / juego automático",
+    "auto_perfect":         "Auto perfect",
+    "bots":                 "Bots",
+    "macros":               "Macros y entradas automatizadas",
+    "speed_hack":           "Speed hack",
+    "dll_no_autorizada":    "DLL no autorizadas",
+    "memoria_alterada":     "Alteraciones de memoria del juego",
+    "archivos_protegidos":  "Archivos protegidos modificados",
+    "integridad_antitrampa": "Integridad del antitrampa",
+    "conducta_anormal":     "Comportamiento anormal en partidas",
+    "paquetes":             "Manipulación de paquetes",
+    "resultado_imposible":  "Resultados o puntuaciones imposibles",
+    "telemetria":           "Interrupciones de la telemetría",
+}
+ANTITRAMPA_CLASIFICACION = {
+    # regla:                   (categoría,               riesgo,        confianza, origen)
+    "combo_imposible":         ("resultado_imposible",   "alto",        95, "servidor"),
+    "porcentaje_imposible":    ("paquetes",              "alto",        95, "servidor"),
+    "precision_imposible":     ("resultado_imposible",   "alto",        90, "servidor"),
+    "llegada_imposible":       ("resultado_imposible",   "alto",        90, "servidor"),
+    "llegada_anticipada":      ("juego_automatico",      "medio",       60, "servidor"),
+    "reloj_rapido":            ("speed_hack",            "medio",       70, "servidor"),
+    "reloj_lento":             ("speed_hack",            "bajo",        45, "servidor"),
+    "reloj_cliente":           ("speed_hack",            "medio",       60, "servidor"),
+    "sin_antitrampa":          ("integridad_antitrampa", "bajo",        35, "servidor"),
+    "animaciones_tocadas":     ("archivos_protegidos",   "medio",       65, "servidor"),
+    "exe_desconocido":         ("archivos_protegidos",   "medio",       55, "cliente"),
+    "codigo_previo":           ("memoria_alterada",      "medio",       55, "cliente"),
+    "codigo_modificado":       ("memoria_alterada",      "alto",        70, "cliente"),
+    "juego_automatico":        ("juego_automatico",      "critico",     85, "cliente"),
+    "sala_automatica":         ("bots",                  "alto",        85, "cliente"),
+    "relevo_automatico":       ("juego_automatico",      "alto",        85, "cliente"),
+    "resultado_alterado":      ("auto_perfect",          "critico",     85, "cliente"),
+    "modulo_prohibido":        ("dll_no_autorizada",     "alto",        70, "cliente"),
+    "modulo_permitido":        ("dll_no_autorizada",     "informativo", 10, "cliente"),
+    "memoria_ajena":           ("memoria_alterada",      "bajo",        35, "cliente"),
+    "hilo_ajeno":              ("dll_no_autorizada",     "medio",       50, "cliente"),
+    "depurador":               ("herramienta_memoria",   "bajo",        40, "cliente"),
+    "proceso_prohibido":       ("herramienta_memoria",   "bajo",        30, "cliente"),
+    "manija_escritura":        ("herramienta_memoria",   "medio",       55, "cliente"),
+    "manipulacion_correlacionada": ("herramienta_memoria", "critico",   85, "servidor"),
+    "teclas_inyectadas":       ("macros",                "bajo",        40, "cliente"),
+    "listo_automatico":        ("bots",                  "medio",       60, "servidor"),
+    "carreras_sin_hablar":     ("bots",                  "bajo",        20, "servidor"),
+    "misma_cancion":           ("bots",                  "bajo",        20, "servidor"),
+    "campanas_automaticas":    ("macros",                "medio",       55, "servidor"),
+    "combo_repetido":          ("auto_perfect",          "medio",       55, "servidor"),
+    "precision_constante":     ("auto_perfect",          "medio",       55, "servidor"),
+    "expulsa_espectadores":    ("conducta_anormal",      "bajo",        30, "servidor"),
+    "farmeo":                  ("bots",                  "alto",        75, "servidor"),
+    "telemetria_interrumpida": ("telemetria",            "medio",       45, "servidor"),
+    "telemetria_inundada":     ("paquetes",              "medio",       60, "servidor"),
+    "telemetria_repetida":     ("paquetes",              "medio",       65, "servidor"),
+    "antitrampa_apagado":      ("integridad_antitrampa", "medio",       50, "cliente"),
+    "vigia_parado":            ("integridad_antitrampa", "alto",        60, "cliente"),
+}
+#   Las señales de farmeo que SOLAS no alcanzan (un jugador callado o con el teclado en pantalla también las da):
+#   «farmeo» necesita ANTITRAMPA_FARMEO_SENALES señales y al menos una que NO sea débil.
+ANTITRAMPA_SENALES_DEBILES = ("teclas_inyectadas", "carreras_sin_hablar", "misma_cancion")
+#   Las herramientas y las alteraciones que juntas, en la misma sesión, dan `manipulacion_correlacionada`.
+ANTITRAMPA_CORRELACION_HERRAMIENTA = ("proceso_prohibido", "manija_escritura", "depurador")
+ANTITRAMPA_CORRELACION_ALTERACION = ("codigo_modificado", "codigo_previo", "memoria_ajena", "hilo_ajeno",
+                                     "juego_automatico", "sala_automatica", "relevo_automatico", "resultado_alterado",
+                                     "modulo_prohibido", "reloj_rapido", "reloj_cliente")
+#   La telemetría de la dll (renglones R2AT por el FF59): tope por jugador y el latido.
+ANTITRAMPA_R2AT_POR_MINUTO = 40          # una dll de verdad manda ~1 por segundo como mucho, y casi nunca
+ANTITRAMPA_LATIDO_TOPE_S = 240           # sin latido este tiempo, con el juego conectado → telemetria_interrumpida
+ANTITRAMPA_RELOJ_CLIENTE_TOLERANCIA = 0.15   # el reloj de la PC entre latidos: ±15 % del del server…
+ANTITRAMPA_RELOJ_CLIENTE_VECES = 2           # …en estos latidos seguidos
+ANTITRAMPA_AVISOS_GM_POR_MINUTO = 20     # tope de avisos del antitrampa a los GM (el resto queda sólo en el tablero)
+ANTITRAMPA_JSONL_MAX_MB = 20             # antitrampa.jsonl se rota a .1 al pasar este tamaño
+#   ★ El FF02 del LOBBY sólo vale con un login del juego (FF01 con su vcode) desde la MISMA IP en estas horas: antes
+#   se podía entrar al lobby con el usn de otro, echarlo y mandar R2AT a su nombre. 0 = como antes (sin comprobar).
+LOBBY_EXIGE_LOGIN_H = 24
+#   ★ Con una PUERTA delante del login (prod y prueba en la misma máquina) el server ve en el FF01 la IP de la puerta, no
+#   la del jugador, y el chequeo de arriba no deja entrar a NADIE. La puerta manda la IP de verdad en una línea del PROXY
+#   protocol, que se cree SÓLO si viene de acá: ips, redes o nombres (docker) separados por coma. Vacío = no se lee
+#   (todo como antes). Ver `servidor/puerta_ip.py`.
+PUERTA_IPS = os.environ.get("R2_PUERTA_IPS") or ""

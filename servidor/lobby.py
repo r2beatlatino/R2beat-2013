@@ -29,6 +29,43 @@ import time                              # ⚠ lo usa el resumen por minuto del 
 from . import gacha
 from . import antitrampa
 from . import multicuenta                 # ★ 25-nov: tope de cuentas a la vez por IP (farmeo con varias cuentas)
+from . import puerta_ip                   # ★ 26-nov: la IP de verdad cuando el login entra por la puerta (PROXY protocol)
+from . import maquina                    # ★ 25-nov: la PC (huella de la MAC): baneo y tope por máquina
+
+# ═══ ★ 26-nov · EL FF02 DEL LOBBY SÓLO VALE CON UN LOGIN DEL JUEGO ════════════════════════════════════════════════════
+#   El login (FF01 [usn][vcode]) se comprueba contra la sesión del launcher, pero el FF02 del lobby tomaba el `usn` del
+#   paquete sin nada más: cualquiera podía entrar con el usn de otro, echarlo y mandar R2AT a su nombre (la auditoría
+#   del antitrampa). Ahora: un usn entra al lobby sólo si ESE usn hizo un FF01 válido desde la MISMA IP en las últimas
+#   `LOBBY_EXIGE_LOGIN_H` horas (los cambios de canal vuelven a entrar sin FF01: por eso la ventana y no «una vez»).
+_LOGINS_OK = {}                           # usn -> (ip, time.time() del FF01 válido)
+_logins_lock = threading.Lock()
+
+
+def _login_anotar(usn, ip):
+    with _logins_lock:
+        _LOGINS_OK[int(usn)] = (str(ip), time.time())
+        if len(_LOGINS_OK) > 50000:                                      # sin crecer sin fin
+            for u, _v in sorted(_LOGINS_OK.items(), key=lambda kv: kv[1][1])[:10000]:
+                _LOGINS_OK.pop(u, None)
+
+
+def login_previo_ok(usn, ip):
+    """¿Este usn hizo un FF01 válido desde esta IP hace menos de LOBBY_EXIGE_LOGIN_H horas? (0 = no se exige)"""
+    from .ajustes import LOBBY_EXIGE_LOGIN_H
+    if not LOBBY_EXIGE_LOGIN_H:
+        return True
+    with _logins_lock:
+        v = _LOGINS_OK.get(int(usn))
+    return bool(v) and v[0] == str(ip) and time.time() - v[1] < LOBBY_EXIGE_LOGIN_H * 3600
+
+
+def cuenta_suspendida(usn):
+    """La fecha de fin si la cuenta de ese personaje está suspendida por el antitrampa, o None."""
+    try:
+        from . import almacen
+        return almacen.suspendida_hasta(almacen.cuenta_de_uid(usn)[0])
+    except Exception:                                                    # noqa: BLE001 — sin base, no se bloquea
+        return None
 from . import autoplay_gm
 from . import nombre_publico             # ★ 14-nov: la IP que se anuncia en los canales, sacada del DNS (si hay nombre)
 from . import notas
@@ -787,7 +824,12 @@ def echar_sesion_anterior(usn, nuevo_st):
 
 
 def handle_login(conn, addr):
-    log("LOGIN", f"conexion desde {addr[0]}:{addr[1]}")
+    # ★ 26-nov: detrás de la puerta el server veía SU IP y el FF02 del lobby (que exige la misma IP del login) no dejaba
+    #   entrar a nadie. `puerta_ip.real` devuelve la del jugador si la conexión es de la puerta (`R2_PUERTA_IPS`) y
+    #   manda su línea PROXY; si no, `addr` tal cual. `pendiente` = lo que ya se leyó detrás de la línea.
+    _puerta = addr
+    addr, pendiente = puerta_ip.real(conn, addr)
+    log("LOGIN", f"conexion desde {addr[0]}:{addr[1]}" + (f" (por la puerta {_puerta[0]})" if addr != _puerta else ""))
     buf = b""
     # ★ Identidad de ESTA conexión de login. La siembra el FF01 (`atoi(argv[1])` del cliente) y la usa
     #   el FF02 para armar la lista de canales con la banda/licencia del jugador correcto.
@@ -823,7 +865,7 @@ def handle_login(conn, addr):
     # (El timeout de 120s cerraba el socket estando el cliente idle en el lobby -> crash 0x555917.)
     try:
         while True:
-            data = conn.recv(4096)
+            data, pendiente = (pendiente or conn.recv(4096)), b""   # lo que vino detrás de la línea PROXY, primero
             if not data:
                 log("LOGIN", "cliente cerro"); return
             buf += data
@@ -919,6 +961,15 @@ def handle_login(conn, addr):
                         except OSError:
                             pass
                         return
+                    _susp = cuenta_suspendida(usn)
+                    if _susp:
+                        log("LOGIN", f"  ⛔ RECHAZADO usn={usn}: cuenta suspendida por el antitrampa hasta {_susp}")
+                        try:
+                            conn.shutdown(socket.SHUT_RDWR)
+                        except OSError:
+                            pass
+                        return
+                    _login_anotar(usn, addr[0])          # ★ 26-nov: el FF02 del lobby lo exige (ver _LOGINS_OK)
                     r = resp1_login_ok(usn)
                     if puerta_paso(f"RESP-1 CmdLogin OK (usn={usn})  {len(r)} B", hx(r[:32]), handshake=True):
                         conn.sendall(r)
@@ -1222,7 +1273,23 @@ def handle_lobby(conn, addr):
                         #   farmear). Va ANTES de echar y registrar: si no entra, no se toca la sesión de nadie.
                         #   `reemplazada` hace que el `finally` de abajo no limpie nada compartido: esta
                         #   conexión nunca se sentó ni se registró (y su `usn` podría ser de otra sesión).
-                        if multicuenta.rechazar_por_tope(st, _u):
+                        # ★ 26-nov: sin un login del juego válido desde esta IP (o suspendida), no entra. Va ANTES
+                        #   de echar a nadie: así no se puede tirar la sesión de otro con su usn.
+                        _motivo = None
+                        if not login_previo_ok(_u, st.addr[0]):
+                            _motivo = "sin un login del juego (FF01) válido desde esta IP"
+                        elif cuenta_suspendida(_u):
+                            _motivo = "cuenta suspendida por el antitrampa"
+                        if _motivo:
+                            log("LOBBY", f"  ⛔ FF02 RECHAZADO usn={_u} desde {st.addr[0]}: {_motivo}")
+                            st.reemplazada = True
+                            try:
+                                conn.shutdown(socket.SHUT_RDWR)
+                            except OSError:
+                                pass
+                            return
+                        # ★ MÁQUINA (HWID): PC baneada o tope de cuentas por PC (`maquina.py`). Mismo cierre.
+                        if multicuenta.rechazar_por_tope(st, _u) or maquina.rechazar_al_entrar(st, _u, payload):
                             st.reemplazada = True
                             try:
                                 conn.shutdown(socket.SHUT_RDWR)
@@ -1231,6 +1298,7 @@ def handle_lobby(conn, addr):
                             return
                         echar_sesion_anterior(_u, st)
                         registrar_conexion(st)
+                        antitrampa.al_conectar(st)        # ★ 26-nov: la sesión del antitrampa (para el tablero)
                         # ★★★★★ Y ACÁ SE CIERRA EL LOGIN DE ESTE JUGADOR — LA SEÑAL, NO EL RELOJ.
                         #   El cliente descarta EN SILENCIO todos los clics del selector de canales
                         #   mientras su conexión al LoginServer siga abierta (su bandera
@@ -1250,7 +1318,8 @@ def handle_lobby(conn, addr):
                         #     login y el canal, nadie llegaría a este punto y el socket quedaría
                         #     colgado. Ahora es el respaldo, no el mecanismo.
                         cerrar_login_pendiente(_u, " (ya conectó a su canal)")
-                    log("LOBBY", f"  ★★ FF02 LOBBY-LOGIN payload len={len(payload)} : {hx(payload[:48])}"
+                    # ★ 25-nov: sin la MAC (`maquina.sin_mac`): en el log no queda la de nadie.
+                    log("LOBBY", f"  ★★ FF02 LOBBY-LOGIN payload len={len(payload)} : {hx(maquina.sin_mac(payload)[:48])}"
                                  + (f"  -> usn={_u} key_base=0x{st.key_base:08X}" if _u is not None
                                     else "  (VACÍO: no es el de la lobby)"))
                     # ★★★★★ EL CHALLENGE SALE DE ESTE MISMO PAQUETE, no de una constante (ver
@@ -1819,6 +1888,14 @@ def main():
         mision_hoy.arrancar()
     except Exception as _e_mh:                                       # noqa: BLE001
         log("MAIN", f"⚠ misión de hoy no arrancó: {_e_mh!r}")
+    # ★ 26-nov: el ANTITRAMPA central: el vigilante de latidos de la dll y el TABLERO (sólo con R2_TABLERO_PUERTO).
+    try:
+        from .salas import CONEXIONES as _CONEX_AT
+        antitrampa.arrancar_vigilancia(_CONEX_AT)
+        from . import tablero_antitrampa
+        tablero_antitrampa.arrancar()
+    except Exception as _e_at:                                       # noqa: BLE001 — sin tablero, el juego sigue
+        log("MAIN", f"⚠ el tablero del antitrampa no arrancó: {_e_at!r}")
     # ★★ EL SNAPSHOT PARA EL PANEL WEB. El panel no habla con nosotros: LEE un archivo, y si tiene
     #   más de 15 s lo da por caído. O sea que "salir en el panel" = escribir esto cada 3 s.
     from . import telemetria

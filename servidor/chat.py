@@ -1524,6 +1524,12 @@ def comando_chat(st, texto):
             return _at.perdonar_pendientes(" ".join(args[1:]), _quien)
         return _at.resumen_pendientes()
 
+    if c == "maquina":
+        # ★ 25-nov · `.maquina <apodo>` qué otras cuentas entraron desde su PC · `.maquina perdonar <apodo>` sacarle el
+        #   baneo de PC (el de la cuenta va aparte). Ver `maquina.py`.
+        from . import maquina as _maq
+        return _maq.comando_gm(args, f"usn {getattr(st, 'usn', None)}")
+
     if c in ("ayuda", "help", "?"):
         # ═══════════════════════════════════════════════════════════════════════════════════════
         # ★★★★★ LA AYUDA MUESTRA LO QUE **VOS** PODÉS USAR, NO LA LISTA ENTERA (2026-09-15)
@@ -1568,6 +1574,7 @@ def comando_chat(st, texto):
             ("gm", "gm",    ".gm | .gm recargar      la puerta de GM"),
             ("gm", "campana", ".campana [sub] [tipo] [rcoin]   SONDA del cartel de la campana"),
             ("gm", "sanciones", ".sanciones | .sanciones aplicar [ya] | .sanciones perdonar <apodo>   antitrampa en tanda"),
+            ("gm", "maquina", ".maquina <apodo> | .maquina perdonar <apodo>   cuentas de la misma PC / sacar baneo de PC"),
             # ★ 04-oct: el STREAMER (`streamers.txt`) ve SÓLO sus dos. Al GM no se le listan: ya tiene los suyos
             ("--STREAMER--", "--STREAMER--", "--- streamer ---"),
             ("streamer", "anuncio", ".anuncio <texto>        aviso a TODO el server, por el chat"),

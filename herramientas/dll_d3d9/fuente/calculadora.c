@@ -167,6 +167,8 @@ static int TC calc_mi_juicio(void *self, int juicio, int desvio, int extra)
 static int TC calc_mi_impulso(void *self)
 {
     g_calc_impulso_hasta = calc_ahora() + CALC_IMPULSO_MS;
+    static int vistos = 0;
+    if (vistos < 3) { vistos++; apuntar("  [calculadora] el impulsor se disparó (%d): el panel se aparta 2 s", vistos); }
     return g_calc_impulso_real(self);
 }
 
@@ -243,6 +245,13 @@ static volatile LONG g_calc_gen = 0;
 static CRITICAL_SECTION g_calc_cs_ini;
 static int g_calc_fijo = 0;                     /* I: la calculadora no se mueve              */
 static int g_calc_escala = 100;                 /* O / P: el tamaño, en %                     */
+/* ★ 25-nov, Personalización · Panel PD (n2h_pd.c, la ventana de Ñ2Hock; ideas del ToolBit 0.6.40): se guardan en
+ *   [herramienta] pd_opacidad / pd_tinte / pd_quieto. Los PEDIDOS de la ventana (otro hilo) se cumplen acá, en el
+ *   hilo del juego, al empezar cada cuadro del panel (calc_pedidos). */
+static volatile int   g_calc_opacidad = 100;   /* 20..100 %: el panel entero (fondo y números)         */
+static volatile DWORD g_calc_tinte = 0xFFFFFF;  /* 0xRRGGBB que multiplica los colores (blanco = nada)  */
+static volatile int   g_calc_quieto = 0;       /* 1 = no se aparta con el impulsor (sólo con F9)      */
+static volatile LONG  g_calc_ped_escala = 0, g_calc_ped_fabrica = 0, g_calc_ped_fijo = -1, g_calc_ped_oculto = -1;
 
 static DWORD WINAPI calc_guardar_hilo(void *p)
 {
@@ -590,6 +599,570 @@ static void calc_pegar_p(const int *p4, int dx, int dy) { calc_pegar(p4[0], p4[1
 #define CALC_BOT_DY (CALC_P_TECLA_I[3] + 2)
 #define CALC_BOT_Y0 (CALC_ALTO - 3 * CALC_BOT_DY)
 
+/* ═══ ★ 26-nov: EL PANEL NUEVO (anonimo03: «viste cómo está el del ToolBit, que es bonito») ═══════════════════
+ *   El mismo orden que el panel del ToolBit (PD grande arriba; 99 % seguidos, 99, 90 … 40~0 con sus «veces»; abajo
+ *   notas, Far y las flechas del teclado), pero dibujado ACÁ con GDI (no son sus imágenes).
+ *   · «como la letra de los crayones Mazino, que se muevan los colores»: el número del PD, el «PD» y los números de
+ *     cada fila van con la LETRA de los crayones (estilos_texto.c) y el ARCOÍRIS que los recorre, con borde oscuro.
+ *   · «¿no puede ser editable?»: Personalización · PD — imagen o color de fondo, cuánto se ve el fondo, el número con
+ *     arcoíris o de un color, qué filas de abajo se ven.
+ *   · «los números los veo muy pixeleados»: se arma AL TAMAÑO EN QUE SE VE (Tamaño 75..200 %: letras y medidas ×s) en
+ *     una textura propia de 512² y se dibuja 1:1 (pdn_dibujar, far_juego_dibujo.c). Ya no pasa por el lienzo de 256
+ *     del juego (que se agrandaba y se pixelaba).
+ *   Las medidas de abajo están en «puntos» del panel de 200 × 252 (al 100 %); PS() las lleva a píxeles.
+ *   Se mueve también con el mouse (calc_raton). [calculadora] estilo=0 vuelve al de antes. */
+static int g_calc_estilo = 1;
+static int calc_far10(void);                        /* far_juego_dibujo.c: el Far ×10 (-1 apagado) */
+#define CN_W 200
+#define CN_H 252
+#define PDN_LADO 512                                /* la textura (200 % = 400 × 504) */
+#define CN_MS_ARCO 2600
+#define CN_CABEZA 46                                /* la cabeza, en puntos */
+static int    g_pdn_s = 100;                        /* la escala con la que se armó (%) */
+#define PS(v) ((v) * g_pdn_s / 100)
+static HDC    g_pdn_dc = NULL;
+static DWORD *g_pdn_px = NULL;                      /* el DIB, PDN_LADO² */
+static HFONT  g_pdn_f[6], g_pdn_fc[3];              /* las comunes · las de los crayones (número, «PD», filas) */
+static int    g_pdn_f_s = 0;                        /* con qué escala se hicieron */
+static char   g_pdn_fc_nombre[64];
+static int    g_pdn_sombra = 0;                     /* con imagen o fondo tenue: las letras con sombra */
+
+/* lo editable (Personalización · PD; la ventana es otro hilo) */
+static volatile int   g_pdn_arco = 1;                /* [herramienta] pd_arcoiris */
+static volatile DWORD g_pdn_num_color = 0xFFFFFF;    /* pd_numero (sin arcoíris) */
+static volatile DWORD g_pdn_fondo_color = 0xFFFFFFFF;/* pd_fondo_color (0xFFFFFFFF = el azul de fábrica) */
+static volatile int   g_pdn_fondo_op = 0;            /* pd_fondo_op, 0..100 */
+static int            g_pdn_ver_abajo = 1, g_pdn_ver_teclado = 1;   /* pd_ver_abajo · pd_ver_teclado */
+static wchar_t        g_pdn_fondo_ruta[MAX_PATH];    /* pd_fondo (la copia en n2hock_pd\) */
+#define PDN_FW (CN_W * 2)                            /* la imagen de fondo se guarda armada al 200 % */
+#define PDN_FH (CN_H * 2)
+static DWORD         *g_pdn_fondo_img = NULL;        /* PDN_FW × PDN_FH, A8R8G8B8 */
+static volatile LONG  g_pdn_fondo_serie = 0;
+static CRITICAL_SECTION g_pdn_cs;
+static int            g_pdn_cs_ok = 0;
+
+/* lo armado */
+static DWORD  g_pdn_base[PDN_LADO * PDN_LADO];       /* lo quieto, colores sin premultiplicar + alfa */
+static DWORD  g_pdn_ta[PDN_LADO * PDN_LADO];         /* las letras sobre negro (para sacar su alfa) */
+static DWORD  g_pdn_out[PDN_LADO * PDN_LADO];        /* lo que se sube: PREMULTIPLICADO */
+static BYTE   g_pdn_mask[PDN_LADO * PDN_LADO];       /* la letra animada (0..255) */
+static BYTE   g_pdn_aro[PDN_LADO * PDN_LADO];        /* su borde */
+static BYTE   g_pdn_fila[PDN_LADO];                  /* 1 = la fila tiene algo animado */
+static BYTE   g_pdn_fl[PDN_LADO * PDN_LADO];         /* las flechas del teclado (0..255) */
+static BYTE   g_pdn_fl_fila[PDN_LADO];
+static int    g_pdn_fl_x[5], g_pdn_fl_n = 0;         /* dónde empieza cada flecha (px) */
+static int    g_pdn_teclas = -1;                     /* las flechas encendidas en la salida */
+static int    g_pdn_w = CN_W, g_pdn_hh = CN_H;       /* en píxeles */
+static int    g_pdn_h = CN_H;                        /* en puntos */
+static DWORD  g_pdn_clave = 0, g_pdn_anim_t = 0;
+static int    g_pdn_cambio = 0;                      /* hay que subir g_pdn_out */
+
+static int cn_gdi(void)
+{
+    if (g_pdn_dc) return 1;
+    HDC dc = CreateCompatibleDC(NULL);
+    if (!dc) return 0;
+    BITMAPINFO bi;
+    ZeroMemory(&bi, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bi.bmiHeader.biWidth = PDN_LADO;
+    bi.bmiHeader.biHeight = -PDN_LADO;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    void *bits = NULL;
+    HBITMAP bmp = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &bits, NULL, 0);
+    if (!bmp || !bits) { DeleteDC(dc); return 0; }
+    SelectObject(dc, bmp);
+    SetBkMode(dc, TRANSPARENT);
+    g_pdn_dc = dc;
+    g_pdn_px = (DWORD *)bits;
+    return 1;
+}
+
+static const char *calc_fuente_crayon(int *peso);   /* far_juego_dibujo.c: la letra de los crayones */
+/* las letras, a la escala de ahora (se rehacen si cambia la escala o la letra de los crayones) */
+static int cn_fuentes(void)
+{
+    int peso = FW_BLACK;
+    const char *n = calc_fuente_crayon(&peso);
+    if (!n || !n[0]) n = "Segoe UI Black";
+    if (g_pdn_f[0] && g_pdn_f_s == g_pdn_s && !lstrcmpA(n, g_pdn_fc_nombre)) return 1;
+    for (int i = 0; i < 6; i++) if (g_pdn_f[i]) { DeleteObject(g_pdn_f[i]); g_pdn_f[i] = NULL; }
+    for (int i = 0; i < 3; i++) if (g_pdn_fc[i]) { DeleteObject(g_pdn_fc[i]); g_pdn_fc[i] = NULL; }
+    static const int T[6] = { -31, -25, -16, -15, -11, -13 };
+    static const int G[6] = { FW_BOLD, FW_BOLD, FW_SEMIBOLD, FW_BOLD, FW_NORMAL, FW_NORMAL };
+    for (int i = 0; i < 6; i++)
+        g_pdn_f[i] = CreateFontW(PS(T[i]), 0, 0, 0, G[i], 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                 ANTIALIASED_QUALITY, DEFAULT_PITCH, i == 5 ? L"Segoe UI Symbol" : L"Segoe UI");
+    static const int TC_[3] = { -30, -26, -16 };
+    for (int i = 0; i < 3; i++)
+        g_pdn_fc[i] = CreateFontA(PS(TC_[i]), 0, 0, 0, i == 2 && peso > FW_BOLD ? FW_BOLD : peso, 0, 0, 0, DEFAULT_CHARSET,
+                                  OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, n);
+    lstrcpynA(g_pdn_fc_nombre, n, 64);
+    g_pdn_f_s = g_pdn_s;
+    for (int i = 0; i < 6; i++) if (!g_pdn_f[i]) return 0;
+    for (int i = 0; i < 3; i++) if (!g_pdn_fc[i]) return 0;
+    return 1;
+}
+
+/* texto con una letra común: (x, y) en puntos; al = DT_LEFT / DT_RIGHT (x es el borde); devuelve el ancho en puntos */
+static int cn_txt(int x, int y, const wchar_t *s, int f, COLORREF c, UINT al)
+{
+    SIZE z;
+    int n = lstrlenW(s), px = PS(x), py = PS(y);
+    SelectObject(g_pdn_dc, g_pdn_f[f]);
+    GetTextExtentPoint32W(g_pdn_dc, s, n, &z);
+    if (al == DT_RIGHT) px -= z.cx;
+    if (g_pdn_sombra) {
+        int o = PS(1) < 1 ? 1 : PS(1);
+        SetTextColor(g_pdn_dc, RGB(0, 0, 0));
+        TextOutW(g_pdn_dc, px + o, py + o, s, n);
+    }
+    SetTextColor(g_pdn_dc, c);
+    TextOutW(g_pdn_dc, px, py, s, n);
+    return z.cx * 100 / g_pdn_s;
+}
+/* texto de los crayones, en blanco (para la máscara) */
+static int cn_txt_c(int f, int x, int y, const wchar_t *s, UINT al)
+{
+    SIZE z;
+    int n = lstrlenW(s), px = PS(x), py = PS(y);
+    SelectObject(g_pdn_dc, g_pdn_fc[f]);
+    GetTextExtentPoint32W(g_pdn_dc, s, n, &z);
+    if (al == DT_RIGHT) px -= z.cx;
+    SetTextColor(g_pdn_dc, RGB(255, 255, 255));
+    TextOutW(g_pdn_dc, px, py, s, n);
+    return z.cx * 100 / g_pdn_s;
+}
+static int cn_teclas(void)
+{
+    static const int VK[4] = { VK_LEFT, VK_UP, VK_DOWN, VK_RIGHT };
+    int m = 0;
+    for (int i = 0; i < 4; i++) if (GetAsyncKeyState(VK[i]) & 0x8000) m |= 1 << i;
+    return m;
+}
+
+/* (hilo de la ventana) la imagen elegida, ajustada «cubriendo» el panel al 200 %; NULL la quita */
+static void pdn_poner_fondo(const DWORD *px, int w, int h)
+{
+    DWORD *n = NULL;
+    if (px && w > 0 && h > 0) {
+        n = (DWORD *)HeapAlloc(GetProcessHeap(), 0, PDN_FW * PDN_FH * 4);
+        if (n) {
+            double e = (double)PDN_FW / w > (double)PDN_FH / h ? (double)PDN_FW / w : (double)PDN_FH / h;
+            double ox = (w * e - PDN_FW) / 2, oy = (h * e - PDN_FH) / 2;
+            for (int y = 0; y < PDN_FH; y++)
+                for (int x = 0; x < PDN_FW; x++) {
+                    DWORD sa = 0, sr = 0, sg = 0, sb = 0;
+                    for (int k = 0; k < 4; k++) {
+                        int sx = (int)((x + ox + (k & 1) * 0.5 + 0.25) / e), sy = (int)((y + oy + (k >> 1) * 0.5 + 0.25) / e);
+                        if (sx < 0) sx = 0;
+                        if (sy < 0) sy = 0;
+                        if (sx >= w) sx = w - 1;
+                        if (sy >= h) sy = h - 1;
+                        DWORD c = px[sy * w + sx];
+                        sa += c >> 24; sr += c >> 16 & 255; sg += c >> 8 & 255; sb += c & 255;
+                    }
+                    n[y * PDN_FW + x] = (sa / 4) << 24 | (sr / 4) << 16 | (sg / 4) << 8 | (sb / 4);
+                }
+        }
+    }
+    if (!g_pdn_cs_ok) { if (n) HeapFree(GetProcessHeap(), 0, n); return; }
+    EnterCriticalSection(&g_pdn_cs);
+    DWORD *viejo = g_pdn_fondo_img;
+    g_pdn_fondo_img = n;
+    LeaveCriticalSection(&g_pdn_cs);
+    if (viejo) HeapFree(GetProcessHeap(), 0, viejo);
+    InterlockedIncrement(&g_pdn_fondo_serie);
+}
+
+static int calc_hex(const char *t, DWORD *v)                  /* "#RRGGBB" */
+{
+    if (!t || t[0] != '#' || lstrlenA(t) != 7) return 0;
+    DWORD r = 0;
+    for (int i = 1; i < 7; i++) {
+        char ch = t[i];
+        int d = ch >= '0' && ch <= '9' ? ch - '0' : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : ch >= 'A' && ch <= 'F' ? ch - 'A' + 10 : -1;
+        if (d < 0) return 0;
+        r = r * 16 + (DWORD)d;
+    }
+    *v = r;
+    return 1;
+}
+
+static DWORD cn_hsv(int h360, int s100, int v100)
+{
+    int h = ((h360 % 360) + 360) % 360, sec = h / 60, f = (h % 60) * 255 / 60;
+    int v = v100 * 255 / 100, pp = v * (100 - s100) / 100, q = v * (100 - s100 * f / 255) / 100,
+        t = v * (100 - s100 * (255 - f) / 255) / 100;
+    int r, g, b;
+    switch (sec) {
+    case 0: r = v; g = t; b = pp; break;
+    case 1: r = q; g = v; b = pp; break;
+    case 2: r = pp; g = v; b = t; break;
+    case 3: r = pp; g = q; b = v; break;
+    case 4: r = t; g = pp; b = v; break;
+    default: r = v; g = pp; b = q; break;
+    }
+    return (DWORD)(r << 16 | g << 8 | b);
+}
+
+static int pdn_alto(void)                                     /* en puntos */
+{
+    int y = 213;
+    if (g_pdn_ver_abajo) y += 19;
+    if (g_pdn_ver_teclado) y += 20;
+    return (g_pdn_ver_abajo || g_pdn_ver_teclado) ? y : 208;
+}
+static DWORD cn_clave(void)
+{
+    DWORD f = 2166136261u;
+    int v[28] = { g_calc_notas, (int)g_calc_suma, (int)(g_calc_suma >> 32), g_calc_mejor, g_calc_fijo, calc_far10(),
+                  0, (int)g_pdn_fondo_serie, (int)g_pdn_fondo_color, g_pdn_fondo_op, g_pdn_ver_abajo,
+                  g_pdn_ver_teclado, (int)g_pdn_num_color, g_pdn_arco, g_pdn_s, 0, 0 };
+    for (int i = 0; i < 11; i++) v[17 + i] = g_calc_caj[i];
+    for (int i = 0; i < 28; i++) { f ^= (DWORD)v[i]; f *= 16777619u; }
+    for (const char *c = g_pdn_fc_nombre; *c; c++) { f ^= (BYTE)*c; f *= 16777619u; }
+    return f | 1;
+}
+
+static void pdn_llenar(DWORD c)
+{
+    for (int y = 0; y < g_pdn_hh; y++) for (int x = 0; x < g_pdn_w; x++) g_pdn_px[y * PDN_LADO + x] = c;
+}
+static void pdn_raya(int x0, int y0, int x1, COLORREF c)          /* una raya de 1 punto, en puntos */
+{
+    RECT r = { PS(x0), PS(y0), PS(x1), PS(y0) + (PS(1) < 1 ? 1 : PS(1)) };
+    HBRUSH b = CreateSolidBrush(c);
+    FillRect(g_pdn_dc, &r, b);
+    DeleteObject(b);
+}
+/* ★ 26-nov (anonimo03: «el 99 %, 90 %… hasta 40-0 % con letras Mazino, de otro color, para que se noten más»):
+ *   los rótulos de las filas con la LETRA DE LOS CRAYONES, un color vivo por fila y borde oscuro. Quietos: se pegan
+ *   en lo quieto (g_pdn_base) una vez, no cuestan nada por cuadro. */
+static const wchar_t *PDN_ROT[8] = { L"99%", L"99%", L"90%", L"80%", L"70%", L"60%", L"50%", L"40%~0%" };
+static const DWORD PDN_ROT_COL[8] = { 0x40E0FF, 0x40E0FF, 0xFFE63C, 0x96F05A, 0xFFAA3C, 0xDC82FF, 0xA0B4FF, 0xFF5A5A };
+static int  g_pdn_rot_w0 = 30;                                  /* el ancho de «99%» (para poner «seguidos» al lado) */
+static BYTE g_pdn_rot[PDN_LADO * PDN_LADO];
+static void pdn_rotulos_mascara(void)                           /* en g_pdn_rot; antes de pdn_textos */
+{
+    int W = g_pdn_w, HH = g_pdn_hh;
+    for (int y = 0; y < HH; y++) for (int x = 0; x < W; x++) g_pdn_px[y * PDN_LADO + x] = 0;
+    for (int i = 0; i < 8; i++) {
+        int w = cn_txt_c(2, 11, 50 + i * 19, PDN_ROT[i], DT_LEFT);
+        if (i == 0) g_pdn_rot_w0 = w;
+    }
+    GdiFlush();
+    for (int y = 0; y < HH; y++)
+        for (int x = 0; x < W; x++) {
+            DWORD c = g_pdn_px[y * PDN_LADO + x];
+            g_pdn_rot[y * PDN_LADO + x] = (BYTE)(((c >> 16 & 255) + (c >> 8 & 255) + (c & 255)) / 3);
+        }
+}
+static DWORD pdn_sobre(DWORD d, DWORD sc, int sa);
+static void pdn_rotulos_pegar(void)                             /* sobre g_pdn_base, con su borde */
+{
+    int W = g_pdn_w, HH = g_pdn_hh, r = PS(1) < 1 ? 1 : PS(1), fila = PS(19), y0 = PS(50);
+    for (int y = 0; y < HH; y++)
+        for (int x = 0; x < W && x < PS(110); x++) {
+            int mx = 0;
+            for (int dy = -r; dy <= r && mx < 255; dy++) {
+                int yy = y + dy;
+                if (yy < 0 || yy >= HH) continue;
+                for (int dx = -r; dx <= r; dx++) {
+                    int xx = x + dx;
+                    if (xx < 0 || xx >= W || dx * dx + dy * dy > r * r + 1) continue;
+                    int m = g_pdn_rot[yy * PDN_LADO + xx];
+                    if (m > mx) mx = m;
+                }
+            }
+            if (!mx) continue;
+            int i = y, m = g_pdn_rot[y * PDN_LADO + x];
+            DWORD *o = &g_pdn_base[i * PDN_LADO + x];
+            DWORD d = pdn_sobre(*o, 0x120824, mx * 9 / 10);
+            if (m) {
+                int k = fila ? (y - y0) / fila : 0;
+                if (k < 0) k = 0;
+                if (k > 7) k = 7;
+                int dentro = fila ? (y - y0 - k * fila) * 100 / fila : 50;      /* el caramelo: arriba más claro */
+                int claro = dentro < 45 ? (45 - dentro) : 0;
+                DWORD c = PDN_ROT_COL[k];
+                int cr = c >> 16 & 255, cg = c >> 8 & 255, cb = c & 255;
+                cr += (255 - cr) * claro / 100; cg += (255 - cg) * claro / 100; cb += (255 - cb) * claro / 100;
+                d = pdn_sobre(d, (DWORD)(cr << 16 | cg << 8 | cb), m);
+            }
+            *o = d;
+        }
+}
+
+/* las letras quietas (y las rayas); los números de las filas van en la máscara */
+static void pdn_textos(int H)
+{
+    wchar_t t[32];
+    cn_txt(13, 30, L"precisión", 4, RGB(170, 195, 225), DT_LEFT);
+    pdn_raya(8, 46, CN_W - 8, RGB(70, 118, 170));
+    if (H > 208) pdn_raya(8, 208, CN_W - 8, RGB(70, 118, 170));
+    for (int i = 0; i < 8; i++) {                                 /* 99 %… 40~0 %: con la letra de los crayones (pdn_rotulos) */
+        int y = 51 + i * 19;
+        if (i == 0) cn_txt(11 + g_pdn_rot_w0 + 6, y + 3, L"seguidos", 4, RGB(150, 225, 255), DT_LEFT);
+        cn_txt(CN_W - 41, y + 4, L"veces", 4, RGB(165, 185, 210), DT_LEFT);
+    }
+    COLORREF amarillo = RGB(255, 210, 70);
+    int y = 213;
+    if (g_pdn_ver_abajo) {
+        int w = cn_txt(11, y, L"Notas:", 3, amarillo, DT_LEFT);
+        wsprintfW(t, L"%d", g_calc_notas);
+        cn_txt(11 + w + 5, y, t, 3, RGB(245, 248, 252), DT_LEFT);
+        w = cn_txt(112, y, L"Far:", 3, amarillo, DT_LEFT);
+        int f10 = calc_far10();
+        if (f10 < 0) lstrcpyW(t, L"—"); else wsprintfW(t, L"%d.%d", f10 / 10, f10 % 10);
+        cn_txt(112 + w + 5, y, t, 3, RGB(245, 248, 252), DT_LEFT);
+        y += 19;
+    }
+    if (g_pdn_ver_teclado) cn_txt(11, y, L"Teclado:", 3, amarillo, DT_LEFT);   /* las flechas: capa aparte (pdn_animar) */
+    if (g_calc_fijo) cn_txt(CN_W - 10, H - 19, L"fijado", 4, RGB(150, 170, 200), DT_RIGHT);
+}
+
+/* el color del fondo en el píxel (x, y), sin alfa todavía */
+static DWORD pdn_fondo(int x, int y, const DWORD *img)
+{
+    int bx = x * 100 / g_pdn_s, by = y * 100 / g_pdn_s;          /* en puntos */
+    if (img) {
+        int ix = x * 200 / g_pdn_s, iy = y * 200 / g_pdn_s;
+        if (ix >= PDN_FW) ix = PDN_FW - 1;
+        if (iy >= PDN_FH) iy = PDN_FH - 1;
+        DWORD c = img[iy * PDN_FW + ix], a = c >> 24;
+        DWORD r = ((c >> 16 & 255) * a + 8 * (255 - a)) / 255, g = ((c >> 8 & 255) * a + 18 * (255 - a)) / 255,
+              b = ((c & 255) * a + 40 * (255 - a)) / 255;
+        return r << 16 | g << 8 | b;
+    }
+    int dx = (bx - CN_W / 2) * 100 / (CN_W / 2), dy = (by - CN_H * 45 / 100) * 100 / (CN_H * 6 / 10);
+    int tt = (dx * dx + dy * dy) / 100;
+    if (tt > 100) tt = 100;
+    int cr = 24, cg = 70, cb = 122, er = 6, eg = 17, eb = 40;
+    DWORD fc = g_pdn_fondo_color;
+    if (fc != 0xFFFFFFFF) {
+        cr = fc >> 16 & 255; cg = fc >> 8 & 255; cb = fc & 255;
+        er = cr * 28 / 100; eg = cg * 28 / 100; eb = cb * 28 / 100;
+    }
+    int r = (cr * (100 - tt) + er * tt) / 100, g = (cg * (100 - tt) + eg * tt) / 100, b = (cb * (100 - tt) + eb * tt) / 100;
+    if (by < CN_CABEZA) { r = r * 80 / 100; g = g * 80 / 100; b = b * 85 / 100; }
+    return (DWORD)(r << 16 | g << 8 | b);
+}
+
+/* src sobre dst, colores sin premultiplicar */
+static DWORD pdn_sobre(DWORD d, DWORD sc, int sa)
+{
+    int da = (int)(d >> 24), oa = sa + da * (255 - sa) / 255;
+    if (oa <= 0) return 0;
+    DWORD out = 0;
+    for (int sh = 0; sh < 24; sh += 8) {
+        int c = ((int)((sc >> sh) & 255) * sa + (int)((d >> sh) & 255) * da * (255 - sa) / 255) / oa;
+        out |= (DWORD)(c > 255 ? 255 : c) << sh;
+    }
+    return out | (DWORD)oa << 24;
+}
+static DWORD pdn_premul(DWORD c)
+{
+    DWORD a = c >> 24;
+    return a << 24 | ((c >> 16 & 255) * a / 255) << 16 | ((c >> 8 & 255) * a / 255) << 8 | (c & 255) * a / 255;
+}
+
+/* lo quieto: la máscara de lo animado, y fondo + letras con su alfa (las letras se ven aunque el fondo no) */
+static void cn_armar_quieto(void)
+{
+    int H = pdn_alto();
+    g_pdn_h = H;
+    g_pdn_w = PS(CN_W);
+    g_pdn_hh = PS(H);
+    if (g_pdn_w > PDN_LADO) g_pdn_w = PDN_LADO;
+    if (g_pdn_hh > PDN_LADO) g_pdn_hh = PDN_LADO;
+    int W = g_pdn_w, HH = g_pdn_hh, cab = PS(CN_CABEZA);
+    /* 1) la máscara: el número, «PD» y los números de las filas, en blanco sobre negro */
+    pdn_llenar(0);
+    wchar_t t[32];
+    if (!g_calc_notas) lstrcpyW(t, L"0.000");
+    else {
+        long long v = g_calc_suma * 1000 / g_calc_notas;
+        wsprintfW(t, L"%d.%03d", (int)(v / 1000), (int)(v % 1000));
+    }
+    cn_txt_c(0, CN_W - 28, 3, t, DT_RIGHT);
+    cn_txt_c(1, CN_W - 26, 12, L"%", DT_LEFT);
+    cn_txt_c(1, 10, 4, L"PD", DT_LEFT);
+    int bajo = g_calc_caj[0] + g_calc_caj[1] + g_calc_caj[2] + g_calc_caj[3] + g_calc_caj[4];
+    int vals[8] = { g_calc_mejor, g_calc_caj[10], g_calc_caj[9], g_calc_caj[8], g_calc_caj[7], g_calc_caj[6], g_calc_caj[5], bajo };
+    for (int i = 0; i < 8; i++) {
+        wsprintfW(t, L"%d", vals[i]);
+        cn_txt_c(2, CN_W - 49, 50 + i * 19, t, DT_RIGHT);
+    }
+    GdiFlush();
+    for (int y = 0; y < HH; y++)
+        for (int x = 0; x < W; x++) {
+            DWORD c = g_pdn_px[y * PDN_LADO + x];
+            g_pdn_mask[y * PDN_LADO + x] = (BYTE)(((c >> 16 & 255) + (c >> 8 & 255) + (c & 255)) / 3);
+        }
+    /* las flechas del teclado: otra capa (se encienden sin rearmar nada: apretar teclas no da tirones) */
+    ZeroMemory(g_pdn_fl_fila, sizeof(g_pdn_fl_fila));
+    g_pdn_fl_n = 0;
+    if (g_pdn_ver_teclado) {
+        static const wchar_t *FL[4] = { L"◀", L"▲", L"▼", L"▶" };
+        SIZE z;
+        SelectObject(g_pdn_dc, g_pdn_f[3]);
+        GetTextExtentPoint32W(g_pdn_dc, L"Teclado:", 8, &z);
+        int ty = 213 + (g_pdn_ver_abajo ? 19 : 0) + 1, tx = 11 + z.cx * 100 / g_pdn_s + 8;
+        pdn_llenar(0);
+        SelectObject(g_pdn_dc, g_pdn_f[5]);
+        SetTextColor(g_pdn_dc, RGB(255, 255, 255));
+        for (int i = 0; i < 4; i++) {
+            TextOutW(g_pdn_dc, PS(tx + i * 17), PS(ty), FL[i], 1);
+            g_pdn_fl_x[i] = PS(tx + i * 17);
+        }
+        g_pdn_fl_x[4] = PS(tx + 4 * 17);
+        g_pdn_fl_n = 4;
+        GdiFlush();
+        for (int y = 0; y < HH; y++)
+            for (int x = 0; x < W; x++) {
+                DWORD c = g_pdn_px[y * PDN_LADO + x];
+                BYTE m = (BYTE)(((c >> 16 & 255) + (c >> 8 & 255) + (c & 255)) / 3);
+                g_pdn_fl[y * PDN_LADO + x] = m;
+                if (m) g_pdn_fl_fila[y] = 1;
+            }
+    }
+    /* el borde: la máscara engordada (más grueso en la cabeza) */
+    ZeroMemory(g_pdn_fila, sizeof(g_pdn_fila));
+    for (int y = 0; y < HH; y++) {
+        int r = y < cab ? PS(2) : PS(1);
+        if (r < 1) r = 1;
+        for (int x = 0; x < W; x++) {
+            int mx = 0;
+            for (int dy = -r; dy <= r && mx < 255; dy++) {
+                int yy = y + dy;
+                if (yy < 0 || yy >= HH) continue;
+                for (int dx = -r; dx <= r; dx++) {
+                    int xx = x + dx;
+                    if (xx < 0 || xx >= W || dx * dx + dy * dy > r * r + 1) continue;
+                    int m = g_pdn_mask[yy * PDN_LADO + xx];
+                    if (m > mx) mx = m;
+                }
+            }
+            g_pdn_aro[y * PDN_LADO + x] = (BYTE)mx;
+            if (mx) g_pdn_fila[y] = 1;
+        }
+    }
+    pdn_rotulos_mascara();
+    /* 2) las letras quietas dos veces (sobre negro y sobre blanco): de la diferencia sale su alfa */
+    if (g_pdn_cs_ok) EnterCriticalSection(&g_pdn_cs);
+    const DWORD *img = g_pdn_fondo_img;
+    g_pdn_sombra = img != NULL || g_pdn_fondo_op < 60;
+    pdn_llenar(0x000000);
+    pdn_textos(H);
+    GdiFlush();
+    for (int y = 0; y < HH; y++) CopyMemory(g_pdn_ta + y * PDN_LADO, g_pdn_px + y * PDN_LADO, W * 4);
+    pdn_llenar(0xFFFFFF);
+    pdn_textos(H);
+    GdiFlush();
+    /* 3) fondo (con su alfa) + letras encima; borde redondeado */
+    int op = g_pdn_fondo_op < 0 ? 0 : g_pdn_fondo_op > 100 ? 100 : g_pdn_fondo_op;
+    int rad = PS(9), rad_in = PS(8);
+    for (int y = 0; y < HH; y++)
+        for (int x = 0; x < W; x++) {
+            DWORD *o = &g_pdn_base[y * PDN_LADO + x];
+            int ex = x < rad ? rad - x : x > W - 1 - rad ? x - (W - 1 - rad) : 0;
+            int ey = y < rad ? rad - y : y > HH - 1 - rad ? y - (HH - 1 - rad) : 0;
+            int d2 = ex * ex + ey * ey;
+            if (d2 > rad * rad) { *o = 0; continue; }
+            int borde = d2 > rad_in * rad_in || x == 0 || y == 0 || x == W - 1 || y == HH - 1;
+            DWORD bc = borde ? 0x005A8CC8 : pdn_fondo(x, y, img);
+            int ba = (borde ? 235 : 245) * op / 100;
+            DWORD A = g_pdn_ta[y * PDN_LADO + x], B = g_pdn_px[y * PDN_LADO + x];
+            int ta = 255 - (int)((B >> 8 & 255) - (A >> 8 & 255));
+            if (ta < 0) ta = 0;
+            if (ta > 255) ta = 255;
+            int oa = ta + ba * (255 - ta) / 255;
+            DWORD out = 0;
+            if (oa > 0)
+                for (int sh = 0; sh < 24; sh += 8) {
+                    int tc = ta ? (int)((A >> sh) & 255) * 255 / ta : 0;
+                    if (tc > 255) tc = 255;
+                    int c = (tc * ta + (int)((bc >> sh) & 255) * ba * (255 - ta) / 255) / oa;
+                    out |= (DWORD)(c > 255 ? 255 : c) << sh;
+                }
+            *o = out | (DWORD)oa << 24;
+        }
+    if (g_pdn_cs_ok) LeaveCriticalSection(&g_pdn_cs);
+    pdn_rotulos_pegar();
+    /* lo quieto ya va a la salida; las filas animadas se pisan en pdn_animar */
+    for (int y = 0; y < HH; y++)
+        for (int x = 0; x < W; x++) g_pdn_out[y * PDN_LADO + x] = pdn_premul(g_pdn_base[y * PDN_LADO + x]);
+}
+
+/* las filas animadas: el arcoíris que recorre las letras (o su color), con su borde oscuro */
+static void pdn_animar(void)
+{
+    int W = g_pdn_w, HH = g_pdn_hh, cab = PS(CN_CABEZA), claro_h = PS(22);
+    int fase = (int)((GetTickCount() % CN_MS_ARCO) * 360 / CN_MS_ARCO), arco = g_pdn_arco;
+    DWORD fijo = g_pdn_num_color & 0xFFFFFF;
+    for (int y = 0; y < HH; y++) {
+        if (!g_pdn_fila[y]) continue;
+        int claro = y < claro_h ? (claro_h - y) * 66 / (claro_h ? claro_h : 1) : 0;   /* el caramelo: arriba más blanco */
+        for (int x = 0; x < W; x++) {
+            int i = y * PDN_LADO + x, a = g_pdn_aro[i], m = g_pdn_mask[i];
+            if (!a) continue;
+            DWORD d = pdn_sobre(g_pdn_base[i], 0x120824, a * 9 / 10);
+            if (m) {
+                DWORD c = arco ? cn_hsv(x * 300 / W - fase + y * 120 / (HH ? HH : 1), 70, 100)
+                               : (y < cab ? fijo : 0xF5F8FC);
+                int cr = c >> 16 & 255, cg = c >> 8 & 255, cb = c & 255;
+                cr += (255 - cr) * claro / 100; cg += (255 - cg) * claro / 100; cb += (255 - cb) * claro / 100;
+                d = pdn_sobre(d, (DWORD)(cr << 16 | cg << 8 | cb), m);
+            }
+            g_pdn_out[i] = pdn_premul(d);
+        }
+    }
+    /* las flechas: doradas las apretadas */
+    int m = cn_teclas();
+    g_pdn_teclas = m;
+    for (int y = 0; y < HH && g_pdn_fl_n; y++) {
+        if (!g_pdn_fl_fila[y]) continue;
+        for (int x = 0; x < W; x++) {
+            int i = y * PDN_LADO + x, a = g_pdn_fl[i];
+            if (!a) continue;
+            int k = 0;
+            while (k < 3 && x >= g_pdn_fl_x[k + 1]) k++;
+            DWORD c = (m >> k) & 1 ? 0xFFCC00 : 0x788EAF;
+            DWORD d = g_pdn_base[i];
+            if (g_pdn_sombra) d = pdn_sobre(d, 0, a * 7 / 10);
+            g_pdn_out[i] = pdn_premul(pdn_sobre(d, c, a));
+        }
+    }
+}
+
+/* arma lo que haga falta para este cuadro; *W, *H en píxeles. g_pdn_cambio = 1 si hay que subirlo */
+static int pdn_armar(int *W, int *H)
+{
+    int s = g_calc_escala < 50 ? 50 : g_calc_escala > 200 ? 200 : g_calc_escala;
+    g_pdn_s = s;
+    if (!cn_gdi() || !cn_fuentes()) return 0;
+    if (!g_pdn_cs_ok) { InitializeCriticalSection(&g_pdn_cs); g_pdn_cs_ok = 1; }
+    g_pdn_cambio = 0;
+    DWORD k = cn_clave();
+    if (k != g_pdn_clave) { cn_armar_quieto(); g_pdn_clave = k; g_pdn_cambio = 1; g_pdn_anim_t = 0; }
+    DWORD t = GetTickCount() / 40;
+    int teclas_cambio = g_pdn_fl_n && cn_teclas() != g_pdn_teclas;
+    if ((t != g_pdn_anim_t && g_pdn_arco) || g_pdn_cambio || teclas_cambio) {
+        pdn_animar();
+        g_pdn_anim_t = t;
+        g_pdn_cambio = 1;
+    }
+    *W = g_pdn_w;
+    *H = g_pdn_hh;
+    g_calc_lz_w = CN_W;                                   /* calc_acotar / el mouse: en puntos (×escala) */
+    g_calc_lz_h = g_pdn_h;
+    return 1;
+}
+static int pdn_dibujar(int x, int y, DWORD col);         /* far_juego_dibujo.c: la textura propia y el dibujo */
+
 /* arma el panel en memoria (lo MISMO que dibujaba calc_dibujar, pero pegado) */
 static void calc_armar_lienzo(void)
 {
@@ -706,6 +1279,22 @@ static void calc_numero_pd(int x0, int y0, DWORD col)
     calc_figura(F_PORC, x - 1, y0 + CALC_PD_Y + 1, col);
 }
 
+static void calc_cambiar_escala(int paso);
+static void calc_pedidos(void)
+{
+    LONG e = InterlockedExchange(&g_calc_ped_escala, 0);
+    if (e) calc_cambiar_escala(e > 0 ? +1 : -1);
+    LONG f = InterlockedExchange(&g_calc_ped_fijo, -1);
+    if (f >= 0 && f != g_calc_fijo) { g_calc_fijo = (int)f; calc_guardar(); }
+    LONG o = InterlockedExchange(&g_calc_ped_oculto, -1);
+    if (o >= 0 && o != g_calc_oculto) { g_calc_oculto = (int)o; calc_guardar(); }
+    if (InterlockedExchange(&g_calc_ped_fabrica, 0)) {
+        calc_fabrica(&g_calc_x, &g_calc_y);
+        calc_acotar();
+        calc_guardar_ex(1);
+    }
+}
+
 static void calc_dibujar(void)
 {
     double t = calc_ahora();
@@ -720,10 +1309,19 @@ static void calc_dibujar(void)
         g_calc_res_w = W; g_calc_res_h = H;
         calc_ubicar();
     }
+    calc_pedidos();
     calc_teclado(dt);
 
-    int por_impulso = t < g_calc_impulso_hasta;
-    int quiere = !g_calc_oculto && !por_impulso;
+    int por_impulso = !g_calc_quieto && t < g_calc_impulso_hasta;
+    /* ★ 26-nov (anonimo03: «que se mueva cuando se activa el booster, para ver al personaje»): con el panel nuevo,
+     *   el impulsor ya no lo desvanece: se DESLIZA fuera de la pantalla (al borde más cercano) y vuelve. */
+    int nuevo = g_calc_estilo && !g_calc_forzar_viejo;
+    int quiere = !g_calc_oculto && (!por_impulso || nuevo);
+    static double aparte = 0;
+    {
+        double pa = dt / 220.0;
+        aparte = por_impulso ? (aparte + pa > 1 ? 1 : aparte + pa) : (aparte - pa * 0.6 < 0 ? 0 : aparte - pa * 0.6);
+    }
     double paso = dt / CALC_ANIM_MS;
     g_calc_vis = quiere ? (g_calc_vis + paso > 1 ? 1 : g_calc_vis + paso)
                         : (g_calc_vis - paso < 0 ? 0 : g_calc_vis - paso);
@@ -732,9 +1330,25 @@ static void calc_dibujar(void)
     int X = calc_redondear(g_calc_x), Y = calc_redondear(g_calc_y);
     double e = 1 - (1 - g_calc_vis) * (1 - g_calc_vis);    /* frena al llegar */
     int x0 = calc_redondear(g_calc_x - (1 - e) * CALC_ANIM_PX);
-    DWORD a = (DWORD)calc_redondear(255 * e);
-    DWORD col = (a << 24) | 0xFFFFFF;
+    DWORD a = (DWORD)calc_redondear(255 * e * g_calc_opacidad / 100.0);
+    DWORD col = (a << 24) | (g_calc_tinte & 0xFFFFFF);
 
+    /* ★ 26-nov: el panel nuevo, con su textura propia al tamaño en que se ve (nítido). Si falla, el de antes. */
+    if (g_calc_estilo && !g_calc_forzar_viejo) {
+        int xx = x0;
+        if (aparte > 0) {
+            double ea = aparte * aparte * (3 - 2 * aparte);
+            int ancho = CN_W * g_calc_escala / 100;
+            int izq = X + ancho / 2 < g_calc_res_w / 2;
+            xx = x0 + calc_redondear(ea * (izq ? -(X + ancho + 12) : (g_calc_res_w - X + 12)));
+        }
+        int ok = g_calc_vis > 0 ? pdn_dibujar(xx, Y, col) : 1;
+        if (ok) {
+            if (g_calc_vis == 0 && g_calc_oculto && !por_impulso && g_calc_img_estado == 1)
+                calc_figura(F_VER, X, Y, 0xFFFFFFFF);
+            return;
+        }
+    }
     /* ★ el lienzo: UN dibujo, al tamaño elegido. Si no está (o falla), el camino de antes. */
     if (g_calc_lz_estado == 0) calc_cargar_lienzo();
     int esc = g_calc_escala;
@@ -880,7 +1494,37 @@ static void calculadora_iniciar(void)
     g_calc_oculto = (int)GetPrivateProfileIntA("calculadora", "oculto", 0, g_calc_ini);
     g_calc_fijo   = (int)GetPrivateProfileIntA("calculadora", "fijo", 0, g_calc_ini);
     g_calc_escala = (int)GetPrivateProfileIntA("calculadora", "escala", 100, g_calc_ini);
+    g_calc_estilo = (int)GetPrivateProfileIntA("calculadora", "estilo", 1, g_calc_ini);   /* ★ 26-nov: 1 el panel nuevo */
+    {   /* ★ 25-nov: lo de Personalización · Panel PD */
+        int op = (int)GetPrivateProfileIntA("herramienta", "pd_opacidad", 100, g_calc_ini);
+        g_calc_opacidad = op < 20 ? 20 : op > 100 ? 100 : op;
+        g_calc_quieto = GetPrivateProfileIntA("herramienta", "pd_quieto", 0, g_calc_ini) != 0;
+        char t[16];
+        GetPrivateProfileStringA("herramienta", "pd_tinte", "#FFFFFF", t, sizeof(t), g_calc_ini);
+        DWORD v = 0;
+        int ok = t[0] == '#' && lstrlenA(t) == 7;
+        for (int i = 1; ok && i < 7; i++) {
+            char ch = t[i];
+            int d = ch >= '0' && ch <= '9' ? ch - '0' : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : ch >= 'A' && ch <= 'F' ? ch - 'A' + 10 : -1;
+            if (d < 0) ok = 0; else v = v * 16 + (DWORD)d;
+        }
+        if (ok) g_calc_tinte = v;
+        /* ★ 26-nov: el panel nuevo, editable */
+        g_pdn_arco = GetPrivateProfileIntA("herramienta", "pd_arcoiris", 1, g_calc_ini) != 0;
+        g_pdn_ver_abajo = GetPrivateProfileIntA("herramienta", "pd_ver_abajo", 1, g_calc_ini) != 0;
+        g_pdn_ver_teclado = GetPrivateProfileIntA("herramienta", "pd_ver_teclado", 1, g_calc_ini) != 0;
+        int fo = (int)GetPrivateProfileIntA("herramienta", "pd_fondo_op", 0, g_calc_ini);
+        g_pdn_fondo_op = fo < 0 ? 0 : fo > 100 ? 100 : fo;
+        GetPrivateProfileStringA("herramienta", "pd_numero", "#FFFFFF", t, sizeof(t), g_calc_ini);
+        if (calc_hex(t, &v)) g_pdn_num_color = v;
+        GetPrivateProfileStringA("herramienta", "pd_fondo_color", "", t, sizeof(t), g_calc_ini);
+        if (calc_hex(t, &v)) g_pdn_fondo_color = v;
+        char r[MAX_PATH * 3];
+        GetPrivateProfileStringA("herramienta", "pd_fondo", "", r, sizeof(r), g_calc_ini);
+        if (!MultiByteToWideChar(CP_UTF8, 0, r, -1, g_pdn_fondo_ruta, MAX_PATH)) g_pdn_fondo_ruta[0] = 0;
+    }
     InitializeCriticalSection(&g_calc_cs_ini);
+    if (!g_pdn_cs_ok) { InitializeCriticalSection(&g_pdn_cs); g_pdn_cs_ok = 1; }
 
     CALC_ENGANCHE e[4] = {
         { 0x00505340, { 0x53, 0x8A, 0x5C, 0x24, 0x08 }, 5,
