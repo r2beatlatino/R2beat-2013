@@ -23,6 +23,7 @@ import hashlib
 import json
 import os
 import sys
+import struct
 import tempfile
 import time
 
@@ -152,10 +153,25 @@ G.al_entrar(S1b, U1)
 S1b.reemplazada = True
 G.al_salir(S1b)
 ok(G.cerrada(U1) is None, "⟲ una conexión reemplazada por un doble login no la cierra")
+# ★ 27-nov: irse la cierra tras GRACIA_S si NO volvió (el selector de la dll corta y reentra: GM-Sue se cerró a los 8 s)
+from servidor import salas as SALAS                               # noqa: E402
+G.GRACIA_S = 0.3
+S1v = St(U1)
+G.al_entrar(S1v, U1)
+G.al_salir(S1v)
+ok(G.cerrada(U1) is None, "irse NO la cierra en el acto (hay gracia para volver)")
+S1w = St(U1)
+G.al_entrar(S1w, U1)
+SALAS.CONEXIONES[U1] = S1w                                        # volvió a entrar dentro de la gracia
+time.sleep(0.6)
+ok(G.cerrada(U1) is None, "⟲ si volvió a entrar dentro de la gracia, sigue abierta")
+SALAS.CONEXIONES.pop(U1, None)
 S1c = St(U1)
 G.al_entrar(S1c, U1)
-G.al_salir(S1c)
-ok(G.cerrada(U1) and G.info(U1)["cerrado"], f"irse SÍ la cierra: {G.cerrada(U1)!r}")
+t = G._cerrar_si_no_vuelve(U1)
+t.join(2)
+G.al_salir(St(U1, gm_npc=G.info(U1), cambio_canal=True))        # (lo que haga la conexión ya ida al terminar de irse)
+ok(G.cerrada(U1) and G.info(U1)["cerrado"], f"irse y NO volver SÍ la cierra: {G.cerrada(U1)!r}")
 ok(db_get_char(U1)["nick"] == f"gmnpc{U1}", "y su apodo queda libre (pasa a gmnpc<usn>)")
 ok(any(x["uid"] == U1 for x in auditoria("gmnpc/cerrada")), "el cierre queda auditado")
 ok(any(x["uid"] == U1 for x in auditoria("gmnpc/entro")) and len([x for x in auditoria("gmnpc/entro") if x["uid"] == U1]) == 1,
@@ -164,6 +180,18 @@ cod, d4 = G.preparar("king", MOD)
 ok(cod == 200 and d4["nick"] == "GM-King", f"la próxima King vuelve a ser {d4.get('nick')!r}")
 U4 = d4["usn"]
 ok(not G.cerrar(U1, "otra vez"), "cerrar dos veces no hace nada")
+
+# ═══ §3b el selector de la dll: la GM NPC no lo ve (elegir corta el lobby) ═══
+print("§3b · el selector")
+from servidor import cuenta_personajes as CP                      # noqa: E402
+_ls = CP.leer_sesion
+CP.leer_sesion = lambda pl: (struct.unpack_from("<I", pl)[0], "cuenta", 1, b"")
+r_gm = CP.responder_sesion(0xF6, struct.pack("<IQ", U4, 1))
+r_normal = CP.responder_sesion(0xF6, struct.pack("<IQ", u_normal_sel := 777001, 1))
+CP.leer_sesion = _ls
+ok(r_gm[4:5] == b"\x02" and U4 not in CP.ELIGIENDO, "la GM NPC: el HOLA contesta «sin selector» (entra directo)")
+ok(r_normal[4:5] == b"\x00" and u_normal_sel in CP.ELIGIENDO, "⟲ una cuenta normal sigue con su selector")
+CP.ELIGIENDO.discard(u_normal_sel)
 
 # ═══ §4 vencida ═══
 print("§4 · sin usar")
