@@ -204,6 +204,28 @@ int main(int argc, char **argv)
     g_at_teclas_aviso = GetTickCount() - 61000;
     at_revisar_teclas();
     ok(cola_tiene("inyectadas="), "y se informan");
+
+    /* ★ 26-nov (auditoría): lo nuevo de la telemetría */
+    {
+        char largo[400];
+        for (int i = 0; i < 399; i++) largo[i] = 'a' + i % 26;
+        largo[399] = 0;
+        LONG antes = g_at_seq;
+        at_encolar("R2AT modulo=%s", largo);              /* antes: wvsprintfA en linea[180] = pila desbordada */
+        ok(g_at_seq == antes + 1, "un nombre de 400 letras se encola sin desbordar la pila (se recorta)");
+        int bien = 0;
+        for (int i = 0; i < AT_RENGLONES; i++)
+            if (at_busca(g_at_cola[i], "modulo=abc") && lstrlenA(g_at_cola[i]) < AT_LARGO && at_busca(g_at_cola[i], " s="))
+                bien = 1;
+        ok(bien, "y el renglón recortado conserva su número de secuencia (s=)");
+        ok(at_en_lista("toolbit_a.dll|cheat.exe|", "cheat.exe"), "la lista de vistos encuentra el nombre exacto");
+        ok(!at_en_lista("toolbit_a.dll|", "a.dll"), "revés: «a.dll» NO es «toolbit_a.dll» (antes se daba por visto)");
+        ok(cola_tiene("lat=60") && cola_tiene("dll="), "el «hola» dice que late cada 60 s y el md5 de la dll");
+        /* la cola llena cuenta lo que pierde (va en el latido) */
+        LONG perdidas = g_at_perdidas;
+        for (int i = 0; i < AT_RENGLONES + 4; i++) at_encolar("R2AT relleno=%d", i);
+        ok(g_at_perdidas > perdidas, "con la cola llena, lo que se pierde se cuenta (perdidas=)");
+    }
     printf(g_mal ? "\n%d MAL\n" : "\ntodo bien\n", g_mal);
     return g_mal ? 1 : 0;
 }
