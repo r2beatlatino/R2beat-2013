@@ -57,8 +57,9 @@ CAMPANAS = ((181, 10), (183, 10), (297, 10), (304, 10))
 SIN_USAR_H = 12              # si nadie entra en estas horas, se cierra sola
 # ★ 27-nov (la 1.ª en prod: GM-Sue se cerró a los 8 s): al ELEGIR en el selector de la dll el juego CORTA el lobby y vuelve
 #   a entrar, igual que un cambio de canal pero sin el FF3D ⇒ «salió del juego» y el reingreso rechazado («el servidor
-#   no responde»). La GM NPC ya no pasa por el selector (`cuenta_personajes`, el HOLA), y además irse la cierra recién
-#   si en GRACIA_S no volvió a entrar: cualquier reconexión rápida (selector, canal, un micro-corte) no la mata.
+#   no responde»). ★ El selector se queda como para todos (Eñeños: «que tenga selector normalmente»): irse la cierra
+#   recién si en GRACIA_S no volvió a entrar, así cualquier reconexión rápida (selector, canal, un micro-corte) no la
+#   mata. En el selector sólo puede elegir SU personaje (el casillero 1): crear otro no (`cuenta_personajes`, ELEGIR).
 GRACIA_S = 120
 LICENCIA = 7                 # SOL: entra a todos los canales
 LISTA_TOPE = 100

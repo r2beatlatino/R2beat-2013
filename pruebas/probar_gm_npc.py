@@ -181,17 +181,20 @@ ok(cod == 200 and d4["nick"] == "GM-King", f"la próxima King vuelve a ser {d4.g
 U4 = d4["usn"]
 ok(not G.cerrar(U1, "otra vez"), "cerrar dos veces no hace nada")
 
-# ═══ §3b el selector de la dll: la GM NPC no lo ve (elegir corta el lobby) ═══
+# ═══ §3b el selector de la dll: la GM NPC lo ve como todos, pero sólo elige SU personaje ═══
 print("§3b · el selector")
 from servidor import cuenta_personajes as CP                      # noqa: E402
-_ls = CP.leer_sesion
-CP.leer_sesion = lambda pl: (struct.unpack_from("<I", pl)[0], "cuenta", 1, b"")
-r_gm = CP.responder_sesion(0xF6, struct.pack("<IQ", U4, 1))
-r_normal = CP.responder_sesion(0xF6, struct.pack("<IQ", u_normal_sel := 777001, 1))
-CP.leer_sesion = _ls
-ok(r_gm[4:5] == b"\x02" and U4 not in CP.ELIGIENDO, "la GM NPC: el HOLA contesta «sin selector» (entra directo)")
-ok(r_normal[4:5] == b"\x00" and u_normal_sel in CP.ELIGIENDO, "⟲ una cuenta normal sigue con su selector")
-CP.ELIGIENDO.discard(u_normal_sel)
+from servidor.basedatos import sesion_abrir                       # noqa: E402
+ses = struct.pack("<IQ", U4, sesion_abrir(U4))
+r_hola = CP.responder_sesion(0xF6, ses)
+ok(r_hola[4:5] == b"\x00" and U4 in CP.ELIGIENDO, f"la GM NPC TIENE selector, como cualquiera ({r_hola[4:5]!r})")
+for r in (2, 3, 4):
+    rr = CP.responder_sesion(0xF8, ses + bytes([r, 1]))
+    ok(rr[4:5] == b"\x01" and U4 in CP.ELIGIENDO, f"⟲ crear un personaje en el casillero {r}: no ({rr[4:5]!r})")
+rr = CP.responder_sesion(0xF8, ses + bytes([1, 0]))
+ok(rr[4:5] == b"\x00" and struct.unpack_from("<I", rr, 5)[0] == U4 and U4 not in CP.ELIGIENDO,
+   f"elegir SU personaje (casillero 1): sí, con su sesión ({rr[4:5]!r})")
+CP.RECIEN_ELEGIDOS.discard(U4)
 
 # ═══ §4 vencida ═══
 print("§4 · sin usar")
