@@ -1633,7 +1633,15 @@ FF4E_FIRMA_GLOBO = 0x47430000
 #   conexión tiene un tope (lo de más se tira).
 FF4E_SUB_CALC = 0x71
 FF4E_SUB_CALC_BASE = 0x72
-FF4E_COSMETICOS = (0x70, 0x71, 0x72)
+# ★ 26-nov · EL EN VIVO REAL (dll en_vivo_real.c, documentacion de «Servidor R2Beat 2013»: ESPECTADOR_COMO_LO_HACE_RBIT.md):
+#   0x73 = una nota del que corre que NO fue acierto (A = 'J' | asiento << 16 | nota, B = juicio | desvío << 8 | combo << 16).
+#   A TODA la sala: los que miran Y los que corren (a todos les llegan los rivales en piloto, siempre acertando).
+FF4E_SUB_JUICIO = 0x73
+#   0x74 = el PD del que corre (A = 'P' | asiento << 16 | notas, B = suma de puntos), cada 500 ms: cada cliente lo escribe
+#   en la tarjeta de ese corredor. También a TODA la sala.
+FF4E_SUB_PD = 0x74
+FF4E_A_TODA_LA_SALA = (FF4E_SUB_JUICIO, FF4E_SUB_PD)
+FF4E_COSMETICOS = (0x70, 0x71, 0x72, 0x73, 0x74)
 FF4E_COSMETICOS_POR_S = 12          # el tope por conexión (ráfaga: el doble)
 FF23_SLOT_AL_FRENTE = True            # ★ FF23 (movimiento en sala): ¿el S->C lleva el slot del emisor
                                       #   antepuesto? True = sí (como el CBT). ⚠ SIN CONFIRMAR en el

@@ -53,6 +53,7 @@ from .ajustes import (
     FF4E_SUBS_SIEMPRE,
     FF4E_SUB_GLOBO,
     FF4E_COSMETICOS,
+    FF4E_A_TODA_LA_SALA,
     FF4E_COSMETICOS_POR_S,
     MODE_RELEVO,
     FF4E_DESPEJA_LA_CLAVE,
@@ -1330,7 +1331,7 @@ def handle_lobby(conn, addr):
                         _ridc = getattr(st, "room_id", None)
                         if _ridc is None:
                             continue
-                        if _sub == FF4E_SUB_GLOBO and (getattr(st, "room_mode", 0) & MODE_RELEVO):
+                        if _sub in FF4E_A_TODA_LA_SALA or (_sub == FF4E_SUB_GLOBO and (getattr(st, "room_mode", 0) & MODE_RELEVO)):
                             for _u in mesa_de(_ridc).values():
                                 _c = CONEXIONES.get(_u) if _u != getattr(st, "usn", None) else None
                                 if _c is not None:
