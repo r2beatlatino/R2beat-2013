@@ -56,7 +56,8 @@ archivo abrir para cada cosa.
 - ⛔ **Nada del cliente de Softnyx entra al repo**: ni `.pak`, ni `.exe`, ni música, ni gráficos, ni
   las notas de las canciones (`notes/*.bin`), ni las tablas que saca `extraer_datos.py`. Las únicas
   excepciones son nuestra `exe/d3d9.dll` (su fuente está en `herramientas/dll_d3d9/`) y la imagen de la pantalla
-  del antitrampa, `exe/antitrampa_pantalla.bmp` (hecha por nosotros). Ver
+  del antitrampa, `exe/antitrampa_pantalla.bmp` (hecha por nosotros). ★ 28-nov: también las piedras de Ñ2Hock,
+  sólo PNG sueltos en `exe/n2hock_piedras/` (decisión de anonimo03: se reparten con la dll). Ver
   [AVISO-LEGAL.md](AVISO-LEGAL.md).
 - ⛔ **Nada de datos personales**: ni bases (`datos.db`), ni `gm.txt`/`admin.txt`/`streamers.txt`,
   ni nombres de jugadores reales, ni tu IP, ni rutas con tu usuario de Windows. En los comentarios,

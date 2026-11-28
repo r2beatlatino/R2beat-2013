@@ -1,6 +1,6 @@
 # `exe/` — nuestra `d3d9.dll`
 
-Lo único binario del repo, y es **nuestro**: el fuente está en
+El binario del repo, y es **nuestro** (además, las imágenes de `n2hock_piedras/`): el fuente está en
 [`herramientas/dll_d3d9/fuente/`](../herramientas/dll_d3d9/fuente/) y se compila con
 [`herramientas/dll_d3d9/compilar.py`](../herramientas/dll_d3d9/compilar.py) (da exactamente este archivo).
 
@@ -15,6 +15,7 @@ picker, estilos de texto…). Para sacarla, se borra.
 | `d3d9_proxy.ini` | su configuración (video, motor, métricas). Va al lado de la dll |
 | `d3d9_caras.ini` | las caras por sexo (sólo sirve si tu cliente tiene esas carpetas de caras) |
 | `antitrampa_pantalla.bmp` | la imagen de la pantalla «Ñ2-AntiCheat» al abrir el juego. Va al lado de la dll (sin ella se dibuja una propia) |
+| `n2hock_piedras/` | ★ 28-nov: 39 piedras para Ñ2Hock · Personalización · Piedras (PNG 256×256, las del ToolBit). La carpeta va **al lado de la dll**, tal cual: Ñ2Hock la lee sola |
 
 ⚠ Algunas partes de la dll dibujan cosas que sólo existen en un cliente con contenido agregado (caras,
 monturas, auras). En un cliente de fábrica esas partes no encuentran nada y no hacen nada; lo demás anda.

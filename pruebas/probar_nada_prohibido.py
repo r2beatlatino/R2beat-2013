@@ -11,7 +11,8 @@ Revisa los archivos que sigue git (o, sin git, todos). Lo prohibido (ver CONTRIB
   · datos personales en el texto: emails, rutas con el usuario de Windows, IPs públicas que no son
     las conocidas del juego, un hash de contraseña.
 Las excepciones binarias son nuestra `exe/d3d9.dll` (el fuente está en herramientas/dll_d3d9/) y la imagen de la
-pantalla del antitrampa, `exe/antitrampa_pantalla.bmp` (hecha por nosotros, no es del juego).
+pantalla del antitrampa, `exe/antitrampa_pantalla.bmp` (hecha por nosotros, no es del juego). ★ 28-nov: y las piedras
+de Ñ2Hock, sólo PNG sueltos en `exe/n2hock_piedras/` (lo decidió anonimo03).
 
 ★ Con su revés: antes de mirar el repo se comprueba que el detector SÍ caza cada cosa prohibida.
 """
@@ -25,6 +26,8 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 BINARIOS_PERMITIDOS = {"exe/d3d9.dll", "despliegue/ejemplo.env",   # (el .env de ejemplo, sin claves)
                        "exe/antitrampa_pantalla.bmp"}             # ★ 18-nov: la pantalla del antitrampa, hecha por nosotros (se pidió que el bmp entre)
+#   ★ 28-nov (anonimo03 lo decidió: «agrégalos»): las piedras de Ñ2Hock, sólo PNG y sólo en esa carpeta
+CARPETAS_PERMITIDAS = (("exe/n2hock_piedras/", ".png"),)
 TIPOS = (".pak", ".exe", ".dll", ".db", ".db-wal", ".db-shm", ".sqlite", ".sqlite3", ".bin", ".dak", ".key",
          ".pem", ".ogg", ".mp3", ".wav", ".dds", ".tga", ".bmp", ".png", ".jpg", ".jpeg", ".gif", ".zip",
          ".rar", ".7z", ".env")
@@ -55,6 +58,8 @@ def problemas(raiz, archivos):
         a = os.path.basename(rel)
         ruta = os.path.join(raiz, *rel.split("/"))
         if rel in BINARIOS_PERMITIDOS or not os.path.isfile(ruta):
+            continue
+        if any(rel.startswith(c) and "/" not in rel[len(c):] and rel.lower().endswith(t) for c, t in CARPETAS_PERMITIDAS):
             continue
         if a in ARCHIVOS or a.lower().endswith(TIPOS) or DEL_CLIENTE.match(rel):
             malos.append((rel, "ese archivo no puede ir al repo"))
@@ -100,19 +105,26 @@ def main():
     casos = {"a.pak": "x", "servidor/gm.txt": "1", "datos.db": "x", "servidor/notes/1.bin": "x",
              "servidor/tablas-cliente/music_lt.txt": "x", "b.py": "# escribime a alguien" + "@gmail.com\n",
              "c.md": "en C:" + "\\Users\\pepe\\Desktop\n", "d.py": "HOST = '200.45." + "12.9'\n",
-             "e.py": "# " + "$2b$12$" + "a" * 40 + "\n"}
+             "e.py": "# " + "$2b$12$" + "a" * 40 + "\n",
+             # ★ 28-nov: la excepción de las piedras es SÓLO para PNG sueltos en exe/n2hock_piedras/
+             "exe/otra/x.png": "x", "exe/n2hock_piedras/x.tga": "x", "exe/n2hock_piedras/sub/x.png": "x"}
     with tempfile.TemporaryDirectory() as tmp:
         for rel, contenido in casos.items():
             p = os.path.join(tmp, *rel.split("/"))
             os.makedirs(os.path.dirname(p), exist_ok=True)
             open(p, "w", encoding="utf-8").write(contenido)
+        p = os.path.join(tmp, "exe", "n2hock_piedras", "piedra.png")
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        open(p, "w", encoding="utf-8").write("x")
         p = os.path.join(tmp, "limpio.py")
         open(p, "w", encoding="utf-8").write("IP = '127.0.0.1'  # o 127.0.0.2 o 192.168.1.50; ver C:\\Users\\<tu usuario>\n")
-        cazados = {rel for rel, _ in problemas(tmp, list(casos) + ["limpio.py"])}
+        cazados = {rel for rel, _ in problemas(tmp, list(casos) + ["limpio.py", "exe/n2hock_piedras/piedra.png"])}
         chequear("★ revés: el detector caza cada cosa prohibida (%d/%d)" % (len(cazados & set(casos)), len(casos)),
                  cazados == set(casos))
         chequear("★ revés: y deja pasar lo de ejemplo (127.0.0.1, 127.0.0.2, 192.168.1.50, <tu usuario>)",
                  "limpio.py" not in cazados)
+        chequear("★ una piedra PNG en exe/n2hock_piedras/ sí puede (y fuera de ahí, no)",
+                 "exe/n2hock_piedras/piedra.png" not in cazados)
     # y ahora el repo de verdad
     malos = problemas(RAIZ, archivos_de(RAIZ))
     for rel, por in malos:
