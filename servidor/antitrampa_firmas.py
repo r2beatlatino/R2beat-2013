@@ -136,6 +136,104 @@ def arranque_restaurado(va, bytes_hex):
     return b[:len(esperado)] == esperado
 
 
+# ★ 28-nov · «QUÉ ESTÁ USANDO» para el panel: una etiqueta corta por evento y su tipo (el color en el tablero).
+#   trampa = lo que da ventaja y no es de Ñ2Hock · sospecha = señal que sola no alcanza · permitido = Ñ2Hock ·
+#   info = ruido conocido (launcher, superposiciones).
+_USA_REGLA = {
+    "juego_automatico": ("Juego automático", "trampa"),
+    "sala_automatica": ("Auto listo / auto inicio", "trampa"),
+    "relevo_automatico": ("Auto relevo", "trampa"),
+    "resultado_alterado": ("Resultado falso (precisión / combo)", "trampa"),
+    "combo_imposible": ("Resultado falso (combo imposible)", "trampa"),
+    "porcentaje_imposible": ("Resultado falso (porcentaje imposible)", "trampa"),
+    "precision_imposible": ("Resultado falso (precisión imposible)", "trampa"),
+    "llegada_imposible": ("Llegada simulada", "trampa"),
+    "llegada_anticipada": ("Llegada simulada (sospecha)", "sospecha"),
+    "farmeo": ("Auto farmeo", "trampa"),
+    "listo_automatico": ("Auto farmeo: listo / inicio automático", "sospecha"),
+    "campanas_automaticas": ("Auto farmeo: campanas automáticas", "sospecha"),
+    "combo_repetido": ("Auto farmeo: falla siempre en el mismo combo", "sospecha"),
+    "precision_constante": ("Auto farmeo: misma precisión en todo", "sospecha"),
+    "misma_cancion": ("Auto farmeo: siempre la misma canción", "sospecha"),
+    "carreras_sin_hablar": ("Auto farmeo: muchas carreras sin hablar", "sospecha"),
+    "expulsa_espectadores": ("Echa espectadores en serie", "sospecha"),
+    "teclas_inyectadas": ("Teclas automáticas (macro)", "sospecha"),
+    "reloj_rapido": ("Speed hack (juego acelerado)", "sospecha"),
+    "reloj_cliente": ("Speed hack (reloj de la PC)", "sospecha"),
+    "reloj_lento": ("Juego más lento (velocidad de práctica en línea)", "sospecha"),
+    "manipulacion_correlacionada": ("Herramienta + juego modificado", "trampa"),
+    "trampa_conocida": ("Función de trampa", "trampa"),
+    "codigo_modificado": ("Juego modificado por un programa desconocido", "sospecha"),
+    "codigo_previo": ("Juego ya modificado al abrir", "sospecha"),
+    "hilo_ajeno": ("Código inyectado en el juego", "sospecha"),
+    "depurador": ("Depurador", "sospecha"),
+    "exe_desconocido": ("R2Beat.exe distinto", "sospecha"),
+    "animaciones_tocadas": ("Archivos del juego cambiados", "sospecha"),
+    "sin_antitrampa": ("Sin nuestra dll (antitrampa quitado)", "sospecha"),
+    "antitrampa_apagado": ("Antitrampa apagado", "sospecha"),
+    "vigia_parado": ("Antitrampa detenido", "sospecha"),
+    "telemetria_interrumpida": ("Antitrampa callado", "sospecha"),
+    "telemetria_inundada": ("Mensajes del antitrampa fabricados", "sospecha"),
+    "telemetria_repetida": ("Mensajes del antitrampa repetidos", "sospecha"),
+    "modulo_permitido": ("Ñ2Hock (módulo)", "permitido"),
+    "n2hock_permitido": ("Ñ2Hock", "permitido"),
+    "manija_conocida": ("Launcher o superposición", "info"),
+    "arranque_restaurado": ("Arranque tocado por un launcher o inyector", "info"),
+}
+# Las reglas cuyo programa viene en el renglón R2AT («proceso=Cheat Engine.exe»): la etiqueta lleva su nombre.
+_USA_CON_NOMBRE = {"proceso_prohibido": ("proceso", "Programa abierto: {}", "sospecha"),
+                   "manija_escritura": ("manija", "Programa que escribe el juego: {}", "sospecha"),
+                   "modulo_prohibido": ("modulo", "DLL de trampa: {}", "trampa")}
+_ORDEN_TIPO = {"trampa": 0, "sospecha": 1, "permitido": 2, "info": 3}
+
+
+def _de_r2at(crudo, clave):
+    import re
+    m = re.search(rf"\b{clave}=(.*?)(?= \w+=|$)", str(crudo or ""))
+    return m.group(1).strip() if m else ""
+
+
+def usa_de(regla, evidencia=None):
+    """-> (texto, tipo) de lo que está usando según este evento, o None (p. ej. `memoria_ajena`: ruido de todos).
+    `evidencia` = el dict del evento (o su JSON). Si trae `programa`/`funcion` (el catálogo de firmas), manda eso."""
+    if isinstance(evidencia, str):
+        import json
+        try:
+            evidencia = json.loads(evidencia or "{}")
+        except ValueError:
+            evidencia = {}
+    ev = evidencia if isinstance(evidencia, dict) else {}
+    if ev.get("usa"):
+        return ev["usa"], ev.get("usa_tipo") or "sospecha"
+    if ev.get("funcion") and ev.get("programa"):
+        if ev["programa"] == N2HOCK or ev.get("clase") == "permitida":
+            return f"Ñ2Hock: {ev['funcion']}", "permitido"
+        if ev.get("clase") == "arranque":
+            return _USA_REGLA["arranque_restaurado"]
+        return f"{ev['funcion']} ({ev['programa']})", "trampa"
+    if regla in _USA_CON_NOMBRE:
+        clave, molde, tipo = _USA_CON_NOMBRE[regla]
+        nombre = ev.get(clave) or _de_r2at(ev.get("r2at"), clave) or "?"
+        return molde.format(nombre), tipo
+    return _USA_REGLA.get(regla)
+
+
+def resumir_usa(eventos):
+    """Lo que está usando una cuenta: [{texto, tipo, veces, ultimo}], lo más grave primero. `eventos` = filas del
+    registro central (con `regla`, `evidencia`, `cuando`, `estado`); los descartados (falso positivo) no cuentan."""
+    junto = {}
+    for e in eventos:
+        if e.get("estado") == "descartado":
+            continue
+        u = usa_de(e.get("regla"), e.get("evidencia"))
+        if not u:
+            continue
+        x = junto.setdefault(u[0], {"texto": u[0], "tipo": u[1], "veces": 0, "ultimo": ""})
+        x["veces"] += 1
+        x["ultimo"] = max(x["ultimo"], str(e.get("cuando") or ""))
+    return sorted(junto.values(), key=lambda x: (_ORDEN_TIPO.get(x["tipo"], 9), -x["veces"], x["texto"]))
+
+
 def texto(f):
     """«Ñ2Hock (permitido) · Sin piedra (inmune al ítem piedra)» para el panel."""
     return f"{f.programa} · {f.funcion}"

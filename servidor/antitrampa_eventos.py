@@ -75,6 +75,13 @@ def registrar(regla, descripcion, *, usn=None, cuenta=None, nick="", sesion=None
         _meter(("repetir", evento, t))
         return evento, False
     categoria, riesgo, confianza, origen = clasificar(regla)
+    try:                                              # ★ 28-nov: «qué está usando», para cualquier panel
+        from .antitrampa_firmas import usa_de
+        u = usa_de(regla, evidencia)
+        if u:
+            evidencia = {**(evidencia or {}), "usa": u[0], "usa_tipo": u[1]}
+    except Exception:                                 # noqa: BLE001 — la etiqueta nunca impide registrar
+        pass
     ev = {"evento": evento, "cuando": t, "ultimo": t, "usn": int(usn) if usn else None, "cuenta": cuenta,
           "nick": nick or "", "sesion": sesion, "partida": partida, "categoria": categoria, "regla": regla,
           "modulo": modulo, "origen": origen, "descripcion": str(descripcion)[:1000],

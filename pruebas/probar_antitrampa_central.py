@@ -363,6 +363,42 @@ def probar_tablero():
         j = json.loads(txt)
         ok(st == 200 and j["resumen"]["cuenta"] == "registro" and j["eventos"], "el historial de una cuenta")
         ok("pass_hash" not in txt and "pass_hash" not in json.dumps(d), "revés: nunca sale el pass_hash")
+        # ★ 28-nov · «ESTÁ USANDO»: cada evento dice qué usa, y la ficha y los conectados lo juntan
+        print("  · «Está usando» (28-nov):")
+        f = Conn(cuenta("farmero"))
+        hola(f)
+        antitrampa.al_ff59(f, "R2AT gancho=pd0 va=0x005003D0 bytes=E9_00_00_00_00_90_90_90 s=2")
+        antitrampa.al_ff59(f, "R2AT proceso=cheatengine-i386.exe s=3")
+        antitrampa.al_ff59(f, "R2AT codigo=0x0054F31A paginas=1 bytes=90_90_90_90_90_90_8B_46 s=4")
+        antitrampa.al_ff59(f, "R2AT memoria=0x12E70000 regiones=5 s=5")
+        antitrampa.anotar(f, "farmeo", "listo automático + misma canción", {})
+        eventos.esperar()
+        filas = json.loads(pedir("/api/eventos?jugador=farmero&limite=50")[1])
+        por = {x["regla"]: x for x in filas}
+        ok(por["juego_automatico"]["usa"] == "Automático PD0 silencioso (R2AutoRouteLab2013)"
+           and por["juego_automatico"]["usa_tipo"] == "trampa", "el automático dice cuál y de qué programa (trampa)")
+        ok(por["proceso_prohibido"]["usa"] == "Programa abierto: cheatengine-i386.exe", "Cheat Engine abierto, por nombre")
+        ok(por["n2hock_permitido"]["usa"].startswith("Ñ2Hock: Sin piedra") and por["n2hock_permitido"]["usa_tipo"] == "permitido",
+           "Sin piedra de Ñ2Hock: permitido (verde)")
+        ok(por["farmeo"]["usa"] == "Auto farmeo" and por["farmeo"]["usa_tipo"] == "trampa", "el farmeo: «Auto farmeo»")
+        ok(por["memoria_ajena"]["usa"] == "", "revés: la memoria ajena (la tiene todo juego) no se muestra como «usa»")
+        j = json.loads(pedir("/api/jugador?cuenta=farmero")[1])
+        textos = [x["texto"] for x in j["usando"]]
+        tipos = [x["tipo"] for x in j["usando"]]
+        ok("Auto farmeo" in textos and "Automático PD0 silencioso (R2AutoRouteLab2013)" in textos
+           and tipos == sorted(tipos, key=["trampa", "sospecha", "permitido", "info"].index),
+           "la ficha: «Está usando» con lo más grave primero")
+        e_auto = por["juego_automatico"]["evento"]
+        pedir("/api/accion", {"accion": "descartar", "evento": e_auto, "nota": "prueba"}, csrf)
+        j = json.loads(pedir("/api/jugador?cuenta=farmero")[1])
+        ok("Automático PD0 silencioso (R2AutoRouteLab2013)" not in [x["texto"] for x in j["usando"]],
+           "revés: lo marcado como falso positivo sale de «Está usando»")
+        e = antitrampa.estado_de(f.usn)
+        ok({"texto": "Auto farmeo", "tipo": "trampa"} in e["usa"], "«Conectados»: lo que usa en esta sesión")
+        ok("Está usando" in pedir("/")[1], "la página tiene la columna «Está usando»")
+        ev_db = [x for x in evs(cuenta="farmero") if x["regla"] == "farmeo"][0]
+        ok(json.loads(ev_db["evidencia"]).get("usa") == "Auto farmeo",
+           "el evento guarda «usa» en la base (para el panel del administrador)")
         ok(pedir("/api/accion", {"accion": "advertir", "cuenta": "registro"})[0] == 403,
            "revés: una acción sin el token CSRF no se hace")
         st, txt, _ = pedir("/api/accion", {"accion": "suspender", "cuenta": "registro", "horas": 1, "motivo": "x"}, csrf)

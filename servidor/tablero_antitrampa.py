@@ -104,16 +104,23 @@ _FILTROS = ("jugador", "cuenta", "usn", "regla", "categoria", "riesgo", "riesgo_
             "despues_de", "sesion", "evento")
 
 
-def eventos(q, limite=200):
-    from . import almacen
-    filtros = {k: q[k] for k in _FILTROS if q.get(k)}
-    filas = almacen.ev_listar(filtros, limite)
-    for f in filas:
+def _con_usa(f):
+    """★ 28-nov: la fila del registro con `usa` y `usa_tipo` arriba (los eventos viejos se etiquetan al leerlos)."""
+    from .antitrampa_firmas import usa_de
+    if isinstance(f.get("evidencia"), str):
         try:
             f["evidencia"] = json.loads(f.get("evidencia") or "{}")
         except ValueError:
             pass
-    return filas
+    u = usa_de(f.get("regla"), f.get("evidencia"))
+    f["usa"], f["usa_tipo"] = (u[0], u[1]) if u else ("", "")
+    return f
+
+
+def eventos(q, limite=200):
+    from . import almacen
+    filtros = {k: q[k] for k in _FILTROS if q.get(k)}
+    return [_con_usa(f) for f in almacen.ev_listar(filtros, limite)]
 
 
 def jugador(q):
@@ -123,14 +130,16 @@ def jugador(q):
         cuenta = almacen.cuenta_de_uid(int(q["usn"]))[0]
     if not cuenta:
         return {"error": "no encuentro esa cuenta"}
-    return {"resumen": almacen.ev_resumen_cuenta(cuenta), "eventos": eventos({"cuenta": cuenta}, 300),
+    from .antitrampa_firmas import resumir_usa
+    evs = eventos({"cuenta": cuenta}, 300)
+    return {"resumen": almacen.ev_resumen_cuenta(cuenta), "eventos": evs, "usando": resumir_usa(evs),
             "acciones": almacen.at_acciones(100, cuenta=cuenta)}
 
 
 def resumen():
     from . import almacen, antitrampa_eventos
     hoy = time.strftime("%Y-%m-%d")
-    criticas = almacen.ev_listar({"riesgo_min": "alto", "estado": "nuevo"}, 50)
+    criticas = [_con_usa(f) for f in almacen.ev_listar({"riesgo_min": "alto", "estado": "nuevo"}, 50)]
     return {"conectados": conectados(), "hoy": almacen.ev_estadisticas({"desde": hoy}),
             "total": almacen.ev_estadisticas({}), "alertas": criticas, "registro": antitrampa_eventos.estado_registro(),
             "categorias": antitrampa_eventos.categorias()}
@@ -332,7 +341,10 @@ pre{background:#0b0d12;border:1px solid var(--b);border-radius:6px;padding:10px;
 .fila .n{width:220px;color:var(--s);font-size:12px}.fila .v{flex:1}#msj{min-height:20px;color:var(--medio)}
 dialog{background:var(--p);color:var(--t);border:1px solid var(--b);border-radius:10px;max-width:900px;width:95%}
 dialog::backdrop{background:#000a}.acciones{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.titulo{color:var(--a)}#entrar{max-width:340px;margin:12vh auto;display:flex;flex-direction:column;gap:8px}
+.titulo{color:var(--a)}.usa{display:inline-block;padding:1px 8px;margin:1px 3px 1px 0;border-radius:6px;font-size:12px;font-weight:600;border:1px solid}
+.usa-trampa{background:#3b1114;border-color:var(--critico);color:#fecaca}.usa-sospecha{background:#33290b;border-color:var(--medio);color:#fde68a}
+.usa-permitido{background:#0f2a1a;border-color:var(--ok);color:#bbf7d0}.usa-info{background:var(--p2);border-color:var(--b);color:var(--s)}
+.usando{margin:8px 0}.usando b{margin-right:6px}#entrar{max-width:340px;margin:12vh auto;display:flex;flex-direction:column;gap:8px}
 </style></head><body>
 <form id="entrar" class="panel"><h1 class="titulo">Tablero antitrampa</h1>
 <input id="u" placeholder="usuario" autocomplete="username" required>
@@ -347,12 +359,12 @@ dialog::backdrop{background:#000a}.acciones{display:flex;gap:6px;flex-wrap:wrap;
 <main>
 <section id="v-vivo"><div class="tarjetas" id="tarj"></div>
 <div class="panel"><b>Alertas críticas sin revisar</b> <span class="est">(riesgo alto o crítico)</span><table><thead><tr>
-<th>Cuándo</th><th>Jugador</th><th>Regla</th><th>Riesgo</th><th>Conf.</th><th>Descripción</th></tr></thead><tbody id="alertas"></tbody></table></div>
+<th>Cuándo</th><th>Jugador</th><th>Está usando</th><th>Regla</th><th>Riesgo</th><th>Conf.</th><th>Descripción</th></tr></thead><tbody id="alertas"></tbody></table></div>
 <div class="panel"><b>Detecciones en tiempo real</b> <span class="est" id="vivo-est"></span><table><thead><tr>
-<th>Cuándo</th><th>Jugador</th><th>Categoría</th><th>Regla</th><th>Riesgo</th><th>Conf.</th><th>Origen</th><th>Rep.</th><th>Estado</th></tr></thead>
+<th>Cuándo</th><th>Jugador</th><th>Está usando</th><th>Categoría</th><th>Regla</th><th>Riesgo</th><th>Conf.</th><th>Origen</th><th>Rep.</th><th>Estado</th></tr></thead>
 <tbody id="vivo"></tbody></table></div></section>
 <section id="v-conectados" class="oculto"><table><thead><tr><th>Jugador</th><th>Cuenta</th><th>Antitrampa</th><th>Versión</th>
-<th>Último latido</th><th>Reloj</th><th>Perdidos</th><th>Retenido</th><th>Reglas en la sesión</th></tr></thead><tbody id="con"></tbody></table></section>
+<th>Último latido</th><th>Reloj</th><th>Perdidos</th><th>Retenido</th><th>Está usando</th></tr></thead><tbody id="con"></tbody></table></section>
 <section id="v-eventos" class="oculto"><div class="filtros">
 <input id="f-jugador" placeholder="jugador (apodo, cuenta o usn)"><select id="f-categoria"><option value="">toda categoría</option></select>
 <select id="f-riesgo"><option value="">todo riesgo</option><option value="bajo">bajo o más</option><option value="medio">medio o más</option>
@@ -360,7 +372,7 @@ dialog::backdrop{background:#000a}.acciones{display:flex;gap:6px;flex-wrap:wrap;
 <select id="f-estado"><option value="">todo estado</option><option>nuevo</option><option>revisado</option><option>confirmado</option>
 <option>descartado</option><option>sancionado</option></select>
 <input id="f-desde" type="date"><input id="f-hasta" type="date"><button class="btn" id="buscar">Buscar</button></div>
-<table><thead><tr><th>Cuándo</th><th>Jugador</th><th>Categoría</th><th>Regla</th><th>Riesgo</th><th>Conf.</th><th>Origen</th>
+<table><thead><tr><th>Cuándo</th><th>Jugador</th><th>Está usando</th><th>Categoría</th><th>Regla</th><th>Riesgo</th><th>Conf.</th><th>Origen</th>
 <th>Reinc.</th><th>Rep.</th><th>Estado</th></tr></thead><tbody id="evs"></tbody></table></section>
 <section id="v-estad" class="oculto"><div class="dos"><div class="panel"><b>Por categoría</b><div id="e-cat"></div></div>
 <div class="panel"><b>Por riesgo</b><div id="e-riesgo"></div></div><div class="panel"><b>Por regla</b><div id="e-regla"></div></div>
@@ -376,6 +388,8 @@ let CSRF="",ULT=0,CAT={},VISTA="vivo";
 const $=id=>document.getElementById(id);
 function el(t,txt,cls){const e=document.createElement(t);if(txt!==undefined&&txt!==null)e.textContent=String(txt);if(cls)e.className=cls;return e}
 function riesgo(r){return el("span",r,"r r-"+r)}
+function usa(texto,tipo){return texto?el("span",texto,"usa usa-"+(tipo||"info")):el("span","—","est")}
+function usaLista(xs){const d=el("span");if(!xs||!xs.length){d.appendChild(el("span","nada","est"));return d}for(const x of xs)d.appendChild(usa(x.texto,x.tipo));return d}
 function fila(celdas,cls){const tr=el("tr",null,cls||"");for(const c of celdas){const td=el("td");if(c instanceof Node)td.appendChild(c);else td.textContent=c==null?"":String(c);tr.appendChild(td)}return tr}
 async function api(ruta,cuerpo){const o={headers:{}};if(cuerpo){o.method="POST";o.headers["Content-Type"]="application/json";o.headers["X-CSRF"]=CSRF;o.body=JSON.stringify(cuerpo)}
  const r=await fetch(ruta,o);if(r.status===401){$("app").classList.add("oculto");$("entrar").classList.remove("oculto");throw new Error("sin sesión")}
@@ -388,18 +402,18 @@ for(const b of $("nav").querySelectorAll("button"))b.addEventListener("click",()
 function ver(v){VISTA=v;for(const b of $("nav").querySelectorAll("button"))b.classList.toggle("on",b.dataset.v===v);
  for(const s of document.querySelectorAll("main>section"))s.classList.toggle("oculto",s.id!=="v-"+v);cargar()}
 function jug(e){return (e.nick||"")+(e.cuenta?" ("+e.cuenta+")":e.usn?" (usn "+e.usn+")":"")}
-function filaEvento(e,nuevo,completa){const c=[e.cuando,jug(e),CAT[e.categoria]||e.categoria,e.regla,riesgo(e.riesgo),e.confianza+"%",e.origen];
+function filaEvento(e,nuevo,completa){const c=[e.cuando,jug(e),usa(e.usa,e.usa_tipo),CAT[e.categoria]||e.categoria,e.regla,riesgo(e.riesgo),e.confianza+"%",e.origen];
  if(completa)c.push(e.reincidencias);c.push(e.repeticiones,e.estado);const tr=fila(c,"clic"+(nuevo?" nuevo":""));tr.addEventListener("click",()=>detalle(e));return tr}
 async function cargar(){try{
  if(VISTA==="vivo"){const d=await api("/api/resumen");CAT=d.categorias||CAT;tarjetas(d);
-  const a=$("alertas");a.textContent="";for(const e of d.alertas)a.appendChild(fila([e.cuando,jug(e),e.regla,riesgo(e.riesgo),e.confianza+"%",e.descripcion],"clic")).addEventListener("click",()=>detalle(e));
+  const a=$("alertas");a.textContent="";for(const e of d.alertas)a.appendChild(fila([e.cuando,jug(e),usa(e.usa,e.usa_tipo),e.regla,riesgo(e.riesgo),e.confianza+"%",e.descripcion],"clic")).addEventListener("click",()=>detalle(e));
   const n=await api("/api/eventos?limite=60"+(ULT?"&despues_de="+ULT:""));const t=$("vivo");
   for(const e of n.reverse()){t.insertBefore(filaEvento(e,ULT>0),t.firstChild);ULT=Math.max(ULT,e.id)}
   while(t.children.length>200)t.removeChild(t.lastChild);
   $("vivo-est").textContent="registro: "+(d.registro.vivo?"vivo":"PARADO")+" · en cola "+d.registro.en_cola+(d.registro.perdidos?" · perdidos "+d.registro.perdidos:"")}
  else if(VISTA==="conectados"){const d=await api("/api/conectados");const t=$("con");t.textContent="";
   for(const j of d){const est=el("span",j.estado,"est est-"+j.estado);const tr=fila([j.nick+" ("+j.usn+")",j.cuenta,est,j.version?("v"+j.version+(j.dll?" · "+j.dll:"")):"—",
-   j.latido_hace_s==null?"—":j.latido_hace_s+" s",j.reloj==null?"—":Math.round(j.reloj*100)+"%",j.perdidos||0,j.retenido?"sí":"no",(j.reglas||[]).join(", ")],"clic");
+   j.latido_hace_s==null?"—":j.latido_hace_s+" s",j.reloj==null?"—":Math.round(j.reloj*100)+"%",j.perdidos||0,j.retenido?"sí":"no",usaLista(j.usa)],"clic");
    tr.addEventListener("click",()=>jugador(j.cuenta));t.appendChild(tr)}}
  else if(VISTA==="eventos")buscar();
  else if(VISTA==="estad"){const s=await api("/api/estadisticas");barras("e-cat",s.categoria,CAT);barras("e-riesgo",s.riesgo);barras("e-regla",s.regla);barras("e-dia",s.dia);barras("e-estado",s.estado);barras("e-origen",s.origen)}
@@ -428,6 +442,7 @@ function botones(cont,e,cuenta){const acc=el("div",null,"acciones");
   b("Historial","",()=>jugador(cuenta))}
  cont.appendChild(acc)}
 function detalle(e){const c=$("dlg-c");c.textContent="";c.appendChild(el("h3",e.regla+" · "+jug(e)));
+ if(e.usa){const u=el("div",null,"usando");u.appendChild(el("b","Está usando:"));u.appendChild(usa(e.usa,e.usa_tipo));c.appendChild(u)}
  const t=el("table");for(const [k,v] of [["evento",e.evento],["cuándo",e.cuando+(e.ultimo&&e.ultimo!==e.cuando?" (último "+e.ultimo+")":"")],["categoría",CAT[e.categoria]||e.categoria],
   ["riesgo / confianza",e.riesgo+" / "+e.confianza+"%"],["origen",e.origen+" · módulo "+e.modulo],["descripción",e.descripcion],["sesión / partida",(e.sesion||"—")+" / "+(e.partida||"—")],
   ["reincidencias / repeticiones",e.reincidencias+" / "+e.repeticiones],["versiones",(e.version_cliente||"—")+" · "+(e.version_antitrampa||"—")],["acción del server",e.accion+(e.pendiente?" (pendiente #"+e.pendiente+")":"")],
@@ -439,8 +454,9 @@ async function jugador(cuenta){if(!cuenta){msj("sin cuenta");return}const d=awai
  const c=$("dlg-c");c.textContent="";const r=d.resumen;c.appendChild(el("h3","Cuenta "+cuenta));
  c.appendChild(el("div","Faltas de la escalera: "+(r.faltas?r.faltas.faltas+" (última: "+r.faltas.ultima_regla+", "+r.faltas.ultima+")":"0")+" · pendientes para la tanda: "+r.pendientes
   +" · "+(r.baneada?"BANEADA":r.suspension?"suspendida hasta "+r.suspension.hasta+" ("+(r.suspension.motivo||"")+")":"activa")));
- botones(c,null,cuenta);const t=el("table");t.appendChild(fila(["Cuándo","Regla","Riesgo","Conf.","Rep.","Estado","Descripción"]));
- for(const e of d.eventos){const tr=fila([e.cuando,e.regla,riesgo(e.riesgo),e.confianza+"%",e.repeticiones,e.estado,e.descripcion],"clic");tr.addEventListener("click",()=>detalle(e));t.appendChild(tr)}
+ {const u=el("div",null,"usando");u.appendChild(el("b","Está usando:"));u.appendChild(usaLista(d.usando));c.appendChild(u)}
+ botones(c,null,cuenta);const t=el("table");t.appendChild(fila(["Cuándo","Está usando","Regla","Riesgo","Conf.","Rep.","Estado","Descripción"]));
+ for(const e of d.eventos){const tr=fila([e.cuando,usa(e.usa,e.usa_tipo),e.regla,riesgo(e.riesgo),e.confianza+"%",e.repeticiones,e.estado,e.descripcion],"clic");tr.addEventListener("click",()=>detalle(e));t.appendChild(tr)}
  c.appendChild(el("h4","Detecciones ("+d.eventos.length+")"));c.appendChild(t);
  const a=el("table");for(const x of d.acciones)a.appendChild(fila([x.cuando,x.admin,x.accion,x.detalle]));c.appendChild(el("h4","Acciones sobre esta cuenta"));c.appendChild(a);
  if(!$("dlg").open)$("dlg").showModal()}

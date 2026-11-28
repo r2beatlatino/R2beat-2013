@@ -440,6 +440,12 @@ Fuentes: el código de ToolBit / Ñ2Hock externo y R2AutoRouteLab2013 (también 
 
 ⚠ La dll informa sólo la **primera** dirección distinta de cada página: si dos funciones caen en la misma página, el panel nombra la primera.
 
+### 10.6c ★ 28-nov · «Está usando»
+
+Cada evento guarda en su evidencia `usa` (una etiqueta corta: «Juego automático», «Auto farmeo», «Automático PD0 silencioso (R2AutoRouteLab2013)», «Programa abierto: cheatengine.exe», «Ñ2Hock: Sin piedra»…) y `usa_tipo`: `trampa` (rojo), `sospecha` (amarillo), `permitido` (verde, Ñ2Hock) o `info` (gris). La etiqueta sale de `antitrampa_firmas.usa_de` (del catálogo de firmas o, si no, de la regla); los eventos viejos se etiquetan al leerlos. La memoria ajena no se muestra (la tiene todo juego).
+
+El tablero la muestra en una columna «Está usando» (alertas, tiempo real, detecciones), en «Conectados» (lo de la sesión) y en la ficha del jugador («Está usando:» con lo más grave primero; lo marcado como falso positivo no cuenta). `/api/eventos` y `/api/jugador` (`usando`) la devuelven para cualquier otro panel.
+
 ### 10.7 Límites (lo que esto NO resuelve)
 
 - Todo lo que manda la dll lo **declara el cliente**: una dll recompilada puede mentir o callar. La secuencia y el

@@ -549,7 +549,9 @@ def estado_de(usn):
             "latido_hace_s": round(t - c["ult_latido"]) if c.get("ult_latido") and c.get("lat") else None,
             "latidos": c.get("latidos", 0), "perdidos": c.get("perdidos", 0), "descartados": c.get("descartados", 0),
             "reloj": c.get("reloj_razon"), "retenido": bool(c.get("retener")), "reglas": sorted(c.get("reglas") or ()),
-            "pendiente": bool(c.get("expulsado"))}
+            "pendiente": bool(c.get("expulsado")),
+            "usa": [{"texto": k, "tipo": v} for k, v in sorted((c.get("usa") or {}).items(),
+                                                                 key=lambda kv: (firmas._ORDEN_TIPO.get(kv[1], 9), kv[0]))]}
 
 
 def revisar_latidos(conectados, ahora=None):
@@ -646,6 +648,9 @@ def anotar(st, regla, detalle, extra, evidencia=None, firma=""):
             if herr and alt and not c.get("correlacionado"):
                 c["correlacionado"] = True
                 correlacion = (herr, alt)
+            u = firmas.usa_de(regla, {**(evidencia or {}), **extra})     # ★ 28-nov: «está usando»
+            if u:
+                c.setdefault("usa", {})[u[0]] = u[1]
             gm_nuevo = regla not in c["gm_avisados"]
             c["gm_avisados"].add(regla)
     else:
