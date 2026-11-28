@@ -365,6 +365,10 @@ def responder_sesion(cmd, payload):
         if not usn or len(resto) < 2 or resto[0] not in RANURAS:
             return _sin_sesion(0xF8)
         r, crear = resto[0], resto[1] == 1
+        from . import gm_npc                                 # ★ 27-nov: la GM NPC tiene UN personaje (el casillero 1):
+        if r != 1 and gm_npc.es_cuenta(usn):                 #   con el selector normal, pero sin crear ni elegir otro
+            log("LOGIN", f"  ⛔ SELECTOR: usn={usn} es una cuenta GM NPC -> sólo su casillero 1 (pidió el {r})")
+            return _sin_sesion(0xF8)
         destino = ranuras_de(cuenta).get(r)
         tiene = bool(destino and (db_get_char(destino) or {}).get("nick"))
         if not tiene:
