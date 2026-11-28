@@ -203,6 +203,23 @@ ok("lucky_star.al_volver(st)" in src["lobby_salas.py"][_j:_j + 3000], "el FF13 d
 ok(all(catalogo.tiene_cargas(i) for i in (298, 299, 300, 301, 776, 777)) and not catalogo.tiene_cargas(220585),
    "la estrella y las llaves van por cargas (⟲ una prenda no)")
 
+# ═══ §6 la bandera de la pista (FF0C cola[18]) ═══
+print("§6 · la bandera de la pista (FF0C)")
+from servidor import paquetes as P                                 # noqa: E402
+ok(P.FF0C_NOTAS_ESPECIALES is False, "⟲ de fábrica APAGADA (falta medir la sala en vivo con el byte de más)")
+_occ = {"char_id": 130900, "slot": 1, "parts": [220585], "nick": "corredora", "exp": 0}
+_sin = P.build_ff0c_2013_real(_occ)
+P.FF0C_NOTAS_ESPECIALES = True
+_con = P.build_ff0c_2013_real(_occ)
+P.FF0C_NOTAS_ESPECIALES = False
+_i = next((k for k in range(min(len(_sin), len(_con))) if _sin[k] != _con[k]), None)
+ok(len(_con) == len(_sin) + 1, "prendida: el FF0C crece UN byte (el que el cliente lee detrás de la bandera)")
+ok(_i is not None and _con[_i:_i + 2] == b"\x01\x00" and _sin[_i] == 0, "la bandera en 1 y el byte de más en 0")
+ok(_i is not None and _con[:_i] == _sin[:_i] and _con[_i + 2:] == _sin[_i + 1:],
+   "todo lo de antes y lo de después, idéntico (nada se corre para el cliente)")
+ok(_i is not None and len(_sin) - _i == 48 - 18, "y cae en la cola, en el byte 18 (la cola mide 48 sin joyas ni texto)")
+ok(P.build_ff0c_2013_real(_occ) == _sin, "⟲ apagada otra vez: el FF0C de siempre")
+
 print()
 if FALLAS:
     print(f"❌ {len(FALLAS)} falla(s)")

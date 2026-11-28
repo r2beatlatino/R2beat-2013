@@ -1477,6 +1477,12 @@ CAMPANA_CARTEL_BASE = True
 #   gastan de a una al abrir (`lucky_star.py`). Sin cargas el armario no sabría cuántas hay.
 ITEMS_CON_CARGAS = tuple(CAMPANAS) + (1200033,) + (298, 299, 300, 301, 776, 777)
 
+# ★ 27-nov · LA LUCKY STAR EN LA PISTA: `FF0C cola[18]` = 1 (+ el byte que el cliente lee detrás, en 0). Sin esto el
+#   cliente no arma NUNCA las notas especiales: ni la Lucky Star (`0xF2`) ni el huevo «R» del PC-bang (`0xF1`, 2-4 por
+#   carrera, vienen juntos: los pone la misma función). Ver `paquetes.build_ff0c_2013_real` y `lucky_star.py`.
+#   ⏳ APAGADO hasta medir en vivo que la sala se sigue armando bien con el byte de más (el `FF0C` de cada ocupante).
+FF0C_NOTAS_ESPECIALES = False
+
 # ★★★★★ LOS SEIS SOSPECHOSOS DEL AVISO DE GM — 2026-09-15. Ver `documentacion/AVISO_DE_GM.md`.
 #
 #   La idea de buscarlos fue de anonimo03: *"revisar en el exe y comparar con el 2019, quizá está
