@@ -1,5 +1,5 @@
 /* traducciones.h — GENERADO por herramientas/dll_d3d9/traducciones/armar_tabla.py: no editar a mano */
-#define TR_N 585
+#define TR_N 603
 static const wchar_t *const TR_TABLA[TR_N][TR_N_IDIOMAS] = {
     { L"Not", L"Nenhuma", L"없음", L"无", L"なし" },
     { L"NUM%d", L"NUM%d", L"NUM%d", L"NUM%d", L"NUM%d" },
@@ -582,8 +582,26 @@ static const wchar_t *const TR_TABLA[TR_N][TR_N_IDIOMAS] = {
     { L"En la carrera: F9 lo esconde · Z lo fija · X / C más grande o más chico · V / B a la izquierda o a la derecha · N / M arriba o abajo.", L"Na corrida: F9 esconde · Z fixa · X / C maior ou menor · V / B para a esquerda ou direita · N / M para cima ou baixo.", L"레이스 중: F9 숨기기 · Z 고정 · X / C 크게 또는 작게 · V / B 왼쪽 또는 오른쪽 · N / M 위 또는 아래.", L"比赛中：F9 隐藏 · Z 固定 · X / C 放大或缩小 · V / B 向左或向右 · N / M 向上或向下。", L"レース中：F9 で隠す · Z で固定 · X / C で拡大・縮小 · V / B で左右 · N / M で上下。" },
     { L"Próximamente: velocidad de práctica (50 a 150 %), repetir un tramo A/B y Anticaída. Sólo en práctica o jugando solo.", L"Em breve: velocidade de prática (50 a 150 %), repetir um trecho A/B e Anti-queda. Só na prática ou jogando sozinho.", L"곧 추가: 연습 속도 (50~150 %), A/B 구간 반복, 낙하 방지. 연습 또는 혼자 플레이할 때만.", L"即将推出：练习速度（50 至 150 %）、重复 A/B 区段和防掉落。仅限练习或单人游戏。", L"近日公開：練習速度（50〜150 %）、A/B 区間リピート、落下防止。練習中またはソロプレイのみ。" },
     { L"Experimental", L"Experimental", L"실험적", L"实验性", L"実験的" },
-    { L"Combo en vivo (jugadores y espectadores)", L"Combo ao vivo (jogadores e espectadores)", L"실시간 콤보 (플레이어와 관전자)", L"实时连击（玩家和观众）", L"ライブコンボ（プレイヤーと観戦者）" },
-    { L"PD en vivo en las tarjetas", L"PD ao vivo nos cartões", L"카드에 실시간 PD", L"卡片上的实时 PD", L"カードにライブPD" },
-    { L"El globo del combo de cada rival, en vivo y con el BREAK cuando falla: igual para el que corre y el que mira.", L"O balão do combo de cada rival, ao vivo e com o BREAK quando erra: igual para quem corre e quem assiste.", L"각 상대의 콤보 말풍선을 실시간으로, 실수하면 BREAK와 함께: 달리는 사람과 관전자 모두 똑같이.", L"每个对手的连击气泡，实时显示，失误时显示 BREAK：跑者和观众看到的一样。", L"各ライバルのコンボ吹き出しをライブで、ミスするとBREAK付き：走る人も観戦者も同じ。" },
-    { L"El porcentaje (PD) de cada corredor en su tarjeta, en vivo.", L"A porcentagem (PD) de cada corredor no seu cartão, ao vivo.", L"각 주자의 카드에 퍼센트(PD)를 실시간으로.", L"每位跑者卡片上的百分比（PD），实时显示。", L"各ランナーのカードにパーセント（PD）をライブで。" },
+    { L"Sin chocar", L"Sem bater", L"충돌 없음", L"不碰撞", L"ぶつからない" },
+    { L"Choque latino", L"Batida latina", L"라티노 충돌", L"拉丁碰撞", L"ラテン式衝突" },
+    { L"Armada", L"Pronta", L"대기 중", L"已就绪", L"待機中" },
+    { L"Activa", L"Ativa", L"활성", L"已启用", L"有効" },
+    { L"Panel Far", L"Painel Far", L"Far 패널", L"Far 面板", L"Far パネル" },
+    { L"Fijar el panel (no se mueve al arrastrarlo)", L"Fixar o painel (não se move ao arrastar)", L"패널 고정 (드래그해도 움직이지 않음)", L"固定面板（拖动时不移动）", L"パネルを固定（ドラッグしても動かない）" },
+    { L"Tamaño del panel %d %%", L"Tamanho do painel %d %%", L"패널 크기 %d %%", L"面板大小 %d %%", L"パネルの大きさ %d %%" },
+    { L"Volver a su lugar", L"Voltar ao lugar", L"원래 위치로", L"恢复原位", L"元の位置に戻す" },
+    { L"Qué se ve", L"O que aparece", L"표시할 항목", L"显示内容", L"表示する項目" },
+    { L"Número del Far", L"Número do Far", L"Far 숫자", L"Far 数值", L"Far の数値" },
+    { L"Far Vision y AutoFar", L"Far Vision e AutoFar", L"Far Vision 및 AutoFar", L"Far Vision 和 AutoFar", L"Far Vision と AutoFar" },
+    { L"Barra del Far", L"Barra do Far", L"Far 바", L"Far 滑条", L"Far バー" },
+    { L"Velocidad (en práctica)", L"Velocidade (no treino)", L"속도 (연습 중)", L"速度（练习中）", L"速度（練習中）" },
+    { L"Colores y letra", L"Cores e fonte", L"색상과 글꼴", L"颜色和字体", L"色とフォント" },
+    { L"Color del número…", L"Cor do número…", L"숫자 색상…", L"数值颜色…", L"数値の色…" },
+    { L"(La de los crayones)", L"(A dos giz de cera)", L"(크레용 글꼴)", L"（蜡笔字体）", L"（クレヨンのフォント）" },
+    { L"Estilo crayón (borde oscuro y brillo)", L"Estilo giz de cera (borda escura e brilho)", L"크레용 스타일 (어두운 테두리와 광택)", L"蜡笔风格（深色描边和高光）", L"クレヨン風（暗い縁取りと光沢）" },
+    { L"Con el arcoíris prendido las letras van en arcoíris: el color se ve en las casillas y la barra. Sin casillas ni barra queda sólo «Far 16.5». Se guarda solo.", L"Com o arco-íris ligado as letras ficam em arco-íris: a cor aparece nas caixas e na barra. Sem caixas nem barra fica só «Far 16.5». Salva sozinho.", L"무지개를 켜면 글자가 무지개색이 되고, 선택한 색은 체크박스와 바에 보입니다. 체크박스와 바를 끄면 «Far 16.5»만 남습니다. 자동 저장됩니다.", L"开启彩虹时文字为彩虹色，所选颜色显示在复选框和滑条上。不显示复选框和滑条时只剩«Far 16.5»。自动保存。", L"虹色をオンにすると文字は虹色になり、選んだ色はチェックボックスとバーに出ます。チェックボックスとバーを消すと «Far 16.5» だけ残ります。自動で保存されます。" },
+    { L"Combo en vivo (al mirar)", L"Combo ao vivo (ao assistir)", L"실시간 콤보 (관전 시)", L"实时连击（观战时）", L"ライブコンボ（観戦時）" },
+    { L"De espectador: el globo del combo de cada corredor, en vivo y con el BREAK cuando falla. Corriendo, el juego queda como siempre.", L"Como espectador: o balão de combo de cada corredor, ao vivo e com o BREAK quando erra. Correndo, o jogo fica como sempre.", L"관전 중: 각 주자의 콤보 말풍선을 실시간으로, 실수하면 BREAK와 함께 표시합니다. 직접 달릴 때는 게임이 그대로입니다.", L"观战时：每位跑者的连击气泡实时显示，失误时显示 BREAK。自己比赛时游戏保持原样。", L"観戦中：各ランナーのコンボ吹き出しをライブで、ミスすると BREAK 付きで表示します。自分が走るときはいつも通りです。" },
+    { L"PD en vivo en las tarjetas (al mirar)", L"PD ao vivo nos cartões (ao assistir)", L"카드에 실시간 PD (관전 시)", L"卡片上的实时 PD（观战时）", L"カードにライブPD（観戦時）" },
+    { L"De espectador: el porcentaje (PD) de cada corredor en su tarjeta, en vivo.", L"Como espectador: a porcentagem (PD) de cada corredor no seu cartão, ao vivo.", L"관전 중: 각 주자의 카드에 퍼센트(PD)를 실시간으로 표시합니다.", L"观战时：在每位跑者的卡片上实时显示百分比（PD）。", L"観戦中：各ランナーのカードにパーセント（PD）をライブで表示します。" },
 };

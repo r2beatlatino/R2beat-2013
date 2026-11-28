@@ -5509,8 +5509,24 @@ ANTITRAMPA_REGLAS.update({
     "exe_desconocido":   "registrar",     # el md5 del R2Beat.exe no es ninguno de ANTITRAMPA_EXE_MD5
     "memoria_ajena":     "registrar",     # memoria ejecutable que no es nuestra (superposiciones dan falsos)
     "depurador":         "registrar",
-    "sin_antitrampa":    "registrar",     # terminó una carrera sin haber mandado nunca el «hola» (dll vieja o apagada)
+    # ★ 28-nov: «retener» = la carrera no paga si el server no vio NI el «hola» NI un latido de nuestra dll en
+    #   ANTITRAMPA_SIN_DLL_GRACIA_S (o la apagaron en su ini). Se le avisa al jugador una vez por sesión.
+    "sin_antitrampa":    "retener",       # terminó una carrera sin nuestra dll (quitada, cambiada o apagada)
 })
+#   ★ 28-nov · cuánto se espera una señal de la dll (el «hola» o un latido, que va cada 60 s) antes de retener por
+#   «sin_antitrampa». Tras un reinicio del server el «hola» no se repite (va una vez por juego abierto): el latido sí.
+ANTITRAMPA_SIN_DLL_GRACIA_S = 150
+ANTITRAMPA_SIN_DLL_AVISO = ("Tu juego no tiene el antitrampa de R2Beat Latino: las carreras no dan EXP ni Rcoin. "
+                            "Abre el juego desde el launcher actualizado.")
+#   ★ 28-nov · los md5 (los 12 primeros, como los manda el «hola» en dll=) de NUESTRAS d3d9.dll: todas las que pasaron
+#   por exe/d3d9.dll en git más la de prod. Al arrancar se suman solas la de exe/d3d9.dll y datos/d3d9_prod.dll. Otra =
+#   `dll_desconocida` (una dll recompilada o de otro). ⚠ Lo declara el cliente: una dll hecha para mentir puede copiar uno.
+ANTITRAMPA_DLL_MD5 = {
+    "01088ae98649", "103a74499923", "121850491df7", "162ace604e77", "1c240bb9af3d", "224e0db0d85c", "27fe1389a467",
+    "28bf5b3c9329", "2bb451650232", "2f8e5aa4e7fc", "35eb1203bdee", "47083b640a6f", "47981edde78c", "4ab20e47f050",
+    "52bffd24bbbe", "5e04c574ffc2", "5f50f055dfeb", "622f817e7398", "8597545c85bb", "916babe83573", "95e11e31304c",
+    "aa6838ceed5b", "c1d6fc43daa2", "cdc93f9cfa97", "f1199558a3f7", "f2f7b4ad3bce", "3538477ed424", "7e60e3e2e1b0", "6392d5936070",
+}
 #   Los R2Beat.exe aceptados: el que deja `herramientas/receta_exe.py` (MD5_ESPERADO). Al cambiar la receta, sumá el
 #   nuevo acá y dejá el anterior mientras haya jugadores con él.
 ANTITRAMPA_EXE_MD5 = {"7b8626647231e715d3f2fe33eebe2c46",   # el de la receta (herramientas/receta_exe.py)
@@ -5527,7 +5543,10 @@ ANTITRAMPA_GANCHOS = {0x005080B5: "automatico", 0x005AEDD4: "sala", 0x00505340: 
 #   ★ 19-nov: módulos con nombre «de trampa» que NO lo son (empiezan así, sin mayúsculas). El motor de práctica
 #   de Ñ2Hock (Entreno: velocidad, tramo A/B) se carga como ToolBitPracticeEngine_<hash>.dll: la dll vieja lo
 #   manda como «modulo=» por el «toolbit», y expulsaba a quien practicara. Queda sólo registrado.
-ANTITRAMPA_MODULOS_PERMITIDOS = ("toolbitpracticeengine",)
+ANTITRAMPA_MODULOS_PERMITIDOS = ("toolbitpracticeengine",
+                                 # ★ 28-nov (anonimo03: «todo lo que tenemos en Ñ2Hock está permitido»): la dll todavía
+                                 #   busca «n2hock» entre los módulos de trampa; un módulo de Ñ2Hock sólo se registra.
+                                 "n2hock", "ñ2hock")
 ANTITRAMPA_REGLAS["modulo_permitido"] = "registrar"
 ANTITRAMPA_REGLAS["juego_automatico"] = "expulsar"
 ANTITRAMPA_REGLAS["sala_automatica"] = "expulsar"
@@ -5544,6 +5563,7 @@ ANTITRAMPA_GANCHOS.update({
     0x0050CAB6: "item_auto",       # el activador del ítem 1000659 (evento 0xDC, estado 0x19)
     0x00501458: "resultado",       # el FF28 de la sala: precisión / combo personalizados
     0x005C887B: "resultado_solo",  # el resultado de Juego Solo (FF3A sub 3)
+    0x00501451: "resultado_b",     # ★ 28-nov: el mismo armado, como lo engancha R2AutoRouteLab «Release-next»
 })
 ANTITRAMPA_REGLAS.update({
     "resultado_alterado":  "expulsar",   # el armado del FF28 (o del de Juego Solo) reescrito en el cliente
@@ -5551,11 +5571,25 @@ ANTITRAMPA_REGLAS.update({
     # ⏳ "avisar" hasta medirlo en prod: la duración «normal» la aprende el server de las llegadas limpias.
     "llegada_anticipada":  "avisar",     # llegó a la meta mucho antes de lo que tarda esa canción (llegada simulada)
     # ⏳ "avisar" hasta medirlo en prod: el suelo sale del chart (notas.duracion_minima_de), sin llegadas para contrastar.
-    "llegada_imposible":   "avisar",     # llegó en menos de la mitad de lo que dura como poco su canción (aun sin historia)
+    # ★ 28-nov (anonimo03: «todo»): Sorbito00 llegó en 0,5 s a una de 145 s y cobró. Menos de la mitad del mínimo del
+    #   chart no lo hace ninguna persona: esa carrera ya no paga.
+    "llegada_imposible":   "retener",    # llegó en menos de la mitad de lo que dura como poco su canción (aun sin historia)
     # ★ 24-nov · INFORME_DEFENSA_CANDY0503.md: Candy no se inyecta, escribe la memoria del juego desde AFUERA.
     # ⏳ "registrar" hasta ver qué aparece en los limpios (el que lanzó el juego, overlays): después, "avisar" o más.
     "manija_escritura":    "registrar",  # un programa tiene abierto el juego con permiso de escribir su memoria
+    "manija_conocida":     "registrar",  # ★ 28-nov: lo mismo, pero el launcher o una superposición (no correlaciona)
+    # ★ 28-nov (anonimo03: «que el panel diga qué está usando según lo que modifica la RAM, más rápido y estricto»):
+    #   el catálogo `antitrampa_firmas.py` reconoce por la DIRECCIÓN tocada el programa y la función.
+    "trampa_conocida":     "expulsar",   # una función de trampa que NO es de Ñ2Hock (los automáticos, el resultado falso)
+    #   ★ anonimo03: «todo lo que tenemos en Ñ2Hock está permitido» (sin piedra, Supr, niebla, obstáculos, autoimpulso,
+    #   teclado, precisión, cámara, Far, práctica…): aunque la ponga desde afuera el Ñ2Hock.exe, sólo se registra.
+    "n2hock_permitido":    "registrar",
+    "arranque_restaurado": "registrar",  # el punto de entrada lo tocó un inyector/launcher y ya está de fábrica
+    "dll_desconocida":     "avisar",     # ★ 28-nov: el «hola» trae un md5 de dll que no es ninguna de las nuestras
 })
+#   ★ 28-nov (anonimo03: «sacar el ruido del panel»): lo que dan TODOS los jugadores limpios. Queda en el log y en
+#   antitrampa.jsonl (y cuenta en la sesión), pero NO se crea evento en el registro central: el panel no lo muestra.
+ANTITRAMPA_FUERA_DEL_PANEL = ("memoria_ajena", "manija_conocida", "arranque_restaurado")
 #   Llegada anticipada: frame < mediana de las últimas HISTORIA llegadas limpias de ESA canción × FACTOR, con al menos
 #   MUESTRAS llegadas guardadas. «Simular llegada» dispara la meta en cualquier momento: el tiempo declarado cuadra con
 #   el reloj del server (no hay reloj_rapido ni reloj_lento), lo que no cuadra es lo poco que duró.
@@ -5585,6 +5619,7 @@ ANTITRAMPA_REGLAS.update({
     "campanas_automaticas":  "avisar",    # tocó campana en cada ronda, muchas rondas seguidas
     "combo_repetido":        "avisar",    # el mismo combo en canciones distintas (fallar al llegar a N)
     "precision_constante":   "avisar",    # la misma precisión en canciones de niveles muy distintos
+    "auto_perfecto":         "avisar",    # ★ 28-nov: combo completo y precisión casi perfecta, carrera tras carrera, en difíciles
     "expulsa_espectadores":  "registrar", # el anfitrión echa espectadores en serie
     "farmeo":                "expulsar",  # dos señales distintas o más en la misma sesión
     "modulo_prohibido":      "expulsar",  # ToolBit, R2Mods, Cheat Engine…: son herramientas de farmeo
@@ -5621,6 +5656,12 @@ ANTITRAMPA_COMBO_MINIMO = 50
 ANTITRAMPA_PRECISION_CARRERAS = 10       # carreras miradas para la precisión constante
 ANTITRAMPA_PRECISION_NIVELES = 6         # entre la canción más fácil y la más difícil, al menos estos niveles
 ANTITRAMPA_PRECISION_RANGO = 1           # y la precisión no se movió más que esto (en puntos)
+#   ★ 28-nov · AUTO PERFECT por los resultados (lo mide el server, haga lo que haga el programa): de las últimas
+#   CARRERAS en canciones de nivel ≥ NIVEL, al menos VECES con combo completo (el total del chart) y precisión ≥ PD.
+ANTITRAMPA_PERFECTA_NIVEL = 14
+ANTITRAMPA_PERFECTA_PD = 98
+ANTITRAMPA_PERFECTA_CARRERAS = 8
+ANTITRAMPA_PERFECTA_VECES = 6
 ANTITRAMPA_EXPULSIONES = 5               # espectadores echados…
 ANTITRAMPA_EXPULSIONES_S = 600           # …en este tiempo
 
@@ -5689,11 +5730,17 @@ ANTITRAMPA_CLASIFICACION = {
     "resultado_alterado":      ("auto_perfect",          "critico",     85, "cliente"),
     "modulo_prohibido":        ("dll_no_autorizada",     "alto",        70, "cliente"),
     "modulo_permitido":        ("dll_no_autorizada",     "informativo", 10, "cliente"),
-    "memoria_ajena":           ("memoria_alterada",      "bajo",        35, "cliente"),
+    "memoria_ajena":           ("memoria_alterada",      "informativo", 10, "cliente"),   # ★ 28-nov: la da todo juego
     "hilo_ajeno":              ("dll_no_autorizada",     "medio",       50, "cliente"),
     "depurador":               ("herramienta_memoria",   "bajo",        40, "cliente"),
     "proceso_prohibido":       ("herramienta_memoria",   "bajo",        30, "cliente"),
     "manija_escritura":        ("herramienta_memoria",   "medio",       55, "cliente"),
+    "manija_conocida":         ("herramienta_memoria",   "informativo", 5,  "cliente"),
+    "trampa_conocida":         ("memoria_alterada",      "alto",        80, "cliente"),
+    "n2hock_permitido":        ("memoria_alterada",      "informativo", 5,  "cliente"),
+    "arranque_restaurado":     ("memoria_alterada",      "informativo", 10, "cliente"),
+    "dll_desconocida":         ("integridad_antitrampa", "medio",       55, "cliente"),
+    "auto_perfecto":           ("auto_perfect",          "medio",       60, "servidor"),
     "manipulacion_correlacionada": ("herramienta_memoria", "critico",   85, "servidor"),
     "teclas_inyectadas":       ("macros",                "bajo",        40, "cliente"),
     "listo_automatico":        ("bots",                  "medio",       60, "servidor"),
@@ -5715,9 +5762,25 @@ ANTITRAMPA_CLASIFICACION = {
 ANTITRAMPA_SENALES_DEBILES = ("teclas_inyectadas", "carreras_sin_hablar", "misma_cancion")
 #   Las herramientas y las alteraciones que juntas, en la misma sesión, dan `manipulacion_correlacionada`.
 ANTITRAMPA_CORRELACION_HERRAMIENTA = ("proceso_prohibido", "manija_escritura", "depurador")
-ANTITRAMPA_CORRELACION_ALTERACION = ("codigo_modificado", "codigo_previo", "memoria_ajena", "hilo_ajeno",
+#   ★ 28-nov (anonimo03: «hay gente que no le da exp ni rcoin pero no está usando nada»): `memoria_ajena` YA NO cuenta
+#   como alteración. Sale en TODO juego limpio (5-9 regiones: el controlador de video, Discord, Steam, el antivirus), y
+#   con la manija del launcher que abrió el juego daba `manipulacion_correlacionada` a cualquiera → premio retenido.
+ANTITRAMPA_CORRELACION_ALTERACION = ("codigo_modificado", "codigo_previo", "hilo_ajeno",
                                      "juego_automatico", "sala_automatica", "relevo_automatico", "resultado_alterado",
-                                     "modulo_prohibido", "reloj_rapido", "reloj_cliente")
+                                     "modulo_prohibido", "reloj_rapido", "reloj_cliente", "trampa_conocida")
+#   ★ 28-nov · los programas que tienen el juego abierto CON permiso de escribir y no son trampa: el launcher que lo
+#   lanzó (quien crea un proceso se queda con una manija completa), las superposiciones y las tiendas. Se comparan con
+#   el comienzo del nombre del exe, sin mayúsculas. Quedan como `manija_conocida` (sólo registrar) y NO cuentan para la
+#   correlación.
+ANTITRAMPA_MANIJAS_CONOCIDAS = (
+    "ñ2hock", "n2hock",                          # ★ 28-nov: Ñ2Hock.exe (todo lo de Ñ2Hock está permitido)
+    "n2launcher", "nyxlauncher", "launcher.exe", "r2beat.exe", "r2beatmultitest", "r2prueba", "replacer",
+    "full_downloader", "hw_spec", "explorer.exe", "discord", "steam", "gameoverlayui", "obs", "rtss", "msiafterburner",
+    "nvcontainer", "nvidia", "nvsphelper", "amdrsserv", "radeonsoftware", "amdow", "overwolf", "medal", "xboxgamebar",
+    "gamebar", "gamingservices", "epicgameslauncher", "eadesktop", "battle.net", "ubisoftconnect", "razer", "logi",
+    "lghub", "msedgewebview2", "taskmgr", "procexp", "systeminformer", "avp", "avast", "avg", "bdservicehost",
+    "mbam", "ekrn", "nortonsecurity", "mcshield", "securityhealthservice", "searchindexer", "dwm.exe", "ctfmon",
+)
 #   La telemetría de la dll (renglones R2AT por el FF59): tope por jugador y el latido.
 ANTITRAMPA_R2AT_POR_MINUTO = 40          # una dll de verdad manda ~1 por segundo como mucho, y casi nunca
 ANTITRAMPA_LATIDO_TOPE_S = 240           # sin latido este tiempo, con el juego conectado → telemetria_interrumpida

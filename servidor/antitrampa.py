@@ -62,12 +62,22 @@ from .ajustes import (
     ANTITRAMPA_CORRELACION_HERRAMIENTA,
     ANTITRAMPA_JSONL_MAX_MB,
     ANTITRAMPA_LATIDO_TOPE_S,
+    ANTITRAMPA_MANIJAS_CONOCIDAS,
+    ANTITRAMPA_FUERA_DEL_PANEL,
+    ANTITRAMPA_SIN_DLL_GRACIA_S,
+    ANTITRAMPA_SIN_DLL_AVISO,
+    ANTITRAMPA_DLL_MD5,
+    ANTITRAMPA_PERFECTA_NIVEL,
+    ANTITRAMPA_PERFECTA_PD,
+    ANTITRAMPA_PERFECTA_CARRERAS,
+    ANTITRAMPA_PERFECTA_VECES,
     ANTITRAMPA_R2AT_POR_MINUTO,
     ANTITRAMPA_RELOJ_CLIENTE_TOLERANCIA,
     ANTITRAMPA_RELOJ_CLIENTE_VECES,
     ANTITRAMPA_SENALES_DEBILES,
 )
 from . import antitrampa_eventos as eventos
+from . import antitrampa_firmas as firmas
 from .registro import log
 
 FPS = 60
@@ -94,6 +104,7 @@ def _sesion(usn):
     c.setdefault("gm_avisados", set())
     c.setdefault("r2at", deque(maxlen=max(ANTITRAMPA_R2AT_POR_MINUTO + 1, 2)))
     c.setdefault("visto", time.monotonic())
+    c.setdefault("desde", time.monotonic())           # ★ 28-nov: desde cuándo la ve el server (gracia de «sin dll»)
     return c
 
 
@@ -252,16 +263,35 @@ def _revisar_cuenta(st):
     usn = getattr(st, "usn", None)
     if not usn:
         return False
+    ahora = time.monotonic()
     with _cuentas_lock:
         c = _sesion(usn)
-        c["visto"] = time.monotonic()
-        avisar_sin_hola = not c["hola"] and not c["sin_hola_avisado"]
+        c["visto"] = ahora
+        desde = c["desde"]
+        # ★ 28-nov: sin el «hola» ni un latido en la gracia (o con la dll apagada en su ini) = sin nuestra dll
+        apagada = bool(c.get("apagado"))
+        sin_dll = apagada or (not c["hola"] and not c.get("dll_vista")
+                              and ahora - desde >= ANTITRAMPA_SIN_DLL_GRACIA_S)
+        avisar_sin_hola = sin_dll and not c["sin_hola_avisado"]       # una vez por sesión
         c["sin_hola_avisado"] |= avisar_sin_hola
-        retener = c["retener"] or _BLOQUEADOS.get(usn, 0) > time.monotonic()
+        retener = c["retener"] or _BLOQUEADOS.get(usn, 0) > ahora
+        decirle = False
+        if sin_dll and ANTITRAMPA_REGLAS.get("sin_antitrampa") in _QUE_RETIENEN:
+            retener = True
+            decirle = not c.get("sin_dll_dicho")
+            c["sin_dll_dicho"] = True
     if avisar_sin_hola:
-        anotar(st, "sin_antitrampa", "terminó una carrera sin que su dll mandara el «hola» del antitrampa", {})
+        anotar(st, "sin_antitrampa", "la dll del antitrampa está apagada en su ini" if apagada else
+               f"terminó una carrera sin el «hola» ni un latido de nuestra dll en {ANTITRAMPA_SIN_DLL_GRACIA_S} s", {})
+    if decirle:
+        try:
+            from .salas import avisar_a_uno
+            avisar_a_uno(st, ANTITRAMPA_SIN_DLL_AVISO)
+        except Exception as e:                # noqa: BLE001
+            log("TRAMP", f"  ⚠ no pude avisarle a usn={usn} que no tiene el antitrampa: {e!r}")
     if retener:
-        log("TRAMP", f"  🚩 usn={usn}: premio retenido por lo que informó su cliente en esta sesión")
+        log("TRAMP", f"  🚩 usn={usn}: premio retenido por lo que informó su cliente en esta sesión"
+                     + (" (sin nuestra dll)" if sin_dll else ""))
     return retener
 
 
@@ -270,7 +300,19 @@ _GANCHOS = {"automatico": "juego_automatico", "sala": "sala_automatica", "relevo
             # ★ 24-nov: las rutas del laboratorio (INFORME_LABORATORIO.md §4-5)
             "tick_meta": "juego_automatico", "auto_normal": "juego_automatico", "pd0": "juego_automatico",
             "larga_a": "juego_automatico", "larga_b": "juego_automatico", "item_auto": "juego_automatico",
-            "resultado": "resultado_alterado", "resultado_solo": "resultado_alterado"}
+            "resultado": "resultado_alterado", "resultado_solo": "resultado_alterado",
+            # ★ 28-nov: R2AutoRouteLab «Release-next» engancha el resultado 7 bytes antes (+0x101451)
+            "resultado_b": "resultado_alterado"}
+# ★ 28-nov · lo que dice el catálogo de firmas (antitrampa_firmas.py) según la clase de lo que se tocó
+_REGLA_DE_CLASE = {"trampa": "trampa_conocida", "permitida": "n2hock_permitido"}
+
+
+def _usa(va):
+    """-> (firma o None, « · usa: programa · función» para el detalle, dict para la evidencia)."""
+    f = firmas.identificar(va)
+    if not f:
+        return None, "", {}
+    return f, f" · usa: {firmas.texto(f)}", {"programa": f.programa, "funcion": f.funcion, "clase": f.clase}
 
 
 def _va(texto):
@@ -302,6 +344,9 @@ def al_ff59(st, texto):
         return True
     for d, crudo in renglones:
         if _admitir_r2at(st, d):
+            if "v" in d or "latido" in d:                 # ★ 28-nov: la dll está (para «sin_antitrampa»)
+                with _cuentas_lock:
+                    _sesion(st.usn)["dll_vista"] = True
             _un_r2at(st, d, crudo)
     return True
 
@@ -364,16 +409,16 @@ def _un_r2at(st, d, crudo):
         anotar(st, "vigia_parado", "el hilo del antitrampa dejó de correr dentro del juego", {}, evidencia=ev)
     elif "gancho" in d:                                    # un gancho conocido de un programa de trampas
         regla = _GANCHOS.get(d["gancho"], "codigo_modificado")
-        anotar(st, regla, f"gancho «{d['gancho']}» en {d.get('va')}: {d.get('bytes', '').replace('_', ' ')}", {},
-               evidencia=ev, firma=d["gancho"])
+        _f, usa, ev_usa = _usa(_va(d.get("va", "")))
+        anotar(st, regla, f"gancho «{d['gancho']}» en {d.get('va')}: {d.get('bytes', '').replace('_', ' ')}{usa}", {},
+               evidencia={**ev, **ev_usa}, firma=d["gancho"])
     elif "codigo" in d and _va(d["codigo"]) in ANTITRAMPA_GANCHOS:   # dll sin «gancho=»: por la dirección
+        _f, usa, ev_usa = _usa(_va(d["codigo"]))
         anotar(st, _GANCHOS[ANTITRAMPA_GANCHOS[_va(d["codigo"])]],
                f"gancho «{ANTITRAMPA_GANCHOS[_va(d['codigo'])]}» en {d['codigo']}: "
-               f"{d.get('bytes', '').replace('_', ' ')}", {}, evidencia=ev, firma=d["codigo"])
+               f"{d.get('bytes', '').replace('_', ' ')}{usa}", {}, evidencia={**ev, **ev_usa}, firma=d["codigo"])
     elif "codigo" in d:
-        anotar(st, "codigo_modificado", f"{d.get('paginas')} página(s) del exe tocadas por fuera, la primera en "
-                                        f"{d['codigo']}: {d.get('bytes', '').replace('_', ' ')}", {},
-               evidencia=ev, firma=d["codigo"])
+        _codigo_tocado(st, d, ev)
     elif "modulo" in d and d["modulo"].lower().startswith(ANTITRAMPA_MODULOS_PERMITIDOS):
         # ★ 19-nov: el motor de práctica de Ñ2Hock (ToolBitPracticeEngine_<hash>.dll): la dll del launcher
         #   todavía lo informa como «toolbit», pero NO es el ToolBit de trampas. Sólo queda registrado.
@@ -396,11 +441,60 @@ def _un_r2at(st, d, crudo):
         anotar(st, "proceso_prohibido", f"tiene abierto {d['proceso']}{firma}", {}, evidencia=ev,
                firma=d["proceso"].lower())
     elif "manija" in d:                                    # ★ 24-nov: un programa con permiso de escribir el juego
-        anotar(st, "manija_escritura", f"{d['manija']} tiene abierto el juego con permiso de escribir su memoria "
-                                       f"(acceso {d.get('acceso', '?')})", {}, evidencia=ev,
+        regla = "manija_conocida" if manija_conocida(d["manija"]) else "manija_escritura"   # ★ 28-nov
+        anotar(st, regla, f"{d['manija']} tiene abierto el juego con permiso de escribir su memoria "
+                          f"(acceso {d.get('acceso', '?')})", {}, evidencia=ev,
                firma=d["manija"].lower())
     else:
         log("TRAMP", f"  ? usn={st.usn}: renglón R2AT que no conozco: {crudo!r}")
+
+
+def _codigo_tocado(st, d, ev):
+    """★ 28-nov: `R2AT codigo=` — una página del exe cambió por fuera. El catálogo de firmas dice QUÉ programa y QUÉ
+    función es por la dirección, y de eso sale la regla: trampa_conocida (retener en silencio), n2hock_permitido (una
+    función de Ñ2Hock: registrar), arranque_restaurado (registrar) o, si no se conoce, codigo_modificado."""
+    va, b = _va(d["codigo"]), d.get("bytes", "")
+    f, usa, ev_usa = _usa(va)
+    base = (f"{d.get('paginas')} página(s) del exe tocadas por fuera, la primera en {d['codigo']}: "
+            f"{b.replace('_', ' ')}")
+    if f and f.clase == "arranque":
+        if firmas.arranque_restaurado(va, b):
+            anotar(st, "arranque_restaurado", base + " · el punto de entrada del exe lo cambió un inyector o un launcher "
+                                                     "al abrir el juego y ya está como de fábrica", {},
+                   evidencia={**ev, **ev_usa}, firma=d["codigo"])
+            return
+        regla = "codigo_modificado"
+    else:
+        regla = _REGLA_DE_CLASE.get(f.clase, "codigo_modificado") if f else "codigo_modificado"
+    anotar(st, regla, base + usa, {}, evidencia={**ev, **ev_usa}, firma=d["codigo"])
+
+
+_DLLS = None
+
+
+def _dlls_nuestras():
+    """★ 28-nov: los md5 (12) de nuestras dll: ANTITRAMPA_DLL_MD5 + exe/d3d9.dll y datos/d3d9_prod.dll de este server."""
+    global _DLLS
+    if _DLLS is None:
+        import hashlib
+        import os
+        s = {x.lower()[:12] for x in ANTITRAMPA_DLL_MD5}
+        raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for rel in (("exe", "d3d9.dll"), ("datos", "d3d9_prod.dll"), ("datos", "d3d9.dll")):
+            try:
+                with open(os.path.join(raiz, *rel), "rb") as f:
+                    s.add(hashlib.md5(f.read()).hexdigest()[:12])
+            except OSError:
+                pass
+        _DLLS = s
+    return _DLLS
+
+
+def manija_conocida(nombre):
+    """★ 28-nov: ¿es el launcher, una superposición o un programa de sistema (no una herramienta de trampa)?"""
+    n = str(nombre or "").strip().lower()
+    # ★ 28-nov: «Ñ2Hock.exe» llega según la página de códigos del jugador («ñ2hock», «?2hock», «�2hock»…): basta «2hock.exe»
+    return bool(n) and n != "?" and (any(n.startswith(k) for k in ANTITRAMPA_MANIJAS_CONOCIDAS) or n.endswith("2hock.exe"))
 
 
 def _al_hola(st, d, crudo):
@@ -421,12 +515,17 @@ def _al_hola(st, d, crudo):
     log("TRAMP", f"  ★ usn={st.usn}: antitrampa del cliente v{d['v']} · exe {d.get('exe')} · previo={d.get('previo')}"
                  f"{' · dll ' + str(d.get('dll')) if d.get('dll') else ''}{' · retención conservada' if nuevo['retener'] else ''}")
     ev = {"r2at": crudo}
+    dll = str(d.get("dll") or d.get("dllmd5") or "").lower()[:12]
+    if dll and dll not in _dlls_nuestras():                # ★ 28-nov: una dll que no es ninguna de las nuestras
+        anotar(st, "dll_desconocida", f"la d3d9.dll del jugador (md5 {dll}…) no es ninguna de las nuestras", {"dll": dll},
+               evidencia=ev, firma=dll)
     if d.get("exe") not in ANTITRAMPA_EXE_MD5:
         anotar(st, "exe_desconocido", f"R2Beat.exe con md5 {d.get('exe')}", {"exe": d.get("exe")}, evidencia=ev,
                firma=d.get("exe"))
     if d.get("previo", "0") not in ("0", "-1"):
+        f, usa, ev_usa = _usa(_va(d.get("previo_va") or ""))
         anotar(st, "codigo_previo", f"{d['previo']} página(s) del exe ya tocadas al abrir el juego, la primera "
-                                    f"en {d.get('previo_va')}", {}, evidencia=ev)
+                                    f"en {d.get('previo_va')}{usa}", {}, evidencia={**ev, **ev_usa})
 
 
 def _tiene_pendientes(usn):
@@ -506,7 +605,9 @@ def estado_de(usn):
             "latido_hace_s": round(t - c["ult_latido"]) if c.get("ult_latido") and c.get("lat") else None,
             "latidos": c.get("latidos", 0), "perdidos": c.get("perdidos", 0), "descartados": c.get("descartados", 0),
             "reloj": c.get("reloj_razon"), "retenido": bool(c.get("retener")), "reglas": sorted(c.get("reglas") or ()),
-            "pendiente": bool(c.get("expulsado"))}
+            "pendiente": bool(c.get("expulsado")),
+            "usa": [{"texto": k, "tipo": v} for k, v in sorted((c.get("usa") or {}).items(),
+                                                                 key=lambda kv: (firmas._ORDEN_TIPO.get(kv[1], 9), kv[0]))]}
 
 
 def revisar_latidos(conectados, ahora=None):
@@ -537,6 +638,11 @@ def revisar_latidos(conectados, ahora=None):
 
 def arrancar_vigilancia(conexiones, cada=30.0):
     """El hilo del vigilante de latidos. `conexiones` = salas.CONEXIONES (usn -> conexión)."""
+    try:
+        limpiar_correlaciones_falsas()            # ★ 28-nov: los retenidos por la correlación vieja
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ limpiando correlaciones falsas: {e!r}")
+
     def _ciclo():
         while True:
             time.sleep(cada)
@@ -569,6 +675,8 @@ def anotar(st, regla, detalle, extra, evidencia=None, firma=""):
     if accion == "apagado":
         return accion
     usn = getattr(st, "usn", None)
+    if regla in ANTITRAMPA_FUERA_DEL_PANEL and accion == "registrar":
+        return _solo_log(st, usn, regla, detalle, extra, evidencia, firma)
     nick = _nick(usn)
     ctx = _contexto(st)
     cuenta = _cuenta_de(st) if usn else None
@@ -598,6 +706,9 @@ def anotar(st, regla, detalle, extra, evidencia=None, firma=""):
             if herr and alt and not c.get("correlacionado"):
                 c["correlacionado"] = True
                 correlacion = (herr, alt)
+            u = firmas.usa_de(regla, {**(evidencia or {}), **extra})     # ★ 28-nov: «está usando»
+            if u:
+                c.setdefault("usa", {})[u[0]] = u[1]
             gm_nuevo = regla not in c["gm_avisados"]
             c["gm_avisados"].add(regla)
     else:
@@ -615,6 +726,29 @@ def anotar(st, regla, detalle, extra, evidencia=None, firma=""):
     return accion
 
 
+def _solo_log(st, usn, regla, detalle, extra, evidencia, firma):
+    """★ 28-nov: el ruido de todos (memoria ajena, launcher, arranque restaurado): log y jsonl una vez por sesión y
+    firma, cuenta en la sesión, pero NO va al registro central (el panel no lo muestra)."""
+    nuevo = True
+    if usn:
+        with _cuentas_lock:
+            c = _sesion(usn)
+            vistos = c.setdefault("solo_log", set())
+            nuevo = (regla, str(firma)) not in vistos
+            vistos.add((regla, str(firma)))
+            c["reglas"].add(regla)
+            u = firmas.usa_de(regla, {**(evidencia or {}), **extra})
+            if u:
+                c.setdefault("usa", {})[u[0]] = u[1]
+    if nuevo:
+        nick = _nick(usn)
+        log("TRAMP", f"  · {regla} [registrar, fuera del panel] usn={usn} {nick!r}: {detalle}")
+        _guardar({"cuando": datetime.datetime.now().isoformat(timespec="seconds"), "regla": regla,
+                  "accion": "registrar", "usn": usn, "nick": nick, "sala": getattr(st, "room_id", None),
+                  "detalle": detalle, **extra})
+    return "registrar"
+
+
 # Qué módulo del antitrampa vio cada regla (el resto: «dll» si vino de un R2AT, si no «servidor»).
 _MODULO_DE = {"combo_imposible": "cartel", "porcentaje_imposible": "cartel", "precision_imposible": "cartel",
               "llegada_imposible": "cartel", "llegada_anticipada": "cartel", "reloj_rapido": "cartel",
@@ -622,6 +756,7 @@ _MODULO_DE = {"combo_imposible": "cartel", "porcentaje_imposible": "cartel", "pr
               "listo_automatico": "farmeo", "carreras_sin_hablar": "farmeo", "misma_cancion": "farmeo",
               "campanas_automaticas": "farmeo", "combo_repetido": "farmeo", "precision_constante": "farmeo",
               "expulsa_espectadores": "farmeo", "farmeo": "farmeo", "manipulacion_correlacionada": "correlacion",
+              "auto_perfecto": "farmeo",
               "telemetria_interrumpida": "telemetria", "telemetria_inundada": "telemetria",
               "telemetria_repetida": "telemetria", "reloj_cliente": "telemetria"}
 
@@ -914,8 +1049,78 @@ def perdonar_pendientes(quien_es, quien=""):
         almacen.at_accion(quien or "gm", "perdonar", fs[0].get("cuenta"), fs[0].get("usn"), None, f"{n} pendiente(s)")
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude marcar los eventos perdonados: {e!r}")
+    _soltar_retencion({f["usn"] for f in fs if f.get("usn") is not None}, {f.get("cuenta") for f in fs} - {None, ""})
     log("TRAMP", f"  🕊 {quien!r} perdonó {n} detección(es) de {quien_es!r}")
     return [f"antitrampa: {n} deteccion(es) de {quien_es} descartada(s)"]
+
+
+def _soltar_retencion(usns, cuentas=()):
+    """★ 28-nov: al perdonar, la retención de ESTA sesión se levanta ya (antes seguía sin cobrar hasta reabrir el juego),
+    salvo que le quede otra detección pendiente."""
+    try:
+        from . import almacen
+        quedan = almacen.antitrampa_pendientes(0)
+    except Exception:                         # noqa: BLE001
+        quedan = []
+    vivos_usn = {f.get("usn") for f in quedan}
+    vivas_cta = {f.get("cuenta") for f in quedan} - {None, ""}
+    with _cuentas_lock:
+        for usn, c in _CUENTAS.items():
+            mia = usn in usns
+            if not mia and cuentas:
+                try:
+                    from . import almacen
+                    mia = almacen.cuenta_de_uid(usn)[0] in cuentas
+                except Exception:             # noqa: BLE001
+                    mia = False
+            if not mia or usn in vivos_usn:
+                continue
+            try:
+                from . import almacen
+                if almacen.cuenta_de_uid(usn)[0] in vivas_cta:
+                    continue
+            except Exception:                 # noqa: BLE001
+                pass
+            if c.get("retener"):
+                c["retener"] = False
+                c.pop("correlacionado", None)
+                log("TRAMP", f"  🕊 usn={usn}: retención levantada (perdonado)")
+
+
+_ALT_DEBILES = ("memoria_ajena",)
+
+
+def limpiar_correlaciones_falsas(quien="servidor"):
+    """★ 28-nov: perdona las `manipulacion_correlacionada` pendientes cuya única alteración era `memoria_ajena` (la que
+    da cualquier juego limpio). Se corre al arrancar: los que la regla vieja retuvo sin motivo vuelven a cobrar.
+    -> cuántas perdonó."""
+    from . import almacen
+    try:
+        fs = almacen.antitrampa_pendientes(0)
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude leer los pendientes para limpiar correlaciones: {e!r}")
+        return 0
+    falsas = []
+    for f in fs:
+        if f.get("regla") != "manipulacion_correlacionada":
+            continue
+        m = re.search(r"alteración del juego \(([^)]*)\)", f.get("detalle") or "")
+        alt = {a.strip() for a in m.group(1).split(",")} if m else set()
+        if alt and alt <= set(_ALT_DEBILES):
+            falsas.append(f)
+    if not falsas:
+        return 0
+    n = almacen.antitrampa_resolver([f["id"] for f in falsas], "perdonada", quien)
+    try:
+        almacen.ev_marcar(pendientes=[f["id"] for f in falsas], estado="descartado", por=quien,
+                          nota="falso positivo: memoria_ajena sola ya no correlaciona")
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude marcar los eventos de las correlaciones falsas: {e!r}")
+    _soltar_retencion({f["usn"] for f in falsas if f.get("usn") is not None},
+                      {f.get("cuenta") for f in falsas} - {None, ""})
+    log("TRAMP", f"  🕊 {n} manipulacion_correlacionada falsa(s) perdonada(s) (sólo memoria_ajena): "
+                 + ", ".join(sorted({str(f.get('nick') or f.get('usn')) for f in falsas})))
+    return n
 
 
 def _cerrar_luego(st, usn, regla):
@@ -960,7 +1165,8 @@ def _estado(usn):
         "fin": None, "reacciones": deque(maxlen=ANTITRAMPA_LISTO_MUESTRAS), "sin_hablar": 0,
         "cancion": None, "misma": 0, "campana_ronda": False, "campanas": 0,
         "combos": deque(maxlen=10), "precisiones": deque(maxlen=ANTITRAMPA_PRECISION_CARRERAS),
-        "expulsiones": deque(maxlen=ANTITRAMPA_EXPULSIONES), "senales": set()})
+        "expulsiones": deque(maxlen=ANTITRAMPA_EXPULSIONES), "senales": set(),
+        "perfectas": deque(maxlen=ANTITRAMPA_PERFECTA_CARRERAS)})
 
 
 def _ahora(ahora):
@@ -995,8 +1201,9 @@ def _farmeo_al_cartel(st, cancion, combo, pd, ahora=None):
     try:
         from . import notas
         nivel = notas.nivel_de(cancion) if cancion else None
+        total = notas.combo_total_de(cancion) if cancion else None
     except Exception:                         # noqa: BLE001
-        nivel = None
+        nivel = total = None
     senales = []
     with _farmeo_lock:
         e = _estado(usn)
@@ -1021,6 +1228,14 @@ def _farmeo_al_cartel(st, cancion, combo, pd, ahora=None):
                 and len({c[1] for c in iguales}) >= 3):
             senales.append(("combo_repetido", f"combo {combo} exacto en {len(iguales)} carreras de "
                                               f"{len({c[1] for c in iguales})} canciones distintas"))
+        # ★ 28-nov · AUTO PERFECT: combo completo y precisión casi perfecta, una y otra vez, en canciones difíciles
+        if nivel is not None and nivel >= ANTITRAMPA_PERFECTA_NIVEL and total:
+            e["perfectas"].append(combo >= total and pd >= ANTITRAMPA_PERFECTA_PD)
+            n = sum(e["perfectas"])
+            if len(e["perfectas"]) >= ANTITRAMPA_PERFECTA_CARRERAS and n >= ANTITRAMPA_PERFECTA_VECES:
+                senales.append(("auto_perfecto", f"combo completo y precisión ≥ {ANTITRAMPA_PERFECTA_PD} en {n} de sus "
+                                                 f"últimas {len(e['perfectas'])} carreras de nivel "
+                                                 f"{ANTITRAMPA_PERFECTA_NIVEL} o más"))
         p = list(e["precisiones"])
         if len(p) >= ANTITRAMPA_PRECISION_CARRERAS:
             pds, niveles = [x[0] for x in p], [x[1] for x in p]

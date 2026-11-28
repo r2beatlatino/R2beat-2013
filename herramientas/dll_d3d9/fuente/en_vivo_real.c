@@ -78,8 +78,13 @@ static int g_evr_n_ctl = 0, g_evr_n_ctl_rec = 0, g_evr_n_cortes = 0;
 static int g_evr_pd = 0, g_evr_pd_ok = 0, g_evr_pd_dx = 102, g_evr_pd_dy = -1;   /* pd: forzado por el ini · ok: enganchada */
 /* ★ 26-nov · lo que se VE lo deciden las casillas «Experimental» de Ñ2Hock (apagadas de fábrica) o el ini (pruebas).
  *   Lo que se MANDA sale siempre: así el que las prende ve a todos, aunque los demás las tengan apagadas */
-static int evr_combo_ver(void) { return g_evr_globos || g_op[O_COMBO_VIVO].quiere; }
-static int evr_pd_ver(void)    { return g_evr_pd || g_op[O_PD_VIVO].quiere; }
+/* ★ 28-nov (anonimo03: «esos 2 sólo deben funcionar en modo espectador»): lo que se VE (el combo real de los rivales y
+ *   el PD en las tarjetas) sólo cuando soy ESPECTADOR ([cGame+0xC01]); corriendo, el juego queda como de fábrica. Lo que
+ *   se MANDA no cambia: los que corren tienen que mandar para que el que mira lo vea. El ini (globos=1 / pd_tarjetas=1)
+ *   lo sigue forzando en cualquier modo, para las pruebas. */
+static int evr_espectador(void) { BYTE *g = gc_juego(); return g && g[0xC01] != 0; }
+static int evr_combo_ver(void) { return g_evr_globos || (g_op[O_COMBO_VIVO].quiere && evr_espectador()); }
+static int evr_pd_ver(void)    { return g_evr_pd || (g_op[O_PD_VIVO].quiere && evr_espectador()); }
 static DWORD g_evr_pd_color = 0xFFFFFFFF;
 static int g_evr_pd_notas[16];
 static DWORD g_evr_pd_suma[16], g_evr_pd_t[16];

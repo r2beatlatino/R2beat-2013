@@ -39,6 +39,20 @@ static void fj_tick(void)
     if (InterlockedExchange(&g_fj_guardar, 0)) ht_pedir_guardar();
 }
 
+/* «FF0080» -> 0xFF0080; lo que no sea un color (o «FFFFFFFF») = de fábrica */
+static DWORD fj_hex(const char *t)
+{
+    DWORD v = 0;
+    int n = 0;
+    for (; t && *t; t++, n++) {
+        char c = *t;
+        int d = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+        if (d < 0 || n >= 8) return 0xFFFFFFFF;
+        v = v << 4 | (DWORD)d;
+    }
+    return n && v <= 0xFFFFFF ? v : 0xFFFFFFFF;
+}
+
 static void fj_leer_ini(void)
 {
     g_fj_mostrar = GetPrivateProfileIntA("herramienta", "far_juego", 1, g_ht_ini) != 0;
@@ -51,4 +65,21 @@ static void fj_leer_ini(void)
     g_fj_tecla = tk >= 0 && tk < 256 ? tk : VK_F7;
     g_fj_x = x >= 0 && x <= 1000 ? x : -1;
     g_fj_y = y >= 0 && y <= 1000 ? y : -1;
+    /* ★ 28-nov: Personalización · Panel Far */
+    int es = (int)GetPrivateProfileIntA("herramienta", "far_juego_tamano", 100, g_ht_ini);
+    g_fj_escala = es < 70 ? 70 : es > 200 ? 200 : es;
+    g_fj_fijo = GetPrivateProfileIntA("herramienta", "far_juego_fijo", 0, g_ht_ini) != 0;
+    g_fj_crayon = GetPrivateProfileIntA("herramienta", "far_juego_crayon", 1, g_ht_ini) != 0;
+    char t[200];
+    GetPrivateProfileStringA("herramienta", "far_juego_color", "FFFFFFFF", t, sizeof(t), g_ht_ini);
+    g_fj_acento = fj_hex(t);
+    GetPrivateProfileStringA("herramienta", "far_juego_color_numero", "FFFFFFFF", t, sizeof(t), g_ht_ini);
+    g_fj_numcol = fj_hex(t);
+    GetPrivateProfileStringA("herramienta", "far_juego_partes", "1111", t, sizeof(t), g_ht_ini);
+    if (lstrlenA(t) >= 4) {
+        g_fj_ver_num = t[0] != '0'; g_fj_ver_chk = t[1] != '0'; g_fj_ver_barra = t[2] != '0'; g_fj_ver_vel = t[3] != '0';
+    }
+    GetPrivateProfileStringA("herramienta", "far_juego_letra", "", t, sizeof(t), g_ht_ini);
+    if (!MultiByteToWideChar(CP_UTF8, 0, t, -1, g_fj_letra, 64)) g_fj_letra[0] = 0;
+    InterlockedIncrement(&g_fj_letra_ver);
 }

@@ -163,6 +163,14 @@
       "funciones": [
         "Precisión personalizada en Juego Solo (lab)"
       ]
+    },
+    {
+      "id": "resultado_b",
+      "va": "0x00501451",
+      "regla": "resultado_alterado",
+      "funciones": [
+        "Resultado personalizado (lab «Release-next»)"
+      ]
     }
   ],
   "reglas": [
@@ -419,6 +427,18 @@
       "comprobado_por": "servidor"
     },
     {
+      "id": "auto_perfecto",
+      "accion": "avisar",
+      "origen": "servidor",
+      "gravedad": 2,
+      "nombre": "Auto perfect",
+      "descripcion": "Combo completo y precisión de 98 o más en 6 de sus últimas 8 carreras de nivel 14 o más. Lo mide el servidor con los resultados, haga lo que haga el programa. Es una señal de farmeo fuerte.",
+      "categoria": "auto_perfect",
+      "riesgo": "medio",
+      "confianza": 60,
+      "comprobado_por": "servidor"
+    },
+    {
       "id": "modulo_permitido",
       "accion": "registrar",
       "origen": "dll",
@@ -448,9 +468,9 @@
       "origen": "dll",
       "gravedad": 1,
       "nombre": "Memoria ajena",
-      "descripcion": "Hay código inyectado (Ñ2Hock lo tiene siempre).",
+      "descripcion": "Hay código inyectado (Ñ2Hock lo tiene siempre). ★ La da todo juego limpio: no va al panel, sólo al log.",
       "categoria": "memoria_alterada",
-      "riesgo": "bajo",
+      "riesgo": "informativo",
       "confianza": 35,
       "comprobado_por": "cliente"
     },
@@ -468,15 +488,27 @@
     },
     {
       "id": "sin_antitrampa",
-      "accion": "registrar",
+      "accion": "retener",
       "origen": "cartel",
       "gravedad": 1,
       "nombre": "Sin antitrampa",
-      "descripcion": "Terminó una carrera sin que su dll mandara el «hola».",
+      "descripcion": "Terminó una carrera sin el «hola» ni un latido de nuestra dll en 150 s, o con la dll apagada en su ini: la quitaron, la cambiaron o la apagaron. La carrera no paga y al jugador se le avisa una vez.",
       "categoria": "integridad_antitrampa",
       "riesgo": "bajo",
       "confianza": 35,
       "comprobado_por": "servidor"
+    },
+    {
+      "id": "dll_desconocida",
+      "accion": "avisar",
+      "origen": "dll",
+      "gravedad": 2,
+      "nombre": "DLL desconocida",
+      "descripcion": "El «hola» trae el md5 de una d3d9.dll que no es ninguna de las nuestras (ANTITRAMPA_DLL_MD5): recompilada o de otro.",
+      "categoria": "integridad_antitrampa",
+      "riesgo": "medio",
+      "confianza": 55,
+      "comprobado_por": "cliente"
     },
     {
       "id": "expulsa_espectadores",
@@ -528,7 +560,7 @@
     },
     {
       "id": "llegada_imposible",
-      "accion": "avisar",
+      "accion": "retener",
       "origen": "cartel",
       "gravedad": 3,
       "nombre": "Llegada imposible",
@@ -548,6 +580,54 @@
       "categoria": "herramienta_memoria",
       "riesgo": "medio",
       "confianza": 55,
+      "comprobado_por": "cliente"
+    },
+    {
+      "id": "manija_conocida",
+      "accion": "registrar",
+      "origen": "dll",
+      "gravedad": 0,
+      "nombre": "Manija conocida",
+      "descripcion": "Como la manija de escritura, pero del launcher que abrió el juego, una superposición (Discord, Steam, OBS, RTSS…) o un antivirus. No cuenta para la manipulación correlacionada. No va al panel, sólo al log.",
+      "categoria": "herramienta_memoria",
+      "riesgo": "informativo",
+      "confianza": 5,
+      "comprobado_por": "cliente"
+    },
+    {
+      "id": "trampa_conocida",
+      "accion": "expulsar",
+      "origen": "dll",
+      "gravedad": 3,
+      "nombre": "Función de trampa conocida",
+      "descripcion": "Una dirección del exe tocada que el catálogo de firmas (antitrampa_firmas.py) reconoce como trampa que NO es de Ñ2Hock: los automáticos, el resultado falso de R2AutoRouteLab, el auto listo / auto relevo del ToolBit viejo. El panel dice el programa y la función.",
+      "categoria": "memoria_alterada",
+      "riesgo": "alto",
+      "confianza": 80,
+      "comprobado_por": "cliente"
+    },
+    {
+      "id": "n2hock_permitido",
+      "accion": "registrar",
+      "origen": "dll",
+      "gravedad": 0,
+      "nombre": "Función de Ñ2Hock (permitida)",
+      "descripcion": "Una dirección del exe tocada que es una función de Ñ2Hock: sin piedra, Supr, niebla, obstáculos, autoimpulso, teclado, precisión, cámara, Far, práctica… Todo lo de Ñ2Hock está permitido: sólo se anota.",
+      "categoria": "memoria_alterada",
+      "riesgo": "informativo",
+      "confianza": 5,
+      "comprobado_por": "cliente"
+    },
+    {
+      "id": "arranque_restaurado",
+      "accion": "registrar",
+      "origen": "dll",
+      "gravedad": 0,
+      "nombre": "Arranque restaurado",
+      "descripcion": "El punto de entrada del exe lo cambió un inyector o un launcher al abrir el juego y ya está como de fábrica. Solo no prueba nada. No va al panel, sólo al log.",
+      "categoria": "memoria_alterada",
+      "riesgo": "informativo",
+      "confianza": 20,
       "comprobado_por": "cliente"
     },
     {

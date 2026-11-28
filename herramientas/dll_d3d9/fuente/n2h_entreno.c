@@ -13,7 +13,10 @@
  *     · Repetir un tramo A/B con cuenta atrás (el juego en pausa) y segundos previos sin notas.
  *     · Velocidad por tramos (hasta 6 filas «desde/hasta/%»), «marcar punto» A, B, C…
  *     · Moverse ±1/±5 s en la canción (sólo a segundos YA tocados: hay una foto por segundo, una hora de historia).
- *     · Anticaída (el choque del Latino): la rama de 2 bytes 0x50AC67 `75 43` -> `90 90`.
+ *     · Anticaída (el choque del Latino): ★ 26-nov, la nota fallada SIN tropiezo ni empujón (globo_combo.c,
+ *       gc_tropiezo_falso → 2). Antes era la rama 0x50AC67 `75 43` -> `90 90` de Ñ2Hock: forzaba la velocidad de
+ *       fábrica del personaje en todo estado, rompía el impulsor (corría mientras se cargaba, tardaba al usarlo) y
+ *       no quitaba el tropiezo. Ya no se escribe.
  *
  *   ★ DÓNDE TOCA EL EXE (VA, base 0x400000; validado contra R2BeatMultiTest.exe md5 0f79000e…, que es el
  *     SHA-256 7184FA94… que Ñ2Hock da por bueno, y mss32.dll F2099AAA…)
@@ -951,6 +954,9 @@ static DWORD g_ne_ult_reintento;
 
 /* lo que en Ñ2Hock son las casillas y los cuadros de texto */
 static int g_ne_q_vel, g_ne_q_prep, g_ne_q_bucle, g_ne_q_tramos, g_ne_q_ac;
+static int g_ne_ac_quiere;          /* ★ 26-nov: el modo de choque ARMADO (0 nada · 1 Sin chocar · 2 Choque latino):
+                                    *   se pone solo en cada carrera de práctica */
+static DWORD g_ne_ac_reintento;
 /* ★ 25-nov, «Se aplicará al entrar a entrenar» (ToolBit 0.6.40): la velocidad prendida es la INTENCIÓN del jugador.
  *   Fuera de la carrera queda ARMADA y ne_tick la aplica sola al haber canción de práctica; al terminar la canción
  *   (el motor se restaura, como siempre) vuelve a quedar armada para la próxima. Tras una falla de verdad espera a que
@@ -1307,42 +1313,41 @@ static int ne_carrera_ac(DWORD gestor)
 static int ne_ac_restaurar(void)
 {
     if (!g_ne_q_ac) return 1;
-    int r = ne_escribir_codigo(NE_RVA_ANTICAIDA, NE_ANTICAIDA_NUEVO, NE_FIRMA_ANTICAIDA, 2, "entreno: Anticaída (restaurar)");
-    if (r <= 0) {
-        ne_poner_tx(NE_TX_VELOCIDAD, 1, L"Anticaída: restauración pendiente; se reintentará.");
-        return 0;
-    }
-    g_ne_q_ac = 0;
-    ne_poner_tx(NE_TX_ANTICAIDA, 0, L"el choque del Latino");
-    apuntar("  [entreno] Anticaída retirada (0x50AC67 = 75 43)");
+    g_ne_q_ac = 0;                                     /* ★ 26-nov: no hay código que restaurar (ver arriba) */
+    ne_poner_tx(NE_TX_ANTICAIDA, 0, g_ne_ac_quiere ? L"Armada" : L"");
+    apuntar("  [entreno] Anticaída retirada");
     return 1;
 }
 
-static int ne_anticaida(int on)
+/* ★ 26-nov (anonimo03: «no funciona en entrenamiento, sigue chocando»): antes sólo se ponía si la casilla se
+ *   marcaba EN PLENA carrera de práctica, y al terminar la carrera se sacaba sola: casi nunca estaba puesta.
+ *   Ahora la casilla la ARMA y ne_tick la pone al empezar cada carrera de práctica (y la saca al salir). */
+static int ne_ac_aplicar(DWORD g)
 {
-    if (!on) return ne_ac_restaurar();
-    if (g_ne_q_ac) return 1;
-    DWORD g = 0;
-    if (!g_ht_base) { ne_poner_tx(NE_TX_VELOCIDAD, 1, L"La herramienta todavía no arrancó."); return 0; }
-    ne_lee(ne_imagen() + NE_RVA_GESTOR, &g);
-    if (!ne_carrera_ac(g)) {
-        ne_poner_tx(NE_TX_VELOCIDAD, 1, L"Inicia una carrera de práctica (a solas) antes de activar Anticaída.");
-        return 0;
-    }
-    if (!ne_iguales(ne_imagen() + NE_RVA_ANTICAIDA, NE_FIRMA_ANTICAIDA, 11)) {
-        ne_poner_tx(NE_TX_VELOCIDAD, 1, L"La ruta Anticaída de este cliente no coincide con la validada.");
-        return 0;
-    }
-    if (ne_escribir_codigo(NE_RVA_ANTICAIDA, NE_FIRMA_ANTICAIDA, NE_ANTICAIDA_NUEVO, 2, "entreno: Anticaída (0x50AC67)") <= 0) {
-        ne_poner_tx(NE_TX_VELOCIDAD, 1, L"La ruta Anticaída está ocupada o cambió; no se tocó.");
-        return 0;
-    }
-    g_ne_q_ac = 1; g_ne_ac_gestor = g;
-    ne_poner_tx(NE_TX_ANTICAIDA, 0, L"Activa · choque Latino");
-    apuntar("  [entreno] ★ Anticaída puesta (0x50AC67 = 90 90), gestor 0x%08X", g);
+    g_ne_q_ac = 1; g_ne_ac_gestor = g;                 /* ★ 26-nov: la usa el gancho del tropiezo (globo_combo.c) */
+    ne_poner_tx(NE_TX_ANTICAIDA, 0, L"Activa");
+    apuntar("  [entreno] ★ Anticaída puesta: nota fallada sin tropiezo ni empujón (gestor 0x%08X)", g);
     return 1;
 }
-static int ne_anticaida_activa(void) { return g_ne_q_ac; }
+
+/* ★ 26-nov (anonimo03: «pongámosle modo libre o sin chocar, y el choque latino a un costado»):
+ *   modo 1 = SIN CHOCAR (la nota fallada sin tropiezo ni empujón) · 2 = CHOQUE LATINO (el tropiezo sí, el empujón
+ *   no) · 0 = el de fábrica. Lo aplica el gancho del tropiezo (globo_combo.c, gc_tropiezo_falso). */
+static int ne_anticaida(int modo)
+{
+    if (!modo) { g_ne_ac_quiere = 0; return ne_ac_restaurar(); }
+    if (!g_ht_base) { ne_poner_tx(NE_TX_VELOCIDAD, 1, L"La herramienta todavía no arrancó."); return 0; }
+    g_ne_ac_quiere = modo == 2 ? 2 : 1;
+    apuntar("  [entreno] modo de choque: %s", g_ne_ac_quiere == 2 ? "choque latino" : "sin chocar");
+    if (g_ne_q_ac) return 1;
+    DWORD g = 0;
+    ne_lee(ne_imagen() + NE_RVA_GESTOR, &g);
+    if (ne_carrera_ac(g)) { if (!ne_ac_aplicar(g)) { g_ne_ac_quiere = 0; return 0; } return 1; }
+    ne_poner_tx(NE_TX_ANTICAIDA, 0, L"Armada");
+    apuntar("  [entreno] Anticaída armada: se pone al empezar la carrera de práctica");
+    return 1;
+}
+static int ne_anticaida_activa(void) { return g_ne_ac_quiere; }   /* el modo: 0 · 1 sin chocar · 2 choque latino */
 
 /* ═══ 10 · LA API ══════════════════════════════════════════════════════════════════════════════════ */
 static int ne_listo(void)
@@ -1366,7 +1371,7 @@ static int ne_texto(int que, wchar_t *s, int n)
     if (que < 0 || que >= NE_TX_N || !s || n <= 0) return 0;
     if (que == NE_TX_VELOCIDAD) { ne_estado(s, n); return g_ne_tx_error[que]; }
     static const wchar_t *const DEF[NE_TX_N] = { L"", L"Tramo desactivado.", L"Tramos desactivados.",
-        L"Vuelve a un segundo ya tocado para ver dónde poner un tramo lento.", L"el choque del Latino" };
+        L"Vuelve a un segundo ya tocado para ver dónde poner un tramo lento.", L"" };
     lstrcpynW(s, g_ne_tx[que][0] ? g_ne_tx[que] : DEF[que], n);
     return g_ne_tx_error[que];
 }
@@ -1792,6 +1797,15 @@ static void ne_tick(void)
         if (p != vistas) { vistas = p; apuntar("  [entreno] ★ pausa del juego: el motor sigue a la misma velocidad (%ld)", p); }
     }
     if (g_ne_q_ac && !ne_carrera_ac(g_ne_ac_gestor)) ne_ac_restaurar();
+    /* ★ 26-nov: la Anticaída armada se pone sola al correr en práctica (una prueba cada 250 ms) */
+    if (g_ne_ac_quiere && !g_ne_q_ac && GetTickCount() - g_ne_ac_reintento > 250) {
+        DWORD g = 0;
+        g_ne_ac_reintento = GetTickCount();
+        if (g_ht_base && ne_lee(ne_imagen() + NE_RVA_GESTOR, &g) && ne_carrera_ac(g) && !ne_ac_aplicar(g)) {
+            g_ne_ac_quiere = 0;                         /* el exe no es el validado: no se insiste */
+            apuntar("  [entreno] (!) Anticaída: no se pudo poner; queda desarmada");
+        }
+    }
     /* ★ la velocidad armada: al haber canción de práctica, se aplica sola (una prueba por segundo) */
     if (g_ne_vel_quiere && !g_ne_q_vel && !g_ne_restaurar_pendiente && GetTickCount() - g_ne_vel_reintento > 1000) {
         g_ne_vel_reintento = GetTickCount();
@@ -1848,6 +1862,7 @@ static int ne_apagar_todo(void)
         ne_restaurar(&g_ne_m, g_ne_m.estado);
     }
     if (g_ne_sesion || g_ne_instalado) ok &= ne_parar_sesion();
+    g_ne_ac_quiere = 0;
     if (g_ne_q_ac) ok &= ne_ac_restaurar();
     if (ok) ne_poner_tx(NE_TX_VELOCIDAD, 0, L"Todo restaurado.");
     else ne_poner_tx(NE_TX_VELOCIDAD, 1, g_ne_err);

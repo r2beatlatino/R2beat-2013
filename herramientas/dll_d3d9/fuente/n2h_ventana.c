@@ -41,16 +41,18 @@ static COLORREF g_n2_acento = RGB(255, 0, 128);  /* el color de los títulos y d
 #define N2_W 330
 #define N2_H 761                                /* ★ 26-nov (boceto de anonimo03): +90 para el Idioma abajo */
 #define N2_PAGS 5                               /* las de la ventana principal */
-#define N2_PAGS_TOT 9                           /* + las 4 de Personalización (5 Ventana con AutoFar · 6 Far · 7 Piedras y booster · 8 PD) */
+#define N2_PAGS_TOT 10                          /* + las 5 de Personalización (5 Ventana con AutoFar · 6 Far · 7 Piedras y booster · 8 PD
+                                                 *   · ★ 28-nov 9 Panel Far: el panel del Far en la carrera) */
 #define N2P_PIEDRAS 7                           /* ★ 26-nov (boceto de anonimo03): piedras y booster en UNA pestaña */
 #define N2P_AUTOFAR 5                           /* ★ y AutoFar debajo de la Personalización, en Ventana (AF_Y0) */
 #define N2P_PD      8
+#define N2P_FJ      9
 #define WM_N2H_SYNC_ (WM_N2H_SYNC)
 
 enum { C_CHK, C_TECLA, C_COMBO, C_BOTON, C_SLIDER, C_EDIT, C_LISTA };
 enum { B_CONECTAR = 1, B_RESTAURAR, B_PERSONAL, B_NADA, B_FONDO, B_QUITAR, B_COLOR, B_RESTABLECER,
        B_IND_COLOR, B_IND_PROBAR, B_IND_FABRICA, B_IND_GUARDAR };
-enum { L_LETRA = 1, L_TEMA, L_IND_LETRA, L_IDIOMA, L_CUENTA, L_CANAL, L_COD };
+enum { L_LETRA = 1, L_TEMA, L_IND_LETRA, L_IDIOMA, L_CUENTA, L_CANAL, L_COD, L_FJ_LETRA };
 #define N2_TRAMOS 12                       /* ★ 26-nov: las filas de la pestaña Tramos (antes 6; se ven de a 6) */
 enum { B_CHAT_VACIAR = 40, B_E_REINICIAR, B_E_GUARDAR, B_E_BORRAR_TODO, B_E_BORRAR0, B_E_MOVER0 = B_E_BORRAR0 + N2_TRAMOS,
        B_E_MAPA = B_E_MOVER0 + 4, B_E_TR_PAG };
@@ -58,12 +60,12 @@ enum { L_TRAMO_VEL = 20 };
 /* ★ Entreno y Tramos (n2h_entreno.c): lo que muestra y guarda la ventana */
 enum { E_TK_VEL, E_TK_MENOS, E_TK_MAS, E_TK_BUCLE, E_TK_A, E_TK_B, E_TK_REIN, E_TK_TRAMOS, E_TK_MARCA, E_TK_MOVER0, E_TK_N = E_TK_MOVER0 + 4 };
 typedef struct {
-    int confirmo, habilitar, anticaida, vel_on, vel_pct, bucle_on, tramos_on;
+    int confirmo, habilitar, anticaida, latino, vel_on, vel_pct, bucle_on, tramos_on;
     int tk[E_TK_N];
     wchar_t desde[16], hasta[16], cuenta[8], sin[8], tde[N2_TRAMOS][16], tha[N2_TRAMOS][16];
     int tvel[N2_TRAMOS];
 } N2_ENTRENO;
-static N2_ENTRENO g_e = { 0, 0, 0, 0, 55, 0, 0,
+static N2_ENTRENO g_e = { 0, 0, 0, 0, 0, 55, 0, 0,
                           { VK_F2, '1', '2', VK_F1, VK_INSERT, VK_DELETE, VK_END, 0, 0, 0, 0, 0, 0 },
                           L"00:20", L"00:40", L"3", L"2", { { 0 } }, { { 0 } }, { 100, 100, 100, 100, 100, 100 } };
 static wchar_t g_e_tx[NE_TX_N][320], g_e_pct_txt[16];
@@ -110,7 +112,7 @@ static void n2_lista_cambio(int ref, HWND h);
 static void n2_per_abrir(void);
 static void n2_idioma_poner(int idi);
 static const wchar_t *const N2_PEST[5] = { L"Juego", L"Controles", L"Entreno", L"Tramos", L"Chat" };          /* ★ 26-nov */
-static const wchar_t *const N2_PER_PEST[4] = { L"Ventana", L"Far", L"Piedras y booster", L"PD" };
+static const wchar_t *const N2_PER_PEST[5] = { L"Ventana", L"Far", L"Piedras y booster", L"PD", L"Panel Far" };
 static void n2_apodo_tick(void);
 static void n2_e_cambio(int *pb);
 static void n2_e_tick(void);
@@ -399,8 +401,9 @@ static void n2_maquetar(void)
     n2_lienzo(2);
     n2_chk_b(6, 4, 170, 20, L"Confirmo práctica offline", &g_e.confirmo);
     n2_chk_b(196, 4, 90, 20, L"Habilitar", &g_e.habilitar);
-    n2_chk_b(6, 27, 90, 20, L"Anticaída", &g_e.anticaida);
-    n2_lbl(98, 28, 190, 18, NULL, N2_SUAVE, N2_IZQ); g_n2l[g_n2nl - 1].dyn = g_e_tx[NE_TX_ANTICAIDA];
+    n2_chk_b(6, 27, 92, 20, L"Sin chocar", &g_e.anticaida);            /* ★ 26-nov: los dos modos de choque */
+    n2_chk_b(100, 27, 112, 20, L"Choque latino", &g_e.latino);
+    n2_lbl(214, 28, 76, 18, NULL, N2_SUAVE, N2_IZQ); g_n2l[g_n2nl - 1].dyn = g_e_tx[NE_TX_ANTICAIDA];
     n2_lbl(6, 50, 286, 30, L"Solo entrenamiento y misiones offline; nunca en partidas puntuables.", N2_AVISO, N2_PARR);
     n2_grupo(L"Velocidad", 82, 140);
     n2_chk_b(8, 20, 150, 20, L"Activar velocidad", &g_e.vel_on);
@@ -925,7 +928,7 @@ static int n2_comun(HWND h, UINT m, WPARAM wp, LPARAM lp, LRESULT *res)
         } else if (c->tipo == C_BOTON && code == BN_CLICKED) {
             if (c->ref == B_CONECTAR || c->ref == B_RESTAURAR) {
                 g_ht_apagada = c->ref == B_RESTAURAR;
-                if (g_ht_apagada) { ne_apagar_todo(); g_e.habilitar = g_e.anticaida = g_e.vel_on = g_e.bucle_on = g_e.tramos_on = 0; }
+                if (g_ht_apagada) { ne_apagar_todo(); g_e.habilitar = g_e.anticaida = g_e.latino = g_e.vel_on = g_e.bucle_on = g_e.tramos_on = 0; }
                 for (int k = 0; k < O_N; k++) ht_aplicar(k);
                 ht_avisar(0, 3000, g_ht_apagada ? L"Parches restaurados · desconectado" : L"Conectado: opciones aplicadas");
                 ht_refrescar();
@@ -1389,12 +1392,17 @@ static int n2_e_tramos_poner(int on)
 static void n2_e_cambio(int *pb)
 {
     if (pb == &g_e.confirmo) {
-        if (!g_e.confirmo) { ne_apagar_todo(); g_e.habilitar = g_e.anticaida = g_e.vel_on = g_e.bucle_on = g_e.tramos_on = 0; }
-    } else if (pb == &g_e.habilitar || pb == &g_e.anticaida || pb == &g_e.vel_on || pb == &g_e.bucle_on || pb == &g_e.tramos_on) {
+        if (!g_e.confirmo) { ne_apagar_todo(); g_e.habilitar = g_e.anticaida = g_e.latino = g_e.vel_on = g_e.bucle_on = g_e.tramos_on = 0; }
+    } else if (pb == &g_e.habilitar || pb == &g_e.anticaida || pb == &g_e.latino || pb == &g_e.vel_on || pb == &g_e.bucle_on
+               || pb == &g_e.tramos_on) {
         int quiere = *pb;
         if (quiere && !g_e.confirmo) { *pb = 0; n2_e_falta_confirmo(); n2_sincronizar(); return; }
         if (pb == &g_e.habilitar) { ne_preparar(quiere); g_e.habilitar = ne_preparado(); }
-        else if (pb == &g_e.anticaida) { ne_anticaida(quiere); g_e.anticaida = ne_anticaida_activa(); }
+        else if (pb == &g_e.anticaida || pb == &g_e.latino) {      /* uno u otro: marcar uno desmarca el otro */
+            int modo = pb == &g_e.latino ? 2 : 1;
+            ne_anticaida(quiere ? modo : (ne_anticaida_activa() == modo ? 0 : ne_anticaida_activa()));
+            g_e.anticaida = ne_anticaida_activa() == 1; g_e.latino = ne_anticaida_activa() == 2;
+        }
         else if (pb == &g_e.vel_on) { ne_velocidad_poner(g_e.vel_pct); ne_velocidad_activar(quiere); g_e.vel_on = ne_velocidad_activa(); }
         else if (pb == &g_e.bucle_on) {
             if (quiere && !n2_e_bucle_configurar()) g_e.bucle_on = 0;
@@ -1577,15 +1585,15 @@ static void n2_e_tick(void)
         wchar_t t[320];
         int err = ne_texto(k, t, 320);
         if (k == NE_TX_VELOCIDAD && !t[0] && !g_e_tx[k][0]) { lstrcpyW(t, TR(L"Motor nativo · conecta una cuenta e inicia práctica offline.")); }
-        if (k == NE_TX_ANTICAIDA && !t[0]) lstrcpyW(t, TR(L"el choque del Latino"));
         if (k == NE_TX_TRAMOS && !t[0]) lstrcpyW(t, TR(L"Tramos desactivados."));
         if (k == NE_TX_MOVER && !t[0]) lstrcpyW(t, TR(L"Vuelve a un segundo ya tocado para ver dónde poner un tramo lento."));
         if (!t[0]) continue;
         if (lstrcmpW(t, g_e_tx[k]) || err != g_e_tx_err[k]) { lstrcpyW(g_e_tx[k], t); g_e_tx_err[k] = err; cambio = 1; }
     }
-    int h = ne_preparado(), a = ne_anticaida_activa(), v = ne_velocidad_activa(), bu = ne_bucle_activo(), tr = ne_tramos_activos();
-    if (h != g_e.habilitar || a != g_e.anticaida || v != g_e.vel_on || bu != g_e.bucle_on || tr != g_e.tramos_on) {
-        g_e.habilitar = h; g_e.anticaida = a; g_e.vel_on = v; g_e.bucle_on = bu; g_e.tramos_on = tr;
+    int h = ne_preparado(), a = ne_anticaida_activa() == 1, la = ne_anticaida_activa() == 2, v = ne_velocidad_activa(),
+        bu = ne_bucle_activo(), tr = ne_tramos_activos();
+    if (h != g_e.habilitar || a != g_e.anticaida || la != g_e.latino || v != g_e.vel_on || bu != g_e.bucle_on || tr != g_e.tramos_on) {
+        g_e.habilitar = h; g_e.anticaida = a; g_e.latino = la; g_e.vel_on = v; g_e.bucle_on = bu; g_e.tramos_on = tr;
         cambio = 1;
     }
     {
@@ -2255,6 +2263,43 @@ static LRESULT CALLBACK n2_vista_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
 #include "n2h_booster.c"                         /* ★ 25-nov: Personalización · Booster (el botón lleno / sin carga, teñido) */
 #include "n2h_pd.c"                              /* ★ 25-nov: Personalización · Panel PD (la calculadora 2019) */
 
+/* ★ 28-nov (anonimo03: «que esto también se pueda modificar»): Personalización · Panel Far — el panel del Far (y de la
+ *   velocidad, en práctica) dentro de la carrera: verlo, su tecla, fijarlo, tamaño, fondo, qué partes, colores y letra. */
+static void n2_fj_maquetar(void)
+{
+    n2_lienzo(N2P_FJ);
+    n2_chk_b(14, 14, 320, 20, L"El panel del Far en la carrera (y la velocidad, en práctica)", &g_fj_mostrar);
+    n2_lbl(14, 42, 160, 22, L"Mostrar / esconder (tecla)", N2_TEXTO, N2_IZQ);
+    n2_combo(180, 40, 158, 22, &g_fj_tecla, NULL);
+    n2_chk_b(14, 74, 320, 20, L"Fijar el panel (no se mueve al arrastrarlo)", &g_fj_fijo);
+    n2_lbl(14, 102, 160, 24, NULL, N2_TEXTO, N2_IZQ); g_n2l[g_n2nl - 1].dyn = g_fj_txt_tam;
+    n2_boton(180, 100, 76, 26, L"Menos", B_FJ_TAM_MENOS);
+    n2_boton(262, 100, 76, 26, L"Más", B_FJ_TAM_MAS);
+    n2_lbl(14, 134, 160, 24, NULL, N2_TEXTO, N2_IZQ); g_n2l[g_n2nl - 1].dyn = g_fj_txt_fondo;
+    n2_boton(180, 132, 76, 26, L"Menos", B_FJ_FONDO_MENOS);
+    n2_boton(262, 132, 76, 26, L"Más", B_FJ_FONDO_MAS);
+    n2_boton(14, 166, 160, 26, L"Volver a su lugar", B_FJ_POS_FAB);
+    n2_lbl(14, 206, 320, 20, L"Qué se ve", N2_C_ACENTO, N2_IZQ);
+    n2_chk_b(14, 230, 160, 20, L"Número del Far", &g_fj_ver_num);
+    n2_chk_b(180, 230, 160, 20, L"Far Vision y AutoFar", &g_fj_ver_chk);
+    n2_chk_b(14, 254, 160, 20, L"Barra del Far", &g_fj_ver_barra);
+    n2_chk_b(180, 254, 160, 20, L"Velocidad (en práctica)", &g_fj_ver_vel);
+    n2_lbl(14, 292, 320, 20, L"Colores y letra", N2_C_ACENTO, N2_IZQ);
+    n2_boton(14, 316, 102, 26, L"Color…", B_FJ_COLOR);
+    n2_boton(122, 316, 130, 26, L"Color del número…", B_FJ_NUMCOL);
+    n2_boton(258, 316, 80, 26, L"De fábrica", B_FJ_COLOR_FAB);
+    n2_lbl(14, 352, 60, 22, L"Letra", N2_TEXTO, N2_IZQ);
+    {
+        HWND cb = n2_combo_lista(80, 351, 258, 22, L_FJ_LETRA, CBS_SORT);
+        if (cb) SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)TR(L"(La de los crayones)"));
+        n2_letras_llenar(cb, g_fj_letra[0] ? g_fj_letra : TR(L"(La de los crayones)"));
+    }
+    n2_chk_b(14, 382, 320, 20, L"Estilo crayón (borde oscuro y brillo)", &g_fj_crayon);
+    n2_chk_b(14, 406, 320, 20, L"Arcoíris de los crayones (panel del Far y barra de la Pausa)", &g_fj_arco);
+    n2_lbl(14, 436, 324, 64, L"Con el arcoíris prendido las letras van en arcoíris: el color se ve en las casillas y "
+                             L"la barra. Sin casillas ni barra queda sólo «Far 16.5». Se guarda solo.", N2_SUAVE, N2_PARR);
+}
+
 static void n2_per_maquetar(void)
 {
     /* Ventana: BuildAppearanceGroup(windowPage, 6) */
@@ -2287,13 +2332,7 @@ static void n2_per_maquetar(void)
     g_n2_vista = CreateWindowExW(0, L"N2HVista", L"", WS_CHILD | WS_VISIBLE, 3 + 14, 3 + 12, 324, 182,
                                  g_n2_pag[6], NULL, GetModuleHandleA(NULL), NULL);
     n2_chk(14, 202, 320, 20, L"Mostrar el indicador del Far", O_FAR_IND, 0);
-    n2_chk_b(14, 524, 320, 20, L"El panel del Far en la carrera (y la velocidad, en práctica)", &g_fj_mostrar);
-    n2_lbl(14, 552, 160, 24, NULL, N2_TEXTO, N2_IZQ); g_n2l[g_n2nl - 1].dyn = g_fj_txt_fondo;   /* ★ 26-nov */
-    n2_boton(180, 550, 76, 26, L"Menos", B_FJ_FONDO_MENOS);
-    n2_boton(262, 550, 76, 26, L"Más", B_FJ_FONDO_MAS);
-    n2_chk_b(14, 582, 320, 20, L"Arcoíris de los crayones (panel del Far y barra de la Pausa)", &g_fj_arco);
-    n2_lbl(14, 612, 160, 22, L"Mostrar / esconder (tecla)", N2_TEXTO, N2_IZQ);   /* ★ 26-nov */
-    n2_combo(180, 610, 158, 22, &g_fj_tecla, NULL);
+    /* ★ 28-nov: lo del panel del Far en la carrera pasó a su pestaña, «Panel Far» (n2_fj_maquetar) */
     n2_chk_b(14, 226, 320, 20, L"Con animación (salta y se desvanece)", &g_n2i.animar);
     n2_chk_b(14, 250, 320, 20, L"Mostrar al conectar con el juego", &g_n2i.conectar);
     n2_chk_b(14, 274, 320, 20, L"Mostrar al empezar cada ronda", &g_n2i.ronda);
@@ -2316,6 +2355,8 @@ static void n2_per_maquetar(void)
 
     /* ★ 26-nov (boceto de anonimo03): el Idioma va en la ventana principal (n2_maquetar) */
 
+    /* ★ 28-nov: Panel Far */
+    n2_fj_maquetar();
     /* Piedras */
     pie_maquetar();
     /* AutoFar */
@@ -2380,7 +2421,7 @@ static void n2_per_armar(void)
         const wchar_t *const *T = N2_PER_PEST;
         SendMessageW(g_n2_per_tabs, WM_SETFONT, (WPARAM)g_n2_ftab, 0);
         SendMessageW(g_n2_per_tabs, TCM_SETPADDING, 0, MAKELPARAM(10, 4));
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             TCITEMW it; ZeroMemory(&it, sizeof(it));
             it.mask = TCIF_TEXT; it.pszText = (LPWSTR)TR(T[i]);
             SendMessageW(g_n2_per_tabs, TCM_INSERTITEMW, (WPARAM)i, (LPARAM)&it);
@@ -2512,7 +2553,7 @@ static void n2_idioma_poner(int idi)
     }
     HWND tb[2] = { g_n2_tabs, g_n2_per_tabs };
     const wchar_t *const *nom[2] = { N2_PEST, N2_PER_PEST };
-    int cuantas[2] = { N2_PAGS, 4 };
+    int cuantas[2] = { N2_PAGS, 5 };
     for (int k = 0; k < 2; k++)
         for (int i = 0; tb[k] && i < cuantas[k]; i++) {
             TCITEMW it; ZeroMemory(&it, sizeof(it));
@@ -2539,6 +2580,11 @@ static void n2_lista_cambio(int ref, HWND h)
     if (ref == L_COD) { g_n2_chat_cod = k; nc_elegir_codificacion(k); ht_pedir_guardar(); return; }
     if (ref == L_LETRA) { lstrcpyW(g_n2_letra, t); n2_fuentes_crear(); ht_pedir_guardar(); }
     else if (ref == L_IND_LETRA) { lstrcpyW(g_n2i.letra, t); if (g_n2_vista) InvalidateRect(g_n2_vista, NULL, FALSE); }
+    else if (ref == L_FJ_LETRA) {                      /* ★ 28-nov: la letra del panel del Far */
+        if (t[0] == L'(') g_fj_letra[0] = 0; else lstrcpynW(g_fj_letra, t, 64);
+        InterlockedIncrement(&g_fj_letra_ver);
+        ht_pedir_guardar();
+    }
 }
 
 /* el apodo de la cuenta (usuario [0x9314E0] + 0x1A8, medido en el juego vivo): en la lista y en el título */

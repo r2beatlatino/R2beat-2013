@@ -230,14 +230,16 @@ static void at_revisar_codigo(void)
         if (!g_at_sospecha[p]) { g_at_sospecha[p] = 1; continue; }
         if (g_at_informada[p] || g_at_abiertas[p] > 0) continue;
         g_at_informada[p] = 1;
-        if (!nuevas++) {
-            primera = (int)(0x400000 + p * AT_PAGINA + igual);
-            int k = 0;
-            for (int i = 0; i < 8 && igual + i < AT_PAGINA; i++)
-                k += wsprintfA(bytes + k, i ? "_%02X" : "%02X", mem[igual + i]);
-        }
+        /* ★ 28-nov: un renglón POR PÁGINA (antes sólo la primera de cada vuelta): el server nombra cada función que
+         *   se tocó (antitrampa_firmas.py). Hasta 8 por vuelta; las demás se informan en las vueltas siguientes. */
+        if (nuevas >= 8) { g_at_informada[p] = 0; g_at_sospecha[p] = 0; continue; }
+        nuevas++;
+        primera = (int)(0x400000 + p * AT_PAGINA + igual);
+        int k = 0;
+        for (int i = 0; i < 8 && igual + i < AT_PAGINA; i++)
+            k += wsprintfA(bytes + k, i ? "_%02X" : "%02X", mem[igual + i]);
+        at_encolar("R2AT codigo=0x%08X paginas=1 bytes=%s", primera, bytes);
     }
-    if (nuevas) at_encolar("R2AT codigo=0x%08X paginas=%d bytes=%s", primera, nuevas, bytes);
 }
 
 /* 2b · ganchos conocidos, mirados aparte: «codigo=» sólo dice la PRIMERA página tocada de cada pasada y otro parche
@@ -260,6 +262,8 @@ static struct { DWORD rva; const char *nombre; BYTE visto; } g_at_ganchos[] = {
     { 0x10CAB6, "item_auto", 0 },         /* el activador del ítem 1000659 (evento 0xDC, estado 0x19) */
     { 0x101458, "resultado", 0 },         /* el armado del FF28: precisión / combo personalizados */
     { 0x1C887B, "resultado_solo", 0 },    /* el resultado de Juego Solo */
+    { 0x101451, "resultado_b", 0 },       /* ★ 28-nov: R2AutoRouteLab «Release-next» engancha el MISMO armado 7 bytes
+                                           *   antes (0F B6 8F 4C 03 00 00 -> salto a su cueva); 0x101458 no cambia */
 };
 
 static void at_revisar_ganchos(void)

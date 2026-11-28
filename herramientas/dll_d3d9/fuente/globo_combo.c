@@ -366,15 +366,59 @@ static int gc_real_se_corto(int k)                            /* 1 = se cortó d
     return previo <= 2;
 }
 
-/* la llama la cueva de 0x50C4D7 (con el cPlayer); != 0 ⇒ sin tropiezo */
+/* la llama la cueva de 0x50C4D7 (con el cPlayer): 0 = de fábrica · 1 = sin tropiezo (ni empujón ni auras apagadas)
+ *   · 2 = ★ 26-nov, la ANTICAÍDA de Entreno: sin el tropiezo ni el empujón (lo que frenaba más de un segundo), pero la
+ *     nota fallada corta el combo y apaga las auras como siempre · 3 = el CHOQUE LATINO: el tropiezo sí, el empujón no. */
+static volatile LONG g_gc_trop_res;
+static LONG g_gc_anticaidas;
 static int __cdecl gc_tropiezo_falso(BYTE *p)
 {
     BYTE *g = gc_juego();
+    if (g_ne_q_ac && p) {                                     /* sólo con la Anticaída puesta: práctica a solas, corriendo */
+        int latino = g_ne_ac_quiere == 2;
+        if (g_gc_anticaidas++ < 3) apuntar("  [entreno] nota fallada: %s (asiento %d)",
+                                           latino ? "choque latino (tropiezo sin empujón)" : "sin chocar", p[0x49]);
+        return latino ? 3 : 2;
+    }
     if (!g_gc_activo || !p || !g || !g[0xC01]) return 0;     /* sólo en el que mira */
     if (gc_real_se_corto(p[0x49])) { g_gc_trop_si++; return 0; }
     if (g_gc_log && g_gc_trop_no < 5) apuntar("  [globo] tropiezo FALSO del asiento %d: el real venía sumando (no se muestra)", p[0x49]);
     g_gc_trop_no++;
     return 1;
+}
+
+/* ★ 28-nov (anonimo03: «el choque latino: cuando choco usando el booster me quedo chocando más de 3 segundos, la gente se
+ *   queja»): la animación del tropiezo la elige el juego (0x50ADD0, la cola de animaciones del corredor) y con el
+ *   impulsor viene una caída larga. El estado «tropezando» (0x50AAA0) termina cuando el tiempo de la animación
+ *   ([cPlayer+0x24], avanza [cPlayer+0x5C] por cuadro) llega a su largo ([[[0x931620]→0x413000(id)]+0x1C]+0x130]+0x18).
+ *   En el CHOQUE LATINO, justo después del tropiezo, se la adelanta para que dure como mucho g_gc_latino_ms (1 s, como
+ *   en el Latino): una caída corta no se toca. [entreno] choque_latino_ms en d3d9_proxy.ini (0 = sin tope). */
+typedef BYTE *(__fastcall *F_GC_MODELO)(void *ecx, void *edx, DWORD id);
+static int g_gc_latino_ms = 1000;
+static int g_gc_latino_pct = 50;          /* ★ 28-nov («la recuperación del choque, más rápida»): cuánto de la animación se juega */
+static LONG g_gc_latino_n;
+static void __cdecl gc_latino_acortar(BYTE *p)
+{
+    if (!p) return;
+    void *mgr = *(void **)GCV(0x931620);
+    if (!mgr) return;
+    BYTE *m = ((F_GC_MODELO)GCV(0x413000))(mgr, NULL, *(DWORD *)p);
+    BYTE *o = m ? *(BYTE **)(m + 0x1C) : NULL;
+    BYTE *an = o ? *(BYTE **)(o + 0x130) : NULL;
+    if (!an) return;
+    float largo = *(float *)(an + 0x18), paso = *(float *)(p + 0x5C), t = *(float *)(p + 0x24);
+    if (!(paso > 0.0f) || !(largo > 0.0f)) return;
+    float desde = -1.0f;
+    if (g_gc_latino_ms > 0) desde = largo - paso * 60.0f * (float)g_gc_latino_ms / 1000.0f;   /* el tope en ms */
+    if (g_gc_latino_pct > 0 && g_gc_latino_pct < 100) {                                    /* ★ y la parte que se juega */
+        float d2 = largo * (float)(100 - g_gc_latino_pct) / 100.0f;
+        if (d2 > desde) desde = d2;
+    }
+    int antes = (int)((largo - t) / paso * 1000.0f / 60.0f);
+    if (desde > t) *(float *)(p + 0x24) = desde;
+    if (g_gc_latino_n++ < 6)
+        apuntar("  [entreno] choque latino: animación %d, %d ms (largo×100 %d)%s", p[0x48], antes, (int)(largo * 100),
+                desde > t ? " → recortada" : " (no se toca)");
 }
 
 static void gc_tropiezo_instalar(void)
@@ -384,20 +428,44 @@ static void gc_tropiezo_instalar(void)
         apuntar("  [globo] ⚠ el tropiezo del tick (0x50C4D7) no es el esperado: los tropiezos quedan de fábrica");
         return;
     }
-    BYTE *k = (BYTE *)VirtualAlloc(NULL, 64, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    BYTE *k = (BYTE *)VirtualAlloc(NULL, 128, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     if (!k) return;
     int i = 0, a;
+    int b;
+    DWORD res = (DWORD)&g_gc_trop_res;
     k[i++] = 0x60;                                                                  /* pushad */
     k[i++] = 0x56;                                                                  /* push esi (el cPlayer) */
     k[i++] = 0xE8; *(int *)(k + i) = (int)((DWORD)gc_tropiezo_falso - (DWORD)(k + i + 4)); i += 4;
     k[i++] = 0x83; k[i++] = 0xC4; k[i++] = 0x04;                                    /* add esp,4 */
-    k[i++] = 0x85; k[i++] = 0xC0;                                                   /* test eax,eax */
-    k[i++] = 0x61;                                                                  /* popad (no toca las banderas) */
-    k[i++] = 0x75; a = i++;                                                         /* jnz sin_tropiezo */
+    k[i++] = 0xA3; *(DWORD *)(k + i) = res; i += 4;                                 /* mov [res],eax */
+    k[i++] = 0x61;                                                                  /* popad */
+    k[i++] = 0x83; k[i++] = 0x3D; *(DWORD *)(k + i) = res; i += 4; k[i++] = 0x00;  /* cmp dword [res],0 */
+    k[i++] = 0x75; a = i++;                                                         /* jnz otro */
     CopyMemory(k + i, e, 5); i += 5;                                                /* lo de fábrica */
     k[i++] = 0xE9; *(int *)(k + i) = (int)((DWORD)GCV(0x50C4DC) - (DWORD)(k + i + 4)); i += 4;
-    k[a] = (BYTE)(i - (a + 1));
+    k[a] = (BYTE)(i - (a + 1));                                                     /* otro: */
+    k[i++] = 0x83; k[i++] = 0x3D; *(DWORD *)(k + i) = res; i += 4; k[i++] = 0x02;  /* cmp dword [res],2 */
+    k[i++] = 0x74; b = i++;                                                         /* je anticaida */
+    int c3;
+    k[i++] = 0x83; k[i++] = 0x3D; *(DWORD *)(k + i) = res; i += 4; k[i++] = 0x03;  /* cmp dword [res],3 */
+    k[i++] = 0x74; c3 = i++;                                                        /* je latino */
     k[i++] = 0xE9; *(int *)(k + i) = (int)((DWORD)GCV(0x50C520) - (DWORD)(k + i + 4)); i += 4;   /* sin_tropiezo */
+    k[b] = (BYTE)(i - (b + 1));                                                     /* anticaida: las auras sí */
+    k[i++] = 0xE9; *(int *)(k + i) = (int)((DWORD)GCV(0x50C4F6) - (DWORD)(k + i + 4)); i += 4;
+    k[c3] = (BYTE)(i - (c3 + 1));                                                   /* latino: el tropiezo de fábrica */
+    {   /* 0x50C4D7..0x50C4EA tal cual (fldz · push 1 · push ecx · mov ecx,[esp+0C] · fstp [esp] · push ecx · mov ecx,esi
+         *   · call 0x50ACD0) y después, sin el empujón (0x502BD0(5,0)), a las auras */
+        static const BYTE t[15] = { 0xD9, 0xEE, 0x6A, 0x01, 0x51, 0x8B, 0x4C, 0x24, 0x0C, 0xD9, 0x1C, 0x24, 0x51, 0x8B, 0xCE };
+        CopyMemory(k + i, t, 15); i += 15;
+        k[i++] = 0xE8; *(int *)(k + i) = (int)((DWORD)GCV(0x50ACD0) - (DWORD)(k + i + 4)); i += 4;
+        k[i++] = 0x60;                                                              /* ★ 28-nov: pushad */
+        k[i++] = 0x56;                                                              /* push esi */
+        k[i++] = 0xE8; *(int *)(k + i) = (int)((DWORD)gc_latino_acortar - (DWORD)(k + i + 4)); i += 4;
+        k[i++] = 0x83; k[i++] = 0xC4; k[i++] = 0x04;                                /* add esp,4 */
+        k[i++] = 0x61;                                                              /* popad */
+        k[i++] = 0xE9; *(int *)(k + i) = (int)((DWORD)GCV(0x50C4F6) - (DWORD)(k + i + 4)); i += 4;
+    }
+    if (i > 128) { apuntar("  [globo] ⛔ la cueva del tropiezo se pasó (%d bytes)", i); return; }
     BYTE s[5] = { 0xE9, 0, 0, 0, 0 };
     *(int *)(s + 1) = (int)((DWORD)k - ((DWORD)GCV(0x50C4D7) + 5));
     gc_escribir(0x50C4D7, s, 5);
@@ -694,7 +762,8 @@ static void __fastcall gc_contador1(BYTE *hud, void *nada)
 static void __fastcall gc_etiqueta(BYTE *p, void *nada, int x, int y)
 {
     (void)nada;
-    ((F_GC_ETIQUETA)GCV(0x5009D0))(p, x, y);
+    /* ★ 28-nov: «Ocultar Nombres» de Ñ2Hock calla sólo el nombre; el globo sale igual (antes se saltaba todo) */
+    if (!g_op[O_NOMBRES].puesta) ((F_GC_ETIQUETA)GCV(0x5009D0))(p, x, y);
     BYTE *g = gc_juego();
     if (!g_gc_activo || !p || !g) return;
     int k = p[0x49], esp = g[0xC01] != 0;
@@ -758,6 +827,8 @@ static void globo_combo_iniciar(void)
     }
     g_gc_base = (BYTE *)GetModuleHandleA(NULL);
     g_gc_dy = GetPrivateProfileIntA("globo", "dy", 10, ini);
+    g_gc_latino_ms = GetPrivateProfileIntA("entreno", "choque_latino_ms", 1000, ini);   /* ★ 28-nov */
+    g_gc_latino_pct = GetPrivateProfileIntA("entreno", "choque_latino_pct", 50, ini);
     g_gc_z = GetPrivateProfileIntA("globo", "z", 780, ini) / 1000.0f;
     g_gc_log = GetPrivateProfileIntA("globo", "log", 0, ini);
     g_gc_escala = GetPrivateProfileIntA("globo", "escala", 380, ini);

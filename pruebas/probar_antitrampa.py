@@ -157,14 +157,20 @@ def probar_cliente():
     ok(antitrampa.al_ff59(c, "USN:5151\nc2DImage::LoadImage - rnr_bg/x.tga") is False,
        "revés: un FF59 normal no es del antitrampa")
     n0 = len(marcas_guardadas())
-    ok(antitrampa.juzgar_cartel(c, 60, 10, 90, 50, 77) is False, "sin «hola» la carrera se paga…")
-    antitrampa.juzgar_cartel(c, 120, 11, 90, 50, 77)
-    ok(nuevas(n0) == ["sin_antitrampa"], "…pero se anota UNA vez que no mandó el «hola»")
+    ok(antitrampa.juzgar_cartel(c, 60, 10, 90, 50, 77) is False, "★ sin «hola», dentro de la gracia, la carrera se paga…")
+    ok(nuevas(n0) == [], "…y todavía no se anota (se espera el latido)")
+    with antitrampa._cuentas_lock:
+        antitrampa._sesion(5151)["desde"] -= antitrampa.ANTITRAMPA_SIN_DLL_GRACIA_S + 1
+    c.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(c, 120, 11, 90, 50, 77) is True, "★ pasada la gracia sin «hola» ni latido: NO cobra")
+    c.at_ultimo = None
+    antitrampa.juzgar_cartel(c, 130, 12, 90, 50, 77)
+    ok(nuevas(n0) == ["sin_antitrampa"], "…y se anota UNA vez")
     n0 = len(marcas_guardadas())
     antitrampa.al_ff59(c, "USN:5151\nR2AT v=1 exe=0123456789abcdef0123456789abcdef previo=2 previo_va=0x00501000")
     ok(nuevas(n0) == ["exe_desconocido", "codigo_previo"], "«hola» con otro exe y el exe ya tocado")
     n0, a0 = len(marcas_guardadas()), len(avisos)
-    antitrampa.al_ff59(c, "USN:5151\nR2AT codigo=0x00505447 paginas=1 bytes=E9_11_22_33_44_00_00_00")
+    antitrampa.al_ff59(c, "USN:5151\nR2AT codigo=0x00505600 paginas=1 bytes=E9_11_22_33_44_00_00_00")
     ok(nuevas(n0) == ["codigo_modificado"] and "E9 11 22 33 44" in avisos[a0], "código tocado: el GM ve los bytes")
     ok(antitrampa.juzgar_cartel(c, 180, 12, 90, 50, 77) is False, "«codigo_modificado» sólo avisa: se paga")
     antitrampa.al_ff59(c, "USN:5151\nR2AT modulo=toolbitdll.dll")
@@ -641,14 +647,155 @@ def probar_silencioso():
         antitrampa.al_ff59(j2, "R2AT proceso=cheatengine-i386.exe")
         ok(pendientes("inocente") == 0, "Cheat Engine abierto, solo, NO deja nada para la tanda")
         antitrampa.al_ff59(j2, "R2AT memoria=0x1A2B0000 regiones=1")
-        ok(pendientes("inocente") == 1, "con memoria ajena en la misma sesión, sí: otra detección pendiente")
+        ok(pendientes("inocente") == 0, "★ 28-nov: la memoria ajena (la tiene cualquier juego limpio) NO correlaciona")
+        antitrampa.al_ff59(j2, "R2AT codigo=0x00412000 paginas=1 bytes=90_90_90_90_90_90_90_90")
+        ok(pendientes("inocente") == 1, "con el código del juego tocado en la misma sesión, sí: detección pendiente")
         ok("descartada" in " ".join(antitrampa.perdonar_pendientes(str(usn2), "prueba")), "`.sanciones perdonar` la descarta")
         antitrampa.sancionar_tanda("prueba", ya=True)
         ok(pendientes("inocente") == 0 and faltas("inocente") == 0, "revés: lo perdonado no se sanciona")
         lineas = antitrampa.sancionar_tanda("prueba", ya=True)
         ok("no hay detecciones" in lineas[0], "sin pendientes, la tanda no hace nada")
+        probar_limpio_con_launcher(pendientes)
     finally:
         antitrampa.ANTITRAMPA_SILENCIOSO = False
+
+
+def probar_limpio_con_launcher(pendientes):
+    print("★ 28-nov · el jugador LIMPIO (launcher, Discord, memoria ajena) cobra:")
+    from servidor import almacen, basedatos
+    usn, _m = basedatos.cuenta_crear("limpito", "E" * 64)
+    j = jugador(usn)
+    antitrampa.al_ff59(j, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+    for linea in ("R2AT manija=n2launcher.exe acceso=0x1FFFFF", "R2AT manija=discord.exe acceso=0x1FFFFF",
+                  "R2AT manija=steam.exe acceso=0x1FFFFF", "R2AT memoria=0x12E70000 regiones=5"):
+        antitrampa.al_ff59(j, linea)
+    r = reglas_de(usn)
+    ok("manija_conocida" in r and "manija_escritura" not in r, "el launcher y las superposiciones son manija_conocida")
+    ok("manipulacion_correlacionada" not in r, "launcher + memoria ajena NO es manipulación correlacionada")
+    ok(pendientes("limpito") == 0, "no queda nada pendiente para la tanda")
+    j.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(j, 7200, 300, 90, 50, 78) is False, "y su carrera cobra exp y Rcoin")
+    ok(antitrampa.manija_conocida("N2Launcher.exe") and not antitrampa.manija_conocida("candy0503.exe")
+       and not antitrampa.manija_conocida("cheatengine-x86_64.exe") and not antitrampa.manija_conocida("?"),
+       "revés: Candy y Cheat Engine no son conocidos")
+    ok(all(antitrampa.manija_conocida(n) for n in ("Ñ2Hock.exe", "ñ2hock.exe", "?2hock.exe", "�2hock.exe")),
+       "★ Ñ2Hock.exe (todo lo de Ñ2Hock está permitido) es conocido, llegue como llegue la Ñ")
+    usn5, _m = basedatos.cuenta_crear("conmodulo", "N" * 64)
+    m5 = jugador(usn5)
+    antitrampa.al_ff59(m5, "R2AT modulo=n2hock_overlay.dll")
+    ok(reglas_de(usn5)[-1] == "modulo_permitido", "un módulo de Ñ2Hock: modulo_permitido (no retiene)")
+    m5.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(m5, 7200, 300, 90, 50, 84) is False, "y cobra")
+    # Revés: una herramienta de verdad con un gancho sigue correlacionando
+    usn2, _m = basedatos.cuenta_crear("tramposo2", "F" * 64)
+    t = jugador(usn2)
+    antitrampa.al_ff59(t, "R2AT manija=candy0503.exe acceso=0x1FFFFF")
+    antitrampa.al_ff59(t, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+    ok("manipulacion_correlacionada" in reglas_de(usn2), "revés: Candy + automático sí correlaciona")
+    t.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(t, 7200, 300, 90, 50, 79) is True, "revés: y el tramposo no cobra")
+
+    print("★ 28-nov · los retenidos por la regla vieja se perdonan solos al arrancar:")
+    usn3, _m = basedatos.cuenta_crear("retenido", "G" * 64)
+    r3 = jugador(usn3)
+    antitrampa.al_ff59(r3, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+    almacen.antitrampa_dejar_pendiente(usn3, "manipulacion_correlacionada", nick="retenido",
+                                       detalle="herramienta (manija_escritura) y alteración del juego (memoria_ajena) "
+                                               "en la misma sesión")
+    almacen.antitrampa_dejar_pendiente(usn2, "manipulacion_correlacionada", nick="tramposo2",
+                                       detalle="herramienta (manija_escritura) y alteración del juego "
+                                               "(juego_automatico, memoria_ajena) en la misma sesión")
+    with antitrampa._cuentas_lock:
+        antitrampa._sesion(usn3)["retener"] = True
+    r3.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(r3, 7200, 300, 90, 50, 80) is True, "antes: el retenido no cobra")
+    antes_t = pendientes("tramposo2")
+    n = antitrampa.limpiar_correlaciones_falsas("prueba")
+    ok(n == 1 and pendientes("retenido") == 0, "se perdona la que sólo tenía memoria ajena")
+    ok(pendientes("tramposo2") == antes_t, "revés: la que además tenía el automático sigue pendiente")
+    r3.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(r3, 7300, 301, 90, 50, 81) is False, "y vuelve a cobrar en la misma sesión")
+    ok(antitrampa.limpiar_correlaciones_falsas("prueba") == 0, "correrla otra vez no hace nada")
+
+    print("★ 28-nov · `.sanciones perdonar` levanta la retención ya, sin reabrir el juego:")
+    usn4, _m = basedatos.cuenta_crear("perdonable", "H" * 64)
+    p4 = jugador(usn4)
+    antitrampa.al_ff59(p4, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+    p4.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(p4, 7200, 300, 90, 50, 82) is True, "detectado: no cobra")
+    antitrampa.perdonar_pendientes("perdonable", "prueba")
+    p4.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(p4, 7300, 301, 90, 50, 83) is False, "perdonado: cobra la próxima carrera")
+
+
+def probar_firmas():
+    print("★ 28-nov · el panel dice QUÉ está usando según la dirección tocada (antitrampa_firmas.py):")
+    from servidor import antitrampa_firmas as firmas, basedatos
+
+    def ultima(usn):
+        m = [x for x in marcas_guardadas() if x.get("usn") == usn]
+        return m[-1] if m else {}
+
+    antitrampa.ANTITRAMPA_SILENCIOSO = True
+    try:
+        usn, _m = basedatos.cuenta_crear("piedrero", "J" * 64)
+        c = jugador(usn)
+        antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+        antitrampa.al_ff59(c, "R2AT codigo=0x0054F31A paginas=1 bytes=90_90_90_90_90_90_8B_46")
+        u = ultima(usn)
+        ok(u.get("regla") == "n2hock_permitido" and "Sin piedra" in u.get("detalle", "")
+           and "Ñ2Hock" in u.get("detalle", ""), "Sin piedra de Ñ2Hock: permitido, y el panel dice cuál")
+        c.at_ultimo = None
+        ok(antitrampa.juzgar_cartel(c, 7200, 300, 90, 50, 90) is False, "todo lo de Ñ2Hock está permitido: cobra")
+        antitrampa.al_ff59(c, "R2AT manija=candy0503.exe acceso=0x1FFFFF")
+        ok("manipulacion_correlacionada" not in reglas_de(usn), "revés: Ñ2Hock + otra herramienta no correlaciona")
+        antitrampa.al_ff59(c, "R2AT codigo=0x0050A170 paginas=1 bytes=E9_00_00_00_00_90_90_90")
+        r = reglas_de(usn)
+        ok("juego_automatico" in r and "manipulacion_correlacionada" in r,
+           "revés: el automático (ya no es de Ñ2Hock) sigue siendo juego_automatico, y con Candy correlaciona")
+        c.at_ultimo = None
+        ok(antitrampa.juzgar_cartel(c, 7300, 301, 90, 50, 92) is True, "revés: y con el automático no cobra")
+
+        usn, _m = basedatos.cuenta_crear("camarografo", "K" * 64)
+        c = jugador(usn)
+        antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+        antitrampa.al_ff59(c, "R2AT codigo=0x004FE3A0 paginas=1 bytes=C3_90_90_90_90_8B_0D_00")
+        u = ultima(usn)
+        ok(u.get("regla") == "n2hock_permitido" and "Cámara fija" in u.get("detalle", ""),
+           "cámara fija de Ñ2Hock: n2hock_permitido (sólo se registra)")
+        c.at_ultimo = None
+        ok(antitrampa.juzgar_cartel(c, 7200, 300, 90, 50, 91) is False, "y cobra")
+        antitrampa.al_ff59(c, "R2AT codigo=0x007532F6 paginas=1 bytes=D3_F2_00_00_E9_78_FE_FF")
+        ok(ultima(usn).get("regla") == "arranque_restaurado", "el punto de entrada ya de fábrica: arranque_restaurado")
+        antitrampa.al_ff59(c, "R2AT codigo=0x007532F6 paginas=1 bytes=11_22_33_44_E9_78_FE_FF")
+        ok(ultima(usn).get("regla") == "codigo_modificado", "revés: el punto de entrada distinto sigue siendo código tocado")
+        antitrampa.al_ff59(c, "R2AT codigo=0x00412000 paginas=1 bytes=90_90_90_90_90_90_90_90")
+        u = ultima(usn)
+        ok(u.get("regla") == "codigo_modificado" and "usa:" not in u.get("detalle", ""),
+           "una dirección que no está en el catálogo: codigo_modificado, sin inventar el programa")
+
+        usn, _m = basedatos.cuenta_crear("labnuevo", "L" * 64)
+        c = jugador(usn)
+        antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+        antitrampa.al_ff59(c, "R2AT gancho=resultado_b va=0x00501451 bytes=E9_AA_EB_55_00_90_90_8A")
+        u = ultima(usn)
+        ok(u.get("regla") == "resultado_alterado" and "R2AutoRouteLab" in u.get("detalle", ""),
+           "el resultado del lab «Release-next» (+0x101451): resultado_alterado, y dice que es R2AutoRouteLab")
+        usn, _m = basedatos.cuenta_crear("labviejo", "M" * 64)
+        c = jugador(usn)
+        antitrampa.al_ff59(c, "R2AT codigo=0x00501451 paginas=1 bytes=E9_AA_EB_55_00_90_90_8A")
+        ok(ultima(usn).get("regla") == "resultado_alterado", "con una dll sin «resultado_b», por la dirección también")
+    finally:
+        antitrampa.ANTITRAMPA_SILENCIOSO = False
+
+    ok(firmas.identificar(0x00501458).funcion.startswith("Resultado") and firmas.identificar(0x0050145A) is not None,
+       "el resultado viejo (+0x101458) y su margen")
+    ok(firmas.identificar(0x00400000) is None and firmas.identificar("x") is None, "revés: fuera del catálogo, nada")
+    solapadas = [hex(a.rva) for a, b in zip(sorted(firmas.FIRMAS), sorted(firmas.FIRMAS)[1:]) if a.rva + a.largo > b.rva]
+    ok(not solapadas, f"las firmas no se pisan entre sí {solapadas or ''}")
+    ok({f.clase for f in firmas.FIRMAS} <= {"trampa", "permitida", "arranque"}, "cada firma tiene una clase conocida")
+    ok(all((f.clase == "trampa") == (f.programa != firmas.N2HOCK) for f in firmas.FIRMAS if f.clase != "arranque"),
+       "lo de Ñ2Hock es permitido; lo de R2AutoRouteLab y el automático viejo, trampa")
 
 
 def probar_llegadas():
@@ -774,9 +921,10 @@ def probar_suelo_chart():
         antes = len(marcas_guardadas())
         c.at_ultimo = None
         antitrampa.marcar_salida(c, ahora=60000.0)
-        antitrampa.juzgar_cartel(c, 600, 200, 95, 80, 7777, ahora=60011.0)
+        retener = antitrampa.juzgar_cartel(c, 600, 200, 95, 80, 7777, ahora=60011.0)
         ok(len(marcas_guardadas()) == antes + 1 and marcas_guardadas()[-1]["regla"] == "llegada_imposible",
            "por juzgar_cartel: llegada de 10 s en una canción nueva queda marcada")
+        ok(retener is True, "★ 28-nov: y esa carrera NO cobra (llegada_imposible = retener)")
         ok(len(almacen.antitrampa_llegadas(7777, 30)) == 0, "y no se guarda como llegada normal")
         c.at_ultimo = None
         antitrampa.marcar_salida(c, ahora=70000.0)
@@ -785,6 +933,89 @@ def probar_suelo_chart():
         ok(len(almacen.antitrampa_llegadas(7777, 30)) == 1, "y esa sí se guarda")
     finally:
         notas.duracion_minima_de = antes_dur
+
+
+def probar_mejoras_28nov():
+    print("★ 28-nov · sin dll sin premio, la dll nuestra, auto perfect, el ruido fuera del panel, una línea por página:")
+    from servidor import antitrampa_eventos as eventos, basedatos
+
+    def en_panel(usn):
+        eventos.esperar()
+        from servidor import almacen
+        return [x["regla"] for x in almacen.ev_listar({"usn": usn}, 100)]
+
+    # sin dll: el latido alcanza (un reinicio del server no repite el «hola»)
+    usn, _m = basedatos.cuenta_crear("conlatido", "P" * 64)
+    c = Conn()
+    c.usn, c.conn = usn, Socket()                    # sin el «hola» de jugador()
+    antitrampa.al_ff59(c, "R2AT latido=7 perdidas=0 abiertas=0")
+    with antitrampa._cuentas_lock:
+        antitrampa._sesion(usn)["desde"] -= antitrampa.ANTITRAMPA_SIN_DLL_GRACIA_S + 1
+    c.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(c, 7200, 300, 90, 50, 77) is False,
+       "sin «hola» pero con latido (el server se reinició): la dll está, cobra")
+    # sin dll: nada en la gracia
+    usn, _m = basedatos.cuenta_crear("sindll", "Q" * 64)
+    c = Conn()
+    c.usn, c.conn = usn, Socket()                    # sin el «hola» de jugador()
+    with antitrampa._cuentas_lock:
+        antitrampa._sesion(usn)["desde"] -= antitrampa.ANTITRAMPA_SIN_DLL_GRACIA_S + 1
+    c.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(c, 7200, 300, 90, 50, 77) is True, "sin nada de la dll pasada la gracia: no cobra")
+    c.at_ultimo = None
+    antitrampa.juzgar_cartel(c, 7300, 301, 90, 50, 78)
+    dichos = [n for _cmd, n in c.enviados if "antitrampa" in str(n)]
+    ok(len(dichos) == 1, "al jugador se le avisa UNA vez que no tiene el antitrampa")
+    # la dll apagada en su ini
+    usn, _m = basedatos.cuenta_crear("apagada", "R" * 64)
+    c = jugador(usn)
+    antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+    antitrampa.al_ff59(c, "R2AT apagado=1")
+    c.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(c, 7200, 300, 90, 50, 77) is True, "con la dll apagada en su ini: no cobra")
+    # nuestra dll
+    usn, _m = basedatos.cuenta_crear("dllrara", "S" * 64)
+    c = jugador(usn)
+    antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0 dll=deadbeef0000 lat=60")
+    ok("dll_desconocida" in reglas_de(usn), "una dll que no es nuestra: dll_desconocida")
+    usn, _m = basedatos.cuenta_crear("dllnuestra", "T" * 64)
+    c = jugador(usn)
+    antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0 dll=916babe83573 lat=60")
+    ok("dll_desconocida" not in reglas_de(usn), "revés: una de las nuestras no marca")
+    # el ruido fuera del panel
+    antitrampa.al_ff59(c, "R2AT memoria=0x12E70000 regiones=5")
+    antitrampa.al_ff59(c, "R2AT manija=n2launcher.exe acceso=0x1FFFFF")
+    antitrampa.al_ff59(c, "R2AT memoria=0x12E70000 regiones=6")
+    p = en_panel(usn)
+    ok("memoria_ajena" not in p and "manija_conocida" not in p, "la memoria ajena y el launcher no llegan al panel…")
+    ok(reglas_de(usn).count("memoria_ajena") == 1 and "manija_conocida" in reglas_de(usn),
+       "…pero quedan en el log una vez por sesión")
+    # una línea por página: cada función con su nombre
+    usn, _m = basedatos.cuenta_crear("paginas", "U" * 64)
+    c = jugador(usn)
+    antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0" + chr(10) + "R2AT codigo=0x0054F31A paginas=1 bytes=90_90_90_90_90_90_8B_46" + chr(10)
+                          + "R2AT codigo=0x004FE3A0 paginas=1 bytes=C3_90_90_90_90_8B_0D_00")
+    det = " ".join(m["detalle"] for m in marcas_guardadas() if m.get("usn") == usn)
+    ok("Sin piedra" in det and "Cámara fija" in det, "dos páginas en la misma vuelta: el panel nombra las dos")
+    # auto perfect
+    antes = (notas.nivel_de, notas.combo_total_de)
+    notas.nivel_de = lambda cancion, por_defecto=None: 16
+    notas.combo_total_de = lambda cancion: 900
+    try:
+        usn, _m = basedatos.cuenta_crear("perfecto", "V" * 64)
+        c = jugador(usn)
+        for i in range(8):
+            c.at_ultimo = None
+            antitrampa.juzgar_cartel(c, 7200 + i, 900, 99, 90, 300 + i)
+        ok("auto_perfecto" in reglas_de(usn), "combo completo y 99 % en 8 de 8 difíciles: auto_perfecto")
+        usn, _m = basedatos.cuenta_crear("bueno", "W" * 64)
+        c = jugador(usn)
+        for i in range(8):
+            c.at_ultimo = None
+            antitrampa.juzgar_cartel(c, 7200 + i, 900 if i < 4 else 850, 99 if i < 4 else 93, 90, 300 + i)
+        ok("auto_perfecto" not in reglas_de(usn), "revés: un buen jugador (4 de 8 perfectas) no marca")
+    finally:
+        notas.nivel_de, notas.combo_total_de = antes
 
 
 def main():
@@ -797,10 +1028,12 @@ def main():
         probar_farmeo()
         probar_coordinador()
         probar_silencioso()
+        probar_firmas()
         probar_cartel()
         probar_llegadas()
         probar_mediana_envenenable()
         probar_suelo_chart()
+        probar_mejoras_28nov()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)
     if FALLAS:
