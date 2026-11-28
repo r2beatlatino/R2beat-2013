@@ -332,6 +332,26 @@ def antitrampa_anotar_llegada(cancion, frame, cuenta=None, guardar=200):
         c.commit()
 
 
+def antitrampa_anotar_precision(cuenta, cancion, nivel, pd, guardar=300):
+    """★ 28-nov: la precisión de una carrera limpia de `cuenta`. Por cuenta quedan las últimas `guardar`."""
+    with _lock:
+        c = conectar()
+        c.execute("INSERT INTO antitrampa_precision (cuenta, cancion, nivel, pd, cuando) "
+                  "VALUES (?, ?, ?, ?, datetime('now', 'localtime'))", (str(cuenta), cancion, nivel, float(pd)))
+        c.execute("DELETE FROM antitrampa_precision WHERE cuenta = ? AND id NOT IN (SELECT id FROM antitrampa_precision "
+                  "WHERE cuenta = ? ORDER BY id DESC LIMIT ?)", (str(cuenta), str(cuenta), int(guardar)))
+        c.commit()
+
+
+def antitrampa_precisiones(cuenta, nivel_min=0, limite=60):
+    """★ 28-nov: las precisiones de `cuenta` en canciones de nivel >= `nivel_min`, la más nueva primero."""
+    with _lock:
+        c = conectar()
+        return [r[0] for r in c.execute(
+            "SELECT pd FROM antitrampa_precision WHERE cuenta = ? AND nivel >= ? ORDER BY id DESC LIMIT ?",
+            (str(cuenta), int(nivel_min), int(limite)))]
+
+
 # ★ 24-nov · EL ANTITRAMPA SILENCIOSO: lo que antes expulsaba al instante queda PENDIENTE hasta la tanda de un GM.
 def antitrampa_dejar_pendiente(usn, regla, detalle="", nick=""):
     """Una detección más, pendiente de sanción. -> (id, cuenta)."""

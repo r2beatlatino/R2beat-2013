@@ -511,6 +511,42 @@
       "comprobado_por": "cliente"
     },
     {
+      "id": "dll_falsa",
+      "accion": "avisar",
+      "origen": "servidor",
+      "gravedad": 3,
+      "nombre": "DLL falsa",
+      "descripcion": "En cada latido la dll manda el md5 de 256 bytes de su propio archivo (posición al azar). El server lo compara con su copia de esa dll: si falla 2 veces, la dll fue recompilada o cambiada.",
+      "categoria": "integridad_antitrampa",
+      "riesgo": "alto",
+      "confianza": 75,
+      "comprobado_por": "servidor"
+    },
+    {
+      "id": "teclas_robot",
+      "accion": "avisar",
+      "origen": "dll",
+      "gravedad": 2,
+      "nombre": "Macro (ritmo de teclas)",
+      "descripcion": "60 o más teclas en un minuto, cada una apretada casi el mismo tiempo (desvío de 4 ms o menos). Una persona varía mucho más. Es una señal de farmeo.",
+      "categoria": "macros",
+      "riesgo": "medio",
+      "confianza": 60,
+      "comprobado_por": "cliente"
+    },
+    {
+      "id": "salto_precision",
+      "accion": "avisar",
+      "origen": "servidor",
+      "gravedad": 2,
+      "nombre": "Salto de precisión",
+      "descripcion": "En canciones de nivel 12 o más, sus últimas 8 carreras promedian 97 % o más y 12 puntos más que la mediana de sus 20 a 40 anteriores. Es una señal de farmeo; un jugador que mejoró de verdad no salta así.",
+      "categoria": "auto_perfect",
+      "riesgo": "medio",
+      "confianza": 50,
+      "comprobado_por": "servidor"
+    },
+    {
       "id": "expulsa_espectadores",
       "accion": "registrar",
       "origen": "farmeo",

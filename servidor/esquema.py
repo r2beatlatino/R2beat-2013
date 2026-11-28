@@ -312,6 +312,10 @@ CREATE TABLE IF NOT EXISTS antitrampa_faltas (
 CREATE TABLE IF NOT EXISTS antitrampa_llegadas (
     id INTEGER PRIMARY KEY AUTOINCREMENT, cancion INTEGER NOT NULL, frame INTEGER NOT NULL, cuando TEXT, cuenta TEXT);
 CREATE INDEX IF NOT EXISTS ix_at_llegadas ON antitrampa_llegadas(cancion, id);
+-- ★ 28-nov · la precisión de cada carrera limpia, por cuenta (el «salto de nivel» repentino: antitrampa.py)
+CREATE TABLE IF NOT EXISTS antitrampa_precision (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, cuenta TEXT NOT NULL, cancion INTEGER, nivel INTEGER, pd REAL, cuando TEXT);
+CREATE INDEX IF NOT EXISTS ix_at_precision ON antitrampa_precision(cuenta, id);
 -- ★ 24-nov (antitrampa SILENCIOSO): lo que antes expulsaba al instante queda acá, PENDIENTE, hasta que un GM aplica
 --   la tanda (`.sanciones aplicar`). `estado`: pendiente | sancionada | perdonada. Una fila por sesión del juego.
 CREATE TABLE IF NOT EXISTS antitrampa_pendientes (
