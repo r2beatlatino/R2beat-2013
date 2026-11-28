@@ -149,6 +149,9 @@ valor). Los bytes van como hex separados por `_`: `E9_46_81_A9_03_90_90_6A`. El 
 | `depurador` | registrar | dll | Un depurador pegado al juego |
 | `sin_antitrampa` | **retener** | cartel | ★ 28-nov: sin el «hola» ni un latido de nuestra dll en `ANTITRAMPA_SIN_DLL_GRACIA_S` (150 s), o con la dll apagada en su ini: la carrera no paga y al jugador se le avisa una vez (`ANTITRAMPA_SIN_DLL_AVISO`). El latido cubre el reinicio del server (el «hola» va una vez por juego abierto) |
 | `dll_desconocida` | avisar | dll | ★ 28-nov: el «hola» trae el md5 de una d3d9.dll que no es ninguna de las nuestras (`ANTITRAMPA_DLL_MD5` + exe/d3d9.dll y datos/d3d9_prod.dll al arrancar). ⚠ Lo declara el cliente |
+| `dll_falsa` | avisar | servidor | ★ 28-nov: el RETO. En cada latido la dll manda `h=` = md5 (8) de 256 bytes de su propio archivo, en `(n·2654435761 + latido·40503) mod (tamaño−256)` (`n` va en el «hola»). El server lo calcula sobre su copia (exe/ y datos/): 2 fallos (`ANTITRAMPA_RETO_FALLOS`) = recompilada o cambiada. Con una dll que el server no tiene, no se juzga |
+| `teclas_robot` | avisar | dll | ★ 28-nov: SEÑAL de farmeo. La dll mide cuánto se aprieta cada tecla y manda por minuto `pulsos= med= sd=`: con 60+ teclas y un desvío ≤ 4 ms (`ANTITRAMPA_RITMO_*`) no es una persona |
+| `salto_precision` | avisar | servidor | ★ 28-nov: SEÑAL. Cada carrera limpia anota su precisión (tabla `antitrampa_precision`); en nivel ≥ 12, las últimas 8 promedian ≥ 97 % y 12 puntos más que la mediana de sus 20-40 anteriores (`ANTITRAMPA_SALTO_*`) |
 | `expulsa_espectadores` | registrar | farmeo | El anfitrión echa espectadores en serie |
 
 Las acciones se cambian en `ANTITRAMPA_REGLAS` (`ajustes.py`), una por regla.

@@ -396,6 +396,11 @@ def probar_tablero():
         e = antitrampa.estado_de(f.usn)
         ok({"texto": "Auto farmeo", "tipo": "trampa"} in e["usa"], "«Conectados»: lo que usa en esta sesión")
         ok("Está usando" in pedir("/")[1], "la página tiene la columna «Está usando»")
+        pagina = pedir("/")[1]
+        ok("f-usa" in pagina and "Sancionar ya" in pagina, "★ el filtro «sólo trampas» y el botón «Sancionar ya»")
+        st_s, txt_s, _ = pedir("/api/accion", {"accion": "sancionar", "cuenta": "farmero"}, csrf)
+        ok(st_s in (200, 400) and json.loads(txt_s).get("mensaje", "").startswith("antitrampa:"),
+           "«Sancionar ya» desde el tablero corre la tanda de esa cuenta (acá no tiene pendientes: lo dice)")
         ev_db = [x for x in evs(cuenta="farmero") if x["regla"] == "farmeo"][0]
         ok(json.loads(ev_db["evidencia"]).get("usa") == "Auto farmeo",
            "el evento guarda «usa» en la base (para el panel del administrador)")

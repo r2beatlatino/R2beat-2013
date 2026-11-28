@@ -5517,7 +5517,7 @@ ANTITRAMPA_DLL_MD5 = {
     "01088ae98649", "103a74499923", "121850491df7", "162ace604e77", "1c240bb9af3d", "224e0db0d85c", "27fe1389a467",
     "28bf5b3c9329", "2bb451650232", "2f8e5aa4e7fc", "35eb1203bdee", "47083b640a6f", "47981edde78c", "4ab20e47f050",
     "52bffd24bbbe", "5e04c574ffc2", "5f50f055dfeb", "622f817e7398", "8597545c85bb", "916babe83573", "95e11e31304c",
-    "aa6838ceed5b", "c1d6fc43daa2", "cdc93f9cfa97", "f1199558a3f7", "f2f7b4ad3bce", "3538477ed424", "7e60e3e2e1b0", "6392d5936070",
+    "aa6838ceed5b", "c1d6fc43daa2", "cdc93f9cfa97", "f1199558a3f7", "f2f7b4ad3bce", "3538477ed424", "7e60e3e2e1b0", "6392d5936070", "4af5c2e4efbc",
 }
 #   Los R2Beat.exe aceptados: el que deja `herramientas/receta_exe.py` (MD5_ESPERADO). Al cambiar la receta, sumá el
 #   nuevo acá y dejá el anterior mientras haya jugadores con él.
@@ -5578,7 +5578,25 @@ ANTITRAMPA_REGLAS.update({
     "n2hock_permitido":    "registrar",
     "arranque_restaurado": "registrar",  # el punto de entrada lo tocó un inyector/launcher y ya está de fábrica
     "dll_desconocida":     "avisar",     # ★ 28-nov: el «hola» trae un md5 de dll que no es ninguna de las nuestras
+    # ★ 28-nov (anonimo03: «el 3, 4, 5, 6 por el momento; de manera rigurosa cuando estemos bien»): sólo avisan.
+    "dll_falsa":           "avisar",     # el reto del latido (256 bytes de la dll) no coincide con nuestra dll
+    "teclas_robot":        "avisar",     # SEÑAL de farmeo: cada tecla apretada casi el mismo tiempo (macro / programa)
+    "salto_precision":     "avisar",     # SEÑAL: de golpe mucho más precisión que la suya de siempre, en difíciles
 })
+#   ★ 28-nov · el RETO: cuántos latidos con el reto mal hacen falta para marcar (uno puede ser un archivo a medio copiar).
+ANTITRAMPA_RETO_FALLOS = 2
+#   ★ 28-nov · el RITMO (lo mide la dll por minuto): con al menos PULSOS teclas en el minuto, un desvío de la duración
+#   de cada tecla de SD_MS o menos no es de una persona (una persona anda por 15-40 ms de desvío).
+ANTITRAMPA_RITMO_PULSOS = 60
+ANTITRAMPA_RITMO_SD_MS = 4
+#   ★ 28-nov · el SALTO: en canciones de nivel >= NIVEL, el promedio de sus últimas RECIENTES carreras llega a PD_MIN o más
+#   y supera por PUNTOS o más la mediana de las HISTORIA anteriores (con al menos HISTORIA_MIN de ellas).
+ANTITRAMPA_SALTO_NIVEL = 12
+ANTITRAMPA_SALTO_RECIENTES = 8
+ANTITRAMPA_SALTO_HISTORIA = 40
+ANTITRAMPA_SALTO_HISTORIA_MIN = 20
+ANTITRAMPA_SALTO_PD_MIN = 97
+ANTITRAMPA_SALTO_PUNTOS = 12
 #   ★ 28-nov (anonimo03: «sacar el ruido del panel»): lo que dan TODOS los jugadores limpios. Queda en el log y en
 #   antitrampa.jsonl (y cuenta en la sesión), pero NO se crea evento en el registro central: el panel no lo muestra.
 ANTITRAMPA_FUERA_DEL_PANEL = ("memoria_ajena", "manija_conocida", "arranque_restaurado")
@@ -5732,6 +5750,9 @@ ANTITRAMPA_CLASIFICACION = {
     "n2hock_permitido":        ("memoria_alterada",      "informativo", 5,  "cliente"),
     "arranque_restaurado":     ("memoria_alterada",      "informativo", 10, "cliente"),
     "dll_desconocida":         ("integridad_antitrampa", "medio",       55, "cliente"),
+    "dll_falsa":               ("integridad_antitrampa", "alto",        75, "servidor"),
+    "teclas_robot":            ("macros",                "medio",       60, "cliente"),
+    "salto_precision":         ("auto_perfect",          "medio",       50, "servidor"),
     "auto_perfecto":           ("auto_perfect",          "medio",       60, "servidor"),
     "manipulacion_correlacionada": ("herramienta_memoria", "critico",   85, "servidor"),
     "teclas_inyectadas":       ("macros",                "bajo",        40, "cliente"),
