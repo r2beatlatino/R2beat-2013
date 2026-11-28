@@ -551,6 +551,18 @@
       "comprobado_por": "cliente"
     },
     {
+      "id": "manija_conocida",
+      "accion": "registrar",
+      "origen": "dll",
+      "gravedad": 0,
+      "nombre": "Manija conocida",
+      "descripcion": "Como la manija de escritura, pero del launcher que abrió el juego, una superposición (Discord, Steam, OBS, RTSS…) o un antivirus. No cuenta para la manipulación correlacionada.",
+      "categoria": "herramienta_memoria",
+      "riesgo": "informativo",
+      "confianza": 5,
+      "comprobado_por": "cliente"
+    },
+    {
       "id": "manipulacion_correlacionada",
       "accion": "expulsar",
       "origen": "servidor",

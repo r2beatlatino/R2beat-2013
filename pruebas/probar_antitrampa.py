@@ -641,14 +641,77 @@ def probar_silencioso():
         antitrampa.al_ff59(j2, "R2AT proceso=cheatengine-i386.exe")
         ok(pendientes("inocente") == 0, "Cheat Engine abierto, solo, NO deja nada para la tanda")
         antitrampa.al_ff59(j2, "R2AT memoria=0x1A2B0000 regiones=1")
-        ok(pendientes("inocente") == 1, "con memoria ajena en la misma sesión, sí: otra detección pendiente")
+        ok(pendientes("inocente") == 0, "★ 28-nov: la memoria ajena (la tiene cualquier juego limpio) NO correlaciona")
+        antitrampa.al_ff59(j2, "R2AT codigo=0x00412000 paginas=1 bytes=90_90_90_90_90_90_90_90")
+        ok(pendientes("inocente") == 1, "con el código del juego tocado en la misma sesión, sí: detección pendiente")
         ok("descartada" in " ".join(antitrampa.perdonar_pendientes(str(usn2), "prueba")), "`.sanciones perdonar` la descarta")
         antitrampa.sancionar_tanda("prueba", ya=True)
         ok(pendientes("inocente") == 0 and faltas("inocente") == 0, "revés: lo perdonado no se sanciona")
         lineas = antitrampa.sancionar_tanda("prueba", ya=True)
         ok("no hay detecciones" in lineas[0], "sin pendientes, la tanda no hace nada")
+        probar_limpio_con_launcher(pendientes)
     finally:
         antitrampa.ANTITRAMPA_SILENCIOSO = False
+
+
+def probar_limpio_con_launcher(pendientes):
+    print("★ 28-nov · el jugador LIMPIO (launcher, Discord, memoria ajena) cobra:")
+    from servidor import almacen, basedatos
+    usn, _m = basedatos.cuenta_crear("limpito", "E" * 64)
+    j = jugador(usn)
+    antitrampa.al_ff59(j, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+    for linea in ("R2AT manija=n2launcher.exe acceso=0x1FFFFF", "R2AT manija=discord.exe acceso=0x1FFFFF",
+                  "R2AT manija=steam.exe acceso=0x1FFFFF", "R2AT memoria=0x12E70000 regiones=5"):
+        antitrampa.al_ff59(j, linea)
+    r = reglas_de(usn)
+    ok("manija_conocida" in r and "manija_escritura" not in r, "el launcher y las superposiciones son manija_conocida")
+    ok("manipulacion_correlacionada" not in r, "launcher + memoria ajena NO es manipulación correlacionada")
+    ok(pendientes("limpito") == 0, "no queda nada pendiente para la tanda")
+    j.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(j, 7200, 300, 90, 50, 78) is False, "y su carrera cobra exp y Rcoin")
+    ok(antitrampa.manija_conocida("N2Launcher.exe") and not antitrampa.manija_conocida("candy0503.exe")
+       and not antitrampa.manija_conocida("cheatengine-x86_64.exe") and not antitrampa.manija_conocida("?"),
+       "revés: Candy y Cheat Engine no son conocidos")
+    # Revés: una herramienta de verdad con un gancho sigue correlacionando
+    usn2, _m = basedatos.cuenta_crear("tramposo2", "F" * 64)
+    t = jugador(usn2)
+    antitrampa.al_ff59(t, "R2AT manija=candy0503.exe acceso=0x1FFFFF")
+    antitrampa.al_ff59(t, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+    ok("manipulacion_correlacionada" in reglas_de(usn2), "revés: Candy + automático sí correlaciona")
+    t.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(t, 7200, 300, 90, 50, 79) is True, "revés: y el tramposo no cobra")
+
+    print("★ 28-nov · los retenidos por la regla vieja se perdonan solos al arrancar:")
+    usn3, _m = basedatos.cuenta_crear("retenido", "G" * 64)
+    r3 = jugador(usn3)
+    antitrampa.al_ff59(r3, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+    almacen.antitrampa_dejar_pendiente(usn3, "manipulacion_correlacionada", nick="retenido",
+                                       detalle="herramienta (manija_escritura) y alteración del juego (memoria_ajena) "
+                                               "en la misma sesión")
+    almacen.antitrampa_dejar_pendiente(usn2, "manipulacion_correlacionada", nick="tramposo2",
+                                       detalle="herramienta (manija_escritura) y alteración del juego "
+                                               "(juego_automatico, memoria_ajena) en la misma sesión")
+    with antitrampa._cuentas_lock:
+        antitrampa._sesion(usn3)["retener"] = True
+    r3.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(r3, 7200, 300, 90, 50, 80) is True, "antes: el retenido no cobra")
+    antes_t = pendientes("tramposo2")
+    n = antitrampa.limpiar_correlaciones_falsas("prueba")
+    ok(n == 1 and pendientes("retenido") == 0, "se perdona la que sólo tenía memoria ajena")
+    ok(pendientes("tramposo2") == antes_t, "revés: la que además tenía el automático sigue pendiente")
+    r3.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(r3, 7300, 301, 90, 50, 81) is False, "y vuelve a cobrar en la misma sesión")
+    ok(antitrampa.limpiar_correlaciones_falsas("prueba") == 0, "correrla otra vez no hace nada")
+
+    print("★ 28-nov · `.sanciones perdonar` levanta la retención ya, sin reabrir el juego:")
+    usn4, _m = basedatos.cuenta_crear("perdonable", "H" * 64)
+    p4 = jugador(usn4)
+    antitrampa.al_ff59(p4, "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+    p4.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(p4, 7200, 300, 90, 50, 82) is True, "detectado: no cobra")
+    antitrampa.perdonar_pendientes("perdonable", "prueba")
+    p4.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(p4, 7300, 301, 90, 50, 83) is False, "perdonado: cobra la próxima carrera")
 
 
 def probar_llegadas():

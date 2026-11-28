@@ -5522,6 +5522,7 @@ ANTITRAMPA_REGLAS.update({
     # ★ 24-nov · INFORME_DEFENSA_CANDY0503.md: Candy no se inyecta, escribe la memoria del juego desde AFUERA.
     # ⏳ "registrar" hasta ver qué aparece en los limpios (el que lanzó el juego, overlays): después, "avisar" o más.
     "manija_escritura":    "registrar",  # un programa tiene abierto el juego con permiso de escribir su memoria
+    "manija_conocida":     "registrar",  # ★ 28-nov: lo mismo, pero el launcher o una superposición (no correlaciona)
 })
 #   Llegada anticipada: frame < mediana de las últimas HISTORIA llegadas limpias de ESA canción × FACTOR, con al menos
 #   MUESTRAS llegadas guardadas. «Simular llegada» dispara la meta en cualquier momento: el tiempo declarado cuadra con
@@ -5661,6 +5662,7 @@ ANTITRAMPA_CLASIFICACION = {
     "depurador":               ("herramienta_memoria",   "bajo",        40, "cliente"),
     "proceso_prohibido":       ("herramienta_memoria",   "bajo",        30, "cliente"),
     "manija_escritura":        ("herramienta_memoria",   "medio",       55, "cliente"),
+    "manija_conocida":         ("herramienta_memoria",   "informativo", 5,  "cliente"),
     "manipulacion_correlacionada": ("herramienta_memoria", "critico",   85, "servidor"),
     "teclas_inyectadas":       ("macros",                "bajo",        40, "cliente"),
     "listo_automatico":        ("bots",                  "medio",       60, "servidor"),
@@ -5682,9 +5684,24 @@ ANTITRAMPA_CLASIFICACION = {
 ANTITRAMPA_SENALES_DEBILES = ("teclas_inyectadas", "carreras_sin_hablar", "misma_cancion")
 #   Las herramientas y las alteraciones que juntas, en la misma sesión, dan `manipulacion_correlacionada`.
 ANTITRAMPA_CORRELACION_HERRAMIENTA = ("proceso_prohibido", "manija_escritura", "depurador")
-ANTITRAMPA_CORRELACION_ALTERACION = ("codigo_modificado", "codigo_previo", "memoria_ajena", "hilo_ajeno",
+#   ★ 28-nov (anonimo03: «hay gente que no le da exp ni rcoin pero no está usando nada»): `memoria_ajena` YA NO cuenta
+#   como alteración. Sale en TODO juego limpio (5-9 regiones: el controlador de video, Discord, Steam, el antivirus), y
+#   con la manija del launcher que abrió el juego daba `manipulacion_correlacionada` a cualquiera → premio retenido.
+ANTITRAMPA_CORRELACION_ALTERACION = ("codigo_modificado", "codigo_previo", "hilo_ajeno",
                                      "juego_automatico", "sala_automatica", "relevo_automatico", "resultado_alterado",
                                      "modulo_prohibido", "reloj_rapido", "reloj_cliente")
+#   ★ 28-nov · los programas que tienen el juego abierto CON permiso de escribir y no son trampa: el launcher que lo
+#   lanzó (quien crea un proceso se queda con una manija completa), las superposiciones y las tiendas. Se comparan con
+#   el comienzo del nombre del exe, sin mayúsculas. Quedan como `manija_conocida` (sólo registrar) y NO cuentan para la
+#   correlación.
+ANTITRAMPA_MANIJAS_CONOCIDAS = (
+    "n2launcher", "nyxlauncher", "launcher.exe", "r2beat.exe", "r2beatmultitest", "r2prueba", "replacer",
+    "full_downloader", "hw_spec", "explorer.exe", "discord", "steam", "gameoverlayui", "obs", "rtss", "msiafterburner",
+    "nvcontainer", "nvidia", "nvsphelper", "amdrsserv", "radeonsoftware", "amdow", "overwolf", "medal", "xboxgamebar",
+    "gamebar", "gamingservices", "epicgameslauncher", "eadesktop", "battle.net", "ubisoftconnect", "razer", "logi",
+    "lghub", "msedgewebview2", "taskmgr", "procexp", "systeminformer", "avp", "avast", "avg", "bdservicehost",
+    "mbam", "ekrn", "nortonsecurity", "mcshield", "securityhealthservice", "searchindexer", "dwm.exe", "ctfmon",
+)
 #   La telemetría de la dll (renglones R2AT por el FF59): tope por jugador y el latido.
 ANTITRAMPA_R2AT_POR_MINUTO = 40          # una dll de verdad manda ~1 por segundo como mucho, y casi nunca
 ANTITRAMPA_LATIDO_TOPE_S = 240           # sin latido este tiempo, con el juego conectado → telemetria_interrumpida

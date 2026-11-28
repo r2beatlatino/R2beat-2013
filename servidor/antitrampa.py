@@ -62,6 +62,7 @@ from .ajustes import (
     ANTITRAMPA_CORRELACION_HERRAMIENTA,
     ANTITRAMPA_JSONL_MAX_MB,
     ANTITRAMPA_LATIDO_TOPE_S,
+    ANTITRAMPA_MANIJAS_CONOCIDAS,
     ANTITRAMPA_R2AT_POR_MINUTO,
     ANTITRAMPA_RELOJ_CLIENTE_TOLERANCIA,
     ANTITRAMPA_RELOJ_CLIENTE_VECES,
@@ -396,11 +397,18 @@ def _un_r2at(st, d, crudo):
         anotar(st, "proceso_prohibido", f"tiene abierto {d['proceso']}{firma}", {}, evidencia=ev,
                firma=d["proceso"].lower())
     elif "manija" in d:                                    # ★ 24-nov: un programa con permiso de escribir el juego
-        anotar(st, "manija_escritura", f"{d['manija']} tiene abierto el juego con permiso de escribir su memoria "
-                                       f"(acceso {d.get('acceso', '?')})", {}, evidencia=ev,
+        regla = "manija_conocida" if manija_conocida(d["manija"]) else "manija_escritura"   # ★ 28-nov
+        anotar(st, regla, f"{d['manija']} tiene abierto el juego con permiso de escribir su memoria "
+                          f"(acceso {d.get('acceso', '?')})", {}, evidencia=ev,
                firma=d["manija"].lower())
     else:
         log("TRAMP", f"  ? usn={st.usn}: renglón R2AT que no conozco: {crudo!r}")
+
+
+def manija_conocida(nombre):
+    """★ 28-nov: ¿es el launcher, una superposición o un programa de sistema (no una herramienta de trampa)?"""
+    n = str(nombre or "").strip().lower()
+    return bool(n) and n != "?" and any(n.startswith(k) for k in ANTITRAMPA_MANIJAS_CONOCIDAS)
 
 
 def _al_hola(st, d, crudo):
@@ -537,6 +545,11 @@ def revisar_latidos(conectados, ahora=None):
 
 def arrancar_vigilancia(conexiones, cada=30.0):
     """El hilo del vigilante de latidos. `conexiones` = salas.CONEXIONES (usn -> conexión)."""
+    try:
+        limpiar_correlaciones_falsas()            # ★ 28-nov: los retenidos por la correlación vieja
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ limpiando correlaciones falsas: {e!r}")
+
     def _ciclo():
         while True:
             time.sleep(cada)
@@ -914,8 +927,78 @@ def perdonar_pendientes(quien_es, quien=""):
         almacen.at_accion(quien or "gm", "perdonar", fs[0].get("cuenta"), fs[0].get("usn"), None, f"{n} pendiente(s)")
     except Exception as e:                    # noqa: BLE001
         log("TRAMP", f"  ⚠ no pude marcar los eventos perdonados: {e!r}")
+    _soltar_retencion({f["usn"] for f in fs if f.get("usn") is not None}, {f.get("cuenta") for f in fs} - {None, ""})
     log("TRAMP", f"  🕊 {quien!r} perdonó {n} detección(es) de {quien_es!r}")
     return [f"antitrampa: {n} deteccion(es) de {quien_es} descartada(s)"]
+
+
+def _soltar_retencion(usns, cuentas=()):
+    """★ 28-nov: al perdonar, la retención de ESTA sesión se levanta ya (antes seguía sin cobrar hasta reabrir el juego),
+    salvo que le quede otra detección pendiente."""
+    try:
+        from . import almacen
+        quedan = almacen.antitrampa_pendientes(0)
+    except Exception:                         # noqa: BLE001
+        quedan = []
+    vivos_usn = {f.get("usn") for f in quedan}
+    vivas_cta = {f.get("cuenta") for f in quedan} - {None, ""}
+    with _cuentas_lock:
+        for usn, c in _CUENTAS.items():
+            mia = usn in usns
+            if not mia and cuentas:
+                try:
+                    from . import almacen
+                    mia = almacen.cuenta_de_uid(usn)[0] in cuentas
+                except Exception:             # noqa: BLE001
+                    mia = False
+            if not mia or usn in vivos_usn:
+                continue
+            try:
+                from . import almacen
+                if almacen.cuenta_de_uid(usn)[0] in vivas_cta:
+                    continue
+            except Exception:                 # noqa: BLE001
+                pass
+            if c.get("retener"):
+                c["retener"] = False
+                c.pop("correlacionado", None)
+                log("TRAMP", f"  🕊 usn={usn}: retención levantada (perdonado)")
+
+
+_ALT_DEBILES = ("memoria_ajena",)
+
+
+def limpiar_correlaciones_falsas(quien="servidor"):
+    """★ 28-nov: perdona las `manipulacion_correlacionada` pendientes cuya única alteración era `memoria_ajena` (la que
+    da cualquier juego limpio). Se corre al arrancar: los que la regla vieja retuvo sin motivo vuelven a cobrar.
+    -> cuántas perdonó."""
+    from . import almacen
+    try:
+        fs = almacen.antitrampa_pendientes(0)
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude leer los pendientes para limpiar correlaciones: {e!r}")
+        return 0
+    falsas = []
+    for f in fs:
+        if f.get("regla") != "manipulacion_correlacionada":
+            continue
+        m = re.search(r"alteración del juego \(([^)]*)\)", f.get("detalle") or "")
+        alt = {a.strip() for a in m.group(1).split(",")} if m else set()
+        if alt and alt <= set(_ALT_DEBILES):
+            falsas.append(f)
+    if not falsas:
+        return 0
+    n = almacen.antitrampa_resolver([f["id"] for f in falsas], "perdonada", quien)
+    try:
+        almacen.ev_marcar(pendientes=[f["id"] for f in falsas], estado="descartado", por=quien,
+                          nota="falso positivo: memoria_ajena sola ya no correlaciona")
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude marcar los eventos de las correlaciones falsas: {e!r}")
+    _soltar_retencion({f["usn"] for f in falsas if f.get("usn") is not None},
+                      {f.get("cuenta") for f in falsas} - {None, ""})
+    log("TRAMP", f"  🕊 {n} manipulacion_correlacionada falsa(s) perdonada(s) (sólo memoria_ajena): "
+                 + ", ".join(sorted({str(f.get('nick') or f.get('usn')) for f in falsas})))
+    return n
 
 
 def _cerrar_luego(st, usn, regla):
