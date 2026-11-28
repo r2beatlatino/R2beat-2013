@@ -77,6 +77,10 @@ static int g_bo_brillo = 1;
 /* ★ 28-nov (anonimo03: «el aura sólo cuando esté completo el booster, y el teñido sólo cuando se llena»): de fábrica,
  *   las dos cosas sólo con el impulsor LLENO. [herramienta] booster_aura_lleno · booster_tenir_lleno */
 static int g_bo_aura_lleno = 1, g_bo_tenir_lleno = 1;
+/* ★ 28-nov (anonimo03: «elijo el ejemplo, el booster cambia, pero la lista sigue en (elige un ejemplo)»): el ejemplo
+ *   puesto de cada lista (botón, marco, aura, teñido), para mostrarlo. [herramienta] booster_ej_boton … booster_ej_tenir */
+static wchar_t g_bo_ej_puesto[4][64];
+static const char *const BO_EJ_INI[4] = { "booster_ej_boton", "booster_ej_marco", "booster_ej_aura", "booster_ej_tenir" };
 static volatile DWORD g_bo_lleno_t;             /* la última vez que el juego dibujó la carga entera o el «listo» */
 /* dónde quedó el botón en la pantalla (lo anota la cola 2D, abajo): x, y, lado y cuándo */
 static volatile float g_bo_bx, g_bo_by, g_bo_bw, g_bo_bh;
@@ -257,6 +261,11 @@ static void bo_tenir_ini(void)
     g_bo_aura_pct = au < 100 ? 100 : au > 400 ? 400 : au;
     g_bo_brillo = GetPrivateProfileIntA("herramienta", "booster_brillo", 1, g_ht_ini) != 0;
     g_bo_aura_lleno = GetPrivateProfileIntA("herramienta", "booster_aura_lleno", 1, g_ht_ini) != 0;
+    for (int i = 0; i < 4; i++) {
+        char u[200];
+        GetPrivateProfileStringA("herramienta", BO_EJ_INI[i], "", u, sizeof(u), g_ht_ini);
+        if (!MultiByteToWideChar(CP_UTF8, 0, u, -1, g_bo_ej_puesto[i], 64)) g_bo_ej_puesto[i][0] = 0;
+    }
     g_bo_tenir_lleno = GetPrivateProfileIntA("herramienta", "booster_tenir_lleno", 1, g_ht_ini) != 0;
     int an = (int)GetPrivateProfileIntA("herramienta", "booster_anim", 50, g_ht_ini);
     g_bo_anim_pct = an < 10 ? 10 : an > 300 ? 300 : an;

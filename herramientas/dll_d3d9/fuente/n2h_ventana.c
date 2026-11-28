@@ -2149,6 +2149,10 @@ static void n2_per_guardar(HT_BUF *x, const char *eol)
         wsprintfA(u, "%d", g_bo_brillo); ht_buf_poner(x, "booster_brillo", u, eol);
         wsprintfA(u, "%d", g_bo_aura_lleno); ht_buf_poner(x, "booster_aura_lleno", u, eol);
         wsprintfA(u, "%d", g_bo_tenir_lleno); ht_buf_poner(x, "booster_tenir_lleno", u, eol);
+        for (int i = 0; i < 4; i++) {                    /* ★ 28-nov: el ejemplo puesto de cada lista */
+            if (!WideCharToMultiByte(CP_UTF8, 0, g_bo_ej_puesto[i], -1, u, sizeof(u), NULL, NULL)) u[0] = 0;
+            ht_buf_poner(x, BO_EJ_INI[i], u, eol);
+        }
         wsprintfA(u, "%d", g_calc_opacidad); ht_buf_poner(x, "pd_opacidad", u, eol);
         wsprintfA(u, "%d", g_calc_quieto ? 1 : 0); ht_buf_poner(x, "pd_quieto", u, eol);
         wsprintfA(u, "#%06lX", (unsigned long)(g_calc_tinte & 0xFFFFFF)); ht_buf_poner(x, "pd_tinte", u, eol);

@@ -110,6 +110,17 @@ static int bo_instalar(int k, const wchar_t *archivo, int callado)
     return 1;
 }
 
+/* ★ 28-nov: la pieza k se cambió a mano o se quitó: su lista vuelve a «(elige un ejemplo)» */
+static void bo_ej_olvidar(int k)
+{
+    int tipo = k <= 1 || k == 3 ? 0 : k == 2 ? 1 : k == 4 ? 2 : 3;
+    if (!g_bo_ej_puesto[tipo][0]) return;
+    g_bo_ej_puesto[tipo][0] = 0;
+    ht_pedir_guardar();
+    for (int i = 0; i < g_n2n; i++)
+        if (g_n2c[i].ref == L_BO_BOTON + tipo && g_n2c[i].tipo == C_COMBO && g_n2c[i].h) SendMessageW(g_n2c[i].h, CB_SETCURSEL, 0, 0);
+}
+
 static void bo_elegir(int k)
 {
     typedef BOOL (WINAPI *F_ABRIR)(OPENFILENAMEW *);
@@ -130,7 +141,7 @@ static void bo_elegir(int k)
     o.lpstrFile = archivo; o.nMaxFile = MAX_PATH;
     o.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
     if (!f(&o)) return;
-    bo_instalar(k, archivo, 0);
+    if (bo_instalar(k, archivo, 0)) bo_ej_olvidar(k);
 }
 
 static void bo_quitar(int k)
@@ -140,6 +151,7 @@ static void bo_quitar(int k)
     bo_poner(k, NULL);
     bo_mini_armar(k);
     if (k == 1) { while (bo_ruta(3, r)) DeleteFileW(r); bo_poner(3, NULL); bo_mini_armar(3); }
+    bo_ej_olvidar(k);
     static const wchar_t *T[BO_N] = { L"El botón sin carga vuelve a ser el del juego.", L"El botón lleno vuelve a ser el del juego.",
                                       L"Sin marco.", L"", L"Sin aura.", L"Sin teñido con imagen." };
     bo_aviso(T[k]);
@@ -191,7 +203,15 @@ static void bo_ej_llenar(HWND cb, int tipo)
     }
     LRESULT k = SendMessageW(cb, CB_INSERTSTRING, 0, (LPARAM)TR(g_bo_ej_n[tipo] ? L"(elige un ejemplo)" : L"(no hay ejemplos)"));
     if (k >= 0) SendMessageW(cb, CB_SETITEMDATA, (WPARAM)k, (LPARAM)-1);
-    SendMessageW(cb, CB_SETCURSEL, 0, 0);
+    int sel = 0;
+    if (g_bo_ej_puesto[tipo][0]) {
+        int n = (int)SendMessageW(cb, CB_GETCOUNT, 0, 0);
+        for (int i = 1; i < n; i++) {
+            int j = (int)SendMessageW(cb, CB_GETITEMDATA, (WPARAM)i, 0);
+            if (j >= 0 && j < g_bo_ej_n[tipo] && !lstrcmpiW(g_bo_ej[tipo][j], g_bo_ej_puesto[tipo])) { sel = i; break; }
+        }
+    }
+    SendMessageW(cb, CB_SETCURSEL, (WPARAM)sel, 0);
 }
 /* la lista `tipo` eligió su renglón `k` (n2_lista_cambio) */
 static void bo_ejemplo(int tipo, int k)
@@ -214,12 +234,14 @@ static void bo_ejemplo(int tipo, int k)
         wchar_t t[200];
         wsprintfW(t, TR(L"Botón «%s» puesto%s."), g_bo_ej[0][j], g_bo_img[3].n ? TR(L" (el lleno parpadea)") : L"");
         bo_aviso(puestos ? t : TR(L"No se pudo poner ese botón."));
+        if (!puestos) { if (cb) SendMessageW(cb, CB_SETCURSEL, 0, 0); return; }
     } else {
         static const int PIEZA[4] = { 0, 2, 4, 5 };
         lstrcatW(d, g_bo_ej[tipo][j]);
-        bo_instalar(PIEZA[tipo], d, 0);
+        if (!bo_instalar(PIEZA[tipo], d, 0)) { if (cb) SendMessageW(cb, CB_SETCURSEL, 0, 0); return; }
     }
-    if (cb) SendMessageW(cb, CB_SETCURSEL, 0, 0);
+    lstrcpynW(g_bo_ej_puesto[tipo], g_bo_ej[tipo][j], 64);   /* ★ 28-nov: la lista se queda mostrando el puesto */
+    ht_pedir_guardar();
 }
 
 static void bo_mover(int dx, int dy)
@@ -255,6 +277,7 @@ static int bo_comando(int ref)
         wchar_t r[MAX_PATH * 2];
         while (bo_ruta(5, r)) DeleteFileW(r);
         bo_poner(5, NULL); bo_mini_armar(5);
+        bo_ej_olvidar(5);
         bo_aviso(L"Sin teñir.");
         return 1;
     }

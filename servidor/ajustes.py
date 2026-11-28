@@ -5525,7 +5525,7 @@ ANTITRAMPA_DLL_MD5 = {
     "01088ae98649", "103a74499923", "121850491df7", "162ace604e77", "1c240bb9af3d", "224e0db0d85c", "27fe1389a467",
     "28bf5b3c9329", "2bb451650232", "2f8e5aa4e7fc", "35eb1203bdee", "47083b640a6f", "47981edde78c", "4ab20e47f050",
     "52bffd24bbbe", "5e04c574ffc2", "5f50f055dfeb", "622f817e7398", "8597545c85bb", "916babe83573", "95e11e31304c",
-    "aa6838ceed5b", "c1d6fc43daa2", "cdc93f9cfa97", "f1199558a3f7", "f2f7b4ad3bce", "3538477ed424", "7e60e3e2e1b0", "6392d5936070", "4af5c2e4efbc", "ce27771d04b3",
+    "aa6838ceed5b", "c1d6fc43daa2", "cdc93f9cfa97", "f1199558a3f7", "f2f7b4ad3bce", "3538477ed424", "7e60e3e2e1b0", "6392d5936070", "4af5c2e4efbc", "2879f7e91d69",
 }
 #   Los R2Beat.exe aceptados: el que deja `herramientas/receta_exe.py` (MD5_ESPERADO). Al cambiar la receta, sumá el
 #   nuevo acá y dejá el anterior mientras haya jugadores con él.
