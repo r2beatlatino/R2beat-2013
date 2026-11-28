@@ -55,6 +55,12 @@ COMANDOS = ("npc", "npcs", "rate", "rates", "aviso", "anuncio", "gm1", "gm2", "g
 #   El candado de «una por metal por sala» corre igual que para cualquiera (`lobby_campana`).
 CAMPANAS = ((181, 10), (183, 10), (297, 10), (304, 10))
 SIN_USAR_H = 12              # si nadie entra en estas horas, se cierra sola
+# ★ 27-nov (la 1.ª en prod: GM-Sue se cerró a los 8 s): al ELEGIR en el selector de la dll el juego CORTA el lobby y vuelve
+#   a entrar, igual que un cambio de canal pero sin el FF3D ⇒ «salió del juego» y el reingreso rechazado («el servidor
+#   no responde»). ★ El selector se queda como para todos (Eñeños: «que tenga selector normalmente»): irse la cierra
+#   recién si en GRACIA_S no volvió a entrar, así cualquier reconexión rápida (selector, canal, un micro-corte) no la
+#   mata. En el selector sólo puede elegir SU personaje (el casillero 1): crear otro no (`cuenta_personajes`, ELEGIR).
+GRACIA_S = 120
 LICENCIA = 7                 # SOL: entra a todos los canales
 LISTA_TOPE = 100
 
@@ -178,9 +184,24 @@ def al_salir(st):
     if not f or getattr(st, "reemplazada", False):
         return
     if not getattr(st, "cambio_canal", False):
-        cerrar(f["usn"], "salió del juego")
+        _cerrar_si_no_vuelve(f["usn"])
     if (info(f["usn"]) or {}).get("cerrado"):
         _liberar_apodo(f["usn"])          # ★ acá, al FINAL del `finally`: ya nadie guarda el personaje con el apodo viejo
+
+
+def _cerrar_si_no_vuelve(usn):
+    """Se fue: la cierra en GRACIA_S, SI para entonces no volvió a entrar (ver GRACIA_S)."""
+    def mirar():
+        try:
+            if not _conectada(usn):
+                cerrar(usn, "salió del juego")
+        except Exception as e:                                           # noqa: BLE001
+            log("LOBBY", f"  ⚠ GM NPC: no pude cerrar usn={usn} tras la gracia: {e!r}")
+    t = threading.Timer(GRACIA_S, mirar)
+    t.daemon = True
+    t.start()
+    log("LOBBY", f"  ★ GM NPC: usn={usn} se fue — se cierra en {GRACIA_S} s si no vuelve")
+    return t
 
 
 def _conectada(usn):
