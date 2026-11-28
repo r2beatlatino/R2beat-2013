@@ -76,6 +76,10 @@ static void (*g_calc_antes_de_dibujar)(void) = NULL;
 /* ★ 19-nov: el de la herramienta (AutoFar y el cartel del Far): DESPUÉS del panel, encima de todo */
 static void (*g_calc_despues_de_dibujar)(void) = NULL;
 static int g_calc_ajena = 0;
+/* ★ 26-nov · EL EN VIVO REAL (en_vivo_real.c): antes del juez, para TODOS los corredores (puede cambiar el juicio del piloto
+ *   de un rival por el real que llegó) y después (manda el propio). `vuelta` = quién llamó al juez. */
+static void (*g_calc_antes_juicio)(BYTE *obj, int *juicio, int *desvio, int extra, DWORD vuelta) = NULL;
+static void (*g_calc_despues_juicio)(BYTE *obj, int juicio, int desvio, int extra, DWORD vuelta) = NULL;
 
 #define CALC_ANCHO 131
 #define CALC_ALTO  196
@@ -127,10 +131,13 @@ static void calc_leer_acum(BYTE *obj, DWORD *num, DWORD *den)
 static int TC calc_mi_juicio(void *self, int juicio, int desvio, int extra)
 {
     BYTE *obj = (BYTE *)self;
+    DWORD vuelta = (DWORD)__builtin_return_address(0);
+    if (g_calc_antes_juicio) g_calc_antes_juicio(obj, &juicio, &desvio, extra, vuelta);
     int mio = calc_es_mio(obj);
     DWORD n0 = 0, d0 = 0, n1, d1;
     if (mio) calc_leer_acum(obj, &n0, &d0);
     int r = g_calc_juicio_real(self, juicio, desvio, extra);
+    if (g_calc_despues_juicio) g_calc_despues_juicio(obj, juicio, desvio, extra, vuelta);
     if (!mio) return r;
     if (g_calc_ajena && (*(BYTE **)CVA(0x9314C8))[0xC01]) return r;   /* ★ espectador: la muestra globo_combo.c */
     calc_leer_acum(obj, &n1, &d1);

@@ -2600,6 +2600,7 @@ static int escribir_bytes(DWORD va, const BYTE *espera, const BYTE *nuevo, int n
 #include "dados12.c"            /* ★ 13-oct: 12 + ítem, la cola de dados de 6 */
 #include "relevo12.c"           /* ★ 14-oct: el relevo de 12, el motor a 4 equipos (RELEVO_12.md) */
 #include "globo_combo.c"        /* ★ 14-oct: el globo del combo sobre el que corre (relevo / espectador) */
+#include "en_vivo_real.c"       /* ★ 26-nov: las fallas de los rivales, en vivo (sub 0x73) */
 #include "espectador12.c"        /* ★ 14-oct: el espectador en la sala de 12 (ESPECTADOR_12.md) */
 #include "logos_inicio.c"         /* ★ 16-oct: la tira del título más ancha, con «Eñeños bit» (LOGOS_INICIO.md) */
 #include "tarjeta_bruma.c"        /* ★ 17-oct: las tarjetas de nombre «Bruma», el humo que da vueltas (TARJETA_BRUMA.md) */
@@ -2866,6 +2867,7 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD razon, LPVOID reservado)
     dados12_iniciar();
     relevo12_iniciar();
     globo_combo_iniciar();
+    en_vivo_real_iniciar();          /* ★ 26-nov: después del globo y de la calculadora */
     espectador12_iniciar();
     logos_inicio_iniciar();
     tarjeta_bruma_iniciar();

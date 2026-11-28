@@ -1057,7 +1057,9 @@ COMANDOS_GM = ("rate", "rates", "gm",
                "record",
                # ★ 24-nov · `.sanciones`: las detecciones del antitrampa silencioso, y aplicarlas en tanda.
                #   Banea cuentas: por eso es de GM. Ver `ANTITRAMPA_SILENCIOSO`.
-               "sanciones")
+               "sanciones",
+               # ★ 25-nov · `.maquina`: qué cuentas entraron desde la misma PC, y perdonar un baneo de PC.
+               "maquina")
 # ★★ 04-oct — LOS STREAMERS TAMBIÉN ANUNCIAN. anonimo03: *"que los streamers también puedan usar el comando
 #   .gm1 .anuncio"*. Son de `COMANDOS_GM` y se abren ADEMÁS a los de `streamers.txt` (el mismo archivo del
 #   panel, `panel_admin.streamers`). ⚠ Sólo esos DOS, a propósito: `.aviso` (mismo comando que `.anuncio`),
@@ -1633,7 +1635,15 @@ FF4E_FIRMA_GLOBO = 0x47430000
 #   conexión tiene un tope (lo de más se tira).
 FF4E_SUB_CALC = 0x71
 FF4E_SUB_CALC_BASE = 0x72
-FF4E_COSMETICOS = (0x70, 0x71, 0x72)
+# ★ 26-nov · EL EN VIVO REAL (dll en_vivo_real.c, documentacion de «Servidor R2Beat 2013»: ESPECTADOR_COMO_LO_HACE_RBIT.md):
+#   0x73 = una nota del que corre que NO fue acierto (A = 'J' | asiento << 16 | nota, B = juicio | desvío << 8 | combo << 16).
+#   A TODA la sala: los que miran Y los que corren (a todos les llegan los rivales en piloto, siempre acertando).
+FF4E_SUB_JUICIO = 0x73
+#   0x74 = el PD del que corre (A = 'P' | asiento << 16 | notas, B = suma de puntos), cada 500 ms: cada cliente lo escribe
+#   en la tarjeta de ese corredor. También a TODA la sala.
+FF4E_SUB_PD = 0x74
+FF4E_A_TODA_LA_SALA = (FF4E_SUB_JUICIO, FF4E_SUB_PD)
+FF4E_COSMETICOS = (0x70, 0x71, 0x72, 0x73, 0x74)
 FF4E_COSMETICOS_POR_S = 12          # el tope por conexión (ráfaga: el doble)
 FF23_SLOT_AL_FRENTE = True            # ★ FF23 (movimiento en sala): ¿el S->C lleva el slot del emisor
                                       #   antepuesto? True = sí (como el CBT). ⚠ SIN CONFIRMAR en el
@@ -4145,6 +4155,21 @@ DOBLE_LOGIN_ECHA_AL_ANTERIOR = True
 #   Ver `multicuenta.py`.
 MAX_CUENTAS_POR_IP = int(os.environ.get("R2_MAX_CUENTAS_IP", "2") or 0)
 IPS_SIN_TOPE = frozenset(i.strip() for i in os.environ.get("R2_IPS_SIN_TOPE", "").split(",") if i.strip())
+
+# ★ 25-nov · LA MÁQUINA (HWID). En el `FF02` de la lobby el cliente manda la MAC de su placa de red (`maquina.py`).
+#   El server NO la guarda: guarda una huella (HMAC-SHA256 con una clave del server, `R2_SAL_MAQUINA` o, si no hay,
+#   `datos.maquina.key` al lado de la base, que se crea sola). Sirve para tres cosas:
+#     · `MAX_CUENTAS_POR_MAQUINA`: tope de cuentas a la vez desde la misma PC aunque cada una salga por otra IP
+#       (VPN/proxy por cliente). 0 = sin tope.
+#     · `BANEO_POR_MAQUINA`: banear una cuenta banea también las PC desde las que entró en los últimos
+#       `MAQUINA_GUARDAR_DIAS`; una cuenta nueva desde esa PC no entra. `.maquina perdonar <apodo>` lo deshace.
+#     · `.maquina <apodo>` (GM): qué otras cuentas entraron desde la misma PC.
+#   ⚠ ES UNA SEÑAL BLANDA: la MAC la manda el cliente y un cliente tocado la puede cambiar o mandar vacía. Frena
+#     al que no se toma el trabajo, no al decidido. Sin MAC válida no se aplica nada (`MAQUINA_EXIGIR` = 1 rechaza).
+MAX_CUENTAS_POR_MAQUINA = int(os.environ.get("R2_MAX_CUENTAS_MAQUINA", "2") or 0)
+BANEO_POR_MAQUINA = os.environ.get("R2_BANEO_MAQUINA", "1").strip().lower() not in ("0", "no", "false", "")
+MAQUINA_EXIGIR = os.environ.get("R2_MAQUINA_EXIGIR", "0").strip().lower() in ("1", "si", "sí", "true")
+MAQUINA_GUARDAR_DIAS = int(os.environ.get("R2_MAQUINA_DIAS", "90") or 90)
 
 # ★★★★ REPONER LA CANCIÓN DESPUÉS DEL `type 5` DEL PICKER — 2026-09-09.
 #   Reportado por anonimo03: *"el picker funciona bien hasta empezar el juego, pero al regresar a la

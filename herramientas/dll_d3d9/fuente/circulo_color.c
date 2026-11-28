@@ -25,11 +25,11 @@
 #define CC_N 6
 /*   7..17 los ESTILOS (las marcas de estilo 0..10 de estilos_texto.c: el dibujo del texto los pinta) */
 #define CC_EST0 7
-#define CC_TOTAL 18              /* catalogo.COLORES_CIRCULO: las letras 'A'..'A'+17 */
+#define CC_TOTAL 22              /* catalogo.COLORES_CIRCULO: las letras 'A'..'A'+17 */
 static const DWORD g_cc_colores[CC_TOTAL] = {
     0xFFFFFFFF, 0xFFFFD45C, 0xFFFB37A9, 0xFF00FFD5, 0xFFFFFFFF, 0xFF9B2CE0, 0xFFFF2626, EST_MARCA(0),
     EST_MARCA(1), EST_MARCA(2), EST_MARCA(3), EST_MARCA(4), EST_MARCA(5), EST_MARCA(6), EST_MARCA(7), EST_MARCA(8),
-    EST_MARCA(9), EST_MARCA(10) };
+    EST_MARCA(9), EST_MARCA(10), EST_MARCA(11), EST_MARCA(12), EST_MARCA(13), EST_MARCA(14) };
 #define CC_DESDE 0x63A330        /* las funciones que dibujan texto */
 #define CC_HASTA 0x63BC00
 #define CC_CUANTAS 14

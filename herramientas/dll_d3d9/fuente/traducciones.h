@@ -1,5 +1,5 @@
 /* traducciones.h — GENERADO por herramientas/dll_d3d9/traducciones/armar_tabla.py: no editar a mano */
-#define TR_N 584
+#define TR_N 589
 static const wchar_t *const TR_TABLA[TR_N][TR_N_IDIOMAS] = {
     { L"Not", L"Nenhuma", L"없음", L"无", L"なし" },
     { L"NUM%d", L"NUM%d", L"NUM%d", L"NUM%d", L"NUM%d" },
@@ -581,6 +581,11 @@ static const wchar_t *const TR_TABLA[TR_N][TR_N_IDIOMAS] = {
     { L"A ya pasó y no está grabado: sigues sin bucle hasta la meta. En la próxima carrera (o con «Repetir» de la Pausa) corres hasta A y desde ahí sigue el bucle.", L"A já passou e não foi gravado: você segue sem loop até a chegada. Na próxima corrida (ou com «Repetir» da Pausa) você corre até A e dali segue o loop.", L"A는 이미 지났고 기록되지 않았습니다: 결승까지 반복 없이 진행합니다. 다음 레이스(또는 일시정지의 «다시 하기»)에서 A까지 달리면 그때부터 반복됩니다.", L"A 已经过去且未记录：将不循环直到终点。下一局（或暂停菜单的«重来»）跑到 A 后开始循环。", L"A はすでに過ぎていて記録されていません：ゴールまでループなしで進みます。次のレース（またはポーズの«リトライ»）で A まで走ると、そこからループします。" },
     { L"En la carrera: F9 lo esconde · Z lo fija · X / C más grande o más chico · V / B a la izquierda o a la derecha · N / M arriba o abajo.", L"Na corrida: F9 esconde · Z fixa · X / C maior ou menor · V / B para a esquerda ou direita · N / M para cima ou baixo.", L"레이스 중: F9 숨기기 · Z 고정 · X / C 크게 또는 작게 · V / B 왼쪽 또는 오른쪽 · N / M 위 또는 아래.", L"比赛中：F9 隐藏 · Z 固定 · X / C 放大或缩小 · V / B 向左或向右 · N / M 向上或向下。", L"レース中：F9 で隠す · Z で固定 · X / C で拡大・縮小 · V / B で左右 · N / M で上下。" },
     { L"Próximamente: velocidad de práctica (50 a 150 %), repetir un tramo A/B y Anticaída. Sólo en práctica o jugando solo.", L"Em breve: velocidade de prática (50 a 150 %), repetir um trecho A/B e Anti-queda. Só na prática ou jogando sozinho.", L"곧 추가: 연습 속도 (50~150 %), A/B 구간 반복, 낙하 방지. 연습 또는 혼자 플레이할 때만.", L"即将推出：练习速度（50 至 150 %）、重复 A/B 区段和防掉落。仅限练习或单人游戏。", L"近日公開：練習速度（50〜150 %）、A/B 区間リピート、落下防止。練習中またはソロプレイのみ。" },
+    { L"Experimental", L"Experimental", L"실험적", L"实验性", L"実験的" },
+    { L"Combo en vivo (jugadores y espectadores)", L"Combo ao vivo (jogadores e espectadores)", L"실시간 콤보 (플레이어와 관전자)", L"实时连击（玩家和观众）", L"ライブコンボ（プレイヤーと観戦者）" },
+    { L"PD en vivo en las tarjetas", L"PD ao vivo nos cartões", L"카드에 실시간 PD", L"卡片上的实时 PD", L"カードにライブPD" },
+    { L"El globo del combo de cada rival, en vivo y con el BREAK cuando falla: igual para el que corre y el que mira.", L"O balão do combo de cada rival, ao vivo e com o BREAK quando erra: igual para quem corre e quem assiste.", L"각 상대의 콤보 말풍선을 실시간으로, 실수하면 BREAK와 함께: 달리는 사람과 관전자 모두 똑같이.", L"每个对手的连击气泡，实时显示，失误时显示 BREAK：跑者和观众看到的一样。", L"各ライバルのコンボ吹き出しをライブで、ミスするとBREAK付き：走る人も観戦者も同じ。" },
+    { L"El porcentaje (PD) de cada corredor en su tarjeta, en vivo.", L"A porcentagem (PD) de cada corredor no seu cartão, ao vivo.", L"각 주자의 카드에 퍼센트(PD)를 실시간으로.", L"每位跑者卡片上的百分比（PD），实时显示。", L"各ランナーのカードにパーセント（PD）をライブで。" },
     { L"Sin chocar", L"Sem bater", L"충돌 없음", L"不碰撞", L"ぶつからない" },
     { L"Choque latino", L"Batida latina", L"라티노 충돌", L"拉丁碰撞", L"ラテン式衝突" },
     { L"Armada", L"Pronta", L"대기 중", L"已就绪", L"待機中" },

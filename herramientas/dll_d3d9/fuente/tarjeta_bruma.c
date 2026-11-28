@@ -139,7 +139,7 @@
  *   del círculo R2FrienDz de RELLENO, en el color del rayo (jugadorX) y en el del video (Boreal). Los ASIENTOS son 4 marcos
  *   más de la §11 (misma forma y vuelta: SLR_CANT); las TARJETAS van como una flama más, DESPUÉS de las de las Ondas, con
  *   la vuelta del rayo (RAY_N_SALA sin mezcla en RAY_MS). */
-#define AUR_HOJAS 5              /* len(rayo_aurora_crear.items()) + 1 de reflejo_estelar_crear (§13) */
+#define AUR_HOJAS 8              /* len(rayo_aurora_crear.items()) + 1 de reflejo_estelar_crear (§13) */
 #define AUR_HOJA0 (OND_HOJA0 + OND_HOJAS)
 /* §13 · «REFLEJO ESTELAR» (`herramientas/reflejo_estelar_crear.py`, 05-nov): la imagen de anonimo03 (la pareja, la luz, el
  *   cielo que cae, el agua) animada en capas. Misma forma y vuelta que el Rayo jugadorX: el ASIENTO es un marco más de la

@@ -48,6 +48,11 @@
 #define GC_APAGA 600                                          /* ms del apagado suave */
 
 static BYTE *g_gc_base = NULL;
+/* ★ 26-nov · en_vivo_real.c (se incluye DESPUÉS): las fallas de los rivales, en vivo */
+static int evr_recibir(BYTE *g, int sub, DWORD a, DWORD b);
+static void evr_mandar(void *red, BYTE *p);
+static void evr_ver_corredor(BYTE *p, BYTE *g);
+static int evr_globo(int k, int *combo, int *f);
 static int g_gc_activo = 0;
 static int g_gc_dy = 10, g_gc_log = 0;
 static float g_gc_z = 0.78f;
@@ -447,6 +452,7 @@ static void __fastcall gc_jugador(BYTE *p, void *nada, float t)
     ((F_GC_JUGADOR)GCV(0x500AB0))(p, t);
     BYTE *g = gc_juego();
     if (g_gc_activo && p && g) gc_huerfanos(p[0x49]);
+    if (g_gc_activo && p && g) evr_ver_corredor(p, g);
     if (g_gc_activo && g && g != g_gc_juego_ant) {              /* otra carrera: la historia de la anterior no vale */
         g_gc_juego_ant = g;
         g_gc_seguia = -1;
@@ -473,6 +479,7 @@ static void __fastcall gc_jugador(BYTE *p, void *nada, float t)
     if (!g_gc_activo || !p || !g || g[0xC01] || p[0x49] != gc_mi_asiento()) return;   /* el espectador no corre */
     void *red = *(void **)GCV(0x9314D0);
     if (!red) return;
+    evr_mandar(red, p);                                         /* ★ 26-nov: mis fallas, a toda la sala */
     int mirar = g[0xC1C] != 0, relevo = (*(WORD *)(g + 0xC) & 0x40) != 0;
     gc_calc_mandar(red, p[0x49], mirar);                        /* ★ la calculadora: sólo si alguien mira */
     if (!mirar && !relevo) { g_gc_enviado = -1; return; }       /* ★ el globo: sólo relevo o con espectadores */
@@ -499,6 +506,7 @@ static void __fastcall gc_jugador(BYTE *p, void *nada, float t)
 static void __fastcall gc_ff4e(BYTE *g, void *nada, int sub, DWORD a, DWORD b)
 {
     (void)nada;
+    if (evr_recibir(g, sub & 0xFF, a, b)) return;              /* ★ 26-nov: la falla de un rival (sub 0x73) */
     if (((sub & 0xFF) == GC_SUB_CALC || (sub & 0xFF) == GC_SUB_BASE) && (a >> 24) == GC_FIRMA_CALC) {
         if (g[0xC01]) gc_calc_recibir(sub & 0xFF, a, b);     /* sólo el que mira */
         return;
@@ -718,8 +726,14 @@ static void __fastcall gc_etiqueta(BYTE *p, void *nada, int x, int y)
     BYTE *g = gc_juego();
     if (!g_gc_activo || !p || !g) return;
     int k = p[0x49], esp = g[0xC01] != 0;
-    if (k >= 16 || (!esp && (k != g[0x5D] || k == gc_mi_asiento()))) return;
-    if (!(*(WORD *)(g + 0xC) & 0x40) && !esp) return;            /* sólo en el relevo o si soy espectador */
+    if (k >= 16) return;
+    int mio = k == gc_mi_asiento(), relevo = (*(WORD *)(g + 0xC) & 0x40) != 0;
+    /* el que corre: en el relevo, el compañero que sigue la cámara (su 0x70); ★ 26-nov y en TODOS los modos, cada rival
+     *   con el combo que arma en_vivo_real.c ([en_vivo_real] globos=1) */
+    int relevo_sigo = !esp && relevo && k == g[0x5D] && !mio && g_gc_t[k];
+    int evr_c = 0, evr_f = 256;
+    int de_evr = !esp && !relevo_sigo && !mio && evr_globo(k, &evr_c, &evr_f);
+    if (!esp && !relevo_sigo && !de_evr) return;
     DWORD ahora = GetTickCount();
     int combo, f = 256;
     float esc = 1.0f;
@@ -741,7 +755,11 @@ static void __fastcall gc_etiqueta(BYTE *p, void *nada, int x, int y)
             f = 256 - (int)((edad - GC_SIN_DATOS - g_tx_espera_ms) * 256 / GC_APAGA);
         }
         esc = GC_CHICO;
-    } else if (g_gc_t[k]) {
+    } else if (de_evr) {
+        combo = evr_c;                                          /* ★ 26-nov: el rival, al 75 %, como los del que mira */
+        f = evr_f;
+        esc = GC_CHICO;
+    } else if (relevo_sigo) {
         /* ★ el apagado suave: «terminó su tramo» (lo avisa su juego) o sin noticias hace rato (un NPC que llegó) */
         DWORD desde = g_gc_fin[k] ? g_gc_fin[k] : g_gc_t[k] + GC_SIN_DATOS;
         if (ahora > desde) f = 256 - (int)((ahora - desde) * 256 / GC_APAGA);

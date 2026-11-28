@@ -57,6 +57,17 @@ indefendible, y es lo que hace que a los proyectos de fans en general los cierre
 Si levantás tu propio servidor con este código, hacé lo que te parezca: la AGPL te lo permite,
 incluso cobrar. Pero entonces tus jugadores tienen derecho a tu código.
 
+## Qué guarda el servidor de tu PC
+
+Al entrar al lobby, el juego le manda al servidor la MAC de tu placa de red (lo hace el cliente
+original, no lo agregamos nosotros). El servidor **no la guarda**: guarda una *huella*, un HMAC-SHA256
+de la MAC con una clave que sólo tiene el servidor. Sin esa clave, la huella no sirve para averiguar tu
+MAC ni para cruzarla con otros lados. Tampoco se escribe en el log.
+
+La huella se usa sólo para el antitrampa y el anti-multicuenta: cuántas cuentas entran a la vez desde la
+misma PC, qué cuentas comparten PC (lo ve un GM), y que una cuenta baneada no vuelva desde la misma PC
+con otra cuenta. Lo que no se vio en 90 días se borra solo (`R2_MAQUINA_DIAS`). Ver `servidor/maquina.py`.
+
 ## Si sos de Softnyx o VALOFE
 
 Abrí un issue en el repositorio y lo hablamos. No hay ninguna intención de competir con nada de

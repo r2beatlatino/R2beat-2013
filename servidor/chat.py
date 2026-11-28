@@ -119,6 +119,10 @@ def puede_usar_consola(st, comando):
     c = str(comando).lower()
     if c in CONSOLA_SIN_GM or c in COMANDOS_TODOS:          # ★ 16-nov: COMANDOS_TODOS (R2_COMANDOS_TODOS)
         return True
+    if getattr(st, "gm_npc", None):
+        # ★ 27-nov · la GM NPC: SUS comandos y nada más (ni los de GM de más, ni los de desarrollo). `gm_npc.COMANDOS`
+        from . import gm_npc
+        return c in gm_npc.COMANDOS
     if c in COMANDOS_GM:
         return gm.es_gm(st) or (c in COMANDOS_STREAMER and es_streamer(st))
     if CONSOLA_GM_TODOS:
@@ -183,6 +187,9 @@ def comando_chat(st, texto):
         log("LOBBY", f"  · consola: usn={getattr(st, 'usn', None)} escribió '.{c}' y se rechazó: "
                      f"{_por} -> va como chat normal")
         return None
+    if getattr(st, "gm_npc", None):              # ★ 27-nov: cada comando de la GM NPC, a nombre del moderador
+        from . import gm_npc
+        gm_npc.al_comando(st, texto)
 
     if c in ("libre", "todos", "all"):
         # ★★ CANAL LIBRE EN VIVO: el FFC9 con un byte FUERA de 1..8 -> `0x58CEF0` devuelve la
@@ -1524,6 +1531,12 @@ def comando_chat(st, texto):
             return _at.perdonar_pendientes(" ".join(args[1:]), _quien)
         return _at.resumen_pendientes()
 
+    if c == "maquina":
+        # ★ 25-nov · `.maquina <apodo>` qué otras cuentas entraron desde su PC · `.maquina perdonar <apodo>` sacarle el
+        #   baneo de PC (el de la cuenta va aparte). Ver `maquina.py`.
+        from . import maquina as _maq
+        return _maq.comando_gm(args, f"usn {getattr(st, 'usn', None)}")
+
     if c in ("ayuda", "help", "?"):
         # ═══════════════════════════════════════════════════════════════════════════════════════
         # ★★★★★ LA AYUDA MUESTRA LO QUE **VOS** PODÉS USAR, NO LA LISTA ENTERA (2026-09-15)
@@ -1568,6 +1581,7 @@ def comando_chat(st, texto):
             ("gm", "gm",    ".gm | .gm recargar      la puerta de GM"),
             ("gm", "campana", ".campana [sub] [tipo] [rcoin]   SONDA del cartel de la campana"),
             ("gm", "sanciones", ".sanciones | .sanciones aplicar [ya] | .sanciones perdonar <apodo>   antitrampa en tanda"),
+            ("gm", "maquina", ".maquina <apodo> | .maquina perdonar <apodo>   cuentas de la misma PC / sacar baneo de PC"),
             # ★ 04-oct: el STREAMER (`streamers.txt`) ve SÓLO sus dos. Al GM no se le listan: ya tiene los suyos
             ("--STREAMER--", "--STREAMER--", "--- streamer ---"),
             ("streamer", "anuncio", ".anuncio <texto>        aviso a TODO el server, por el chat"),

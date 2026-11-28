@@ -140,6 +140,9 @@ def atender_panel(h, metodo, partes, cuerpo=b""):
         return h._mandar(404, {"error": "no existe"})
     quien = h.headers.get("X-Coordinador-Quien") or "coordinador"
     admin = h.headers.get("X-Coordinador-Admin") == "1"
+    if partes[0] == "gmnpc":                # ★ 27-nov: las cuentas GM NPC — SÓLO por acá (el panel viejo no las tiene)
+        from . import gm_npc
+        return panel_admin.con_externo(quien, admin, lambda: gm_npc.atender(h, metodo, partes, cuerpo, quien))
     if metodo == "GET":
         return panel_admin.con_externo(quien, admin, lambda: panel_admin.atender_get(h, partes))
     return panel_admin.con_externo(quien, admin, lambda: panel_admin.atender_post(h, partes, cuerpo))

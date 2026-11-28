@@ -622,8 +622,9 @@ def h_ffa8_campana(st, cmd, data):
 
     _metal, _plus = CAMPANAS[_item]
     _nombre = f"campana de {_metal}{'+' if _plus else ''}"
-    from . import antitrampa                  # ★ 18-nov: campana en cada ronda = campanas automáticas
-    antitrampa.al_campana(st)
+    from . import antitrampa, gm_npc          # ★ 18-nov: campana en cada ronda = campanas automáticas
+    if not gm_npc.de(st):                     # ★ 27-nov: la GM NPC está PARA tocarlas (y es de un moderador)
+        antitrampa.al_campana(st)
 
     if not CAMPANA_ACTIVA:
         log("LOBBY", "  ⚠ CAMPANA apagada por perilla (CAMPANA_ACTIVA) -> no se difunde")
@@ -670,6 +671,7 @@ def h_ffa8_campana(st, cmd, data):
 
     if CAMPANA_UNA_POR_SALA:
         _SONADA.add((_rid, _metal))
+    gm_npc.al_campana(st, _item, _rid)        # ★ 27-nov: a la auditoría, si la tocó una GM NPC
 
     # ★ Y SE ANOTA DÓNDE ESTABA PARADO. Es el único dato de posición que el cliente nos da, y es
     #   justo el que hace falta para que al que entre después no se le apilen las campanas.
