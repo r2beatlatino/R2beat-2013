@@ -73,7 +73,7 @@ def evs(**f):
 
 
 def hola(c, extra=""):
-    antitrampa.al_ff59(c, f"USN:{c.usn}\nR2AT v=1 exe={EXE_BUENO} previo=0 dll=abc123 lat=60{extra}")
+    antitrampa.al_ff59(c, f"USN:{c.usn}\nR2AT v=1 exe={EXE_BUENO} previo=0 dll=7e60e3e2e1b0 lat=60{extra}")
 
 
 # ═══ 1 · el parser de los R2AT ═══════════════════════════════════════════════════════════════════════════════════
@@ -106,7 +106,7 @@ def probar_registro():
     ok(e["categoria"] == "dll_no_autorizada" and e["riesgo"] == "alto" and e["origen"] == "cliente",
        "categoría, riesgo y origen (lo declara la dll)")
     ok(e["partida"] == "7:abcdef01" and e["sesion"], "la sesión del juego y la partida (sala:corrida)")
-    ok("exe " in (e["version_cliente"] or "") and "dll abc123" in (e["version_antitrampa"] or ""),
+    ok("exe " in (e["version_cliente"] or "") and "dll 7e60e3e2e1b0" in (e["version_antitrampa"] or ""),
        "las versiones del cliente y del antitrampa")
     ok("speedhack.dll" in e["evidencia"] and e["estado"] == "nuevo", "la evidencia (el renglón) y el estado nuevo")
     antitrampa.al_ff59(c, "R2AT modulo=speedhack.dll s=3")
@@ -381,7 +381,7 @@ def probar_tablero():
         ok(por["n2hock_permitido"]["usa"].startswith("Ñ2Hock: Sin piedra") and por["n2hock_permitido"]["usa_tipo"] == "permitido",
            "Sin piedra de Ñ2Hock: permitido (verde)")
         ok(por["farmeo"]["usa"] == "Auto farmeo" and por["farmeo"]["usa_tipo"] == "trampa", "el farmeo: «Auto farmeo»")
-        ok(por["memoria_ajena"]["usa"] == "", "revés: la memoria ajena (la tiene todo juego) no se muestra como «usa»")
+        ok("memoria_ajena" not in por, "★ la memoria ajena (la tiene todo juego) ni siquiera llega al panel")
         j = json.loads(pedir("/api/jugador?cuenta=farmero")[1])
         textos = [x["texto"] for x in j["usando"]]
         tipos = [x["tipo"] for x in j["usando"]]

@@ -120,6 +120,7 @@ valor). Los bytes van como hex separados por `_`: `E9_46_81_A9_03_90_90_6A`. El 
 | `proceso_prohibido` | ★ avisar | dll | Tiene abierto un programa de trampas. **Solo no prueba nada** (26-nov): ver `manipulacion_correlacionada` (§ 10) |
 | `farmeo` | expulsar | farmeo | Dos o más señales de farmeo distintas en la misma sesión (`ANTITRAMPA_FARMEO_SENALES`) |
 | `combo_imposible` | retener | cartel | Más combo que notas tiene la canción |
+| `llegada_imposible` | **retener** | cartel | Llegó a la meta en menos de la mitad de lo que dura como poco su canción según el chart (la «llegada simulada»). ★ 28-nov: de «avisar» a «retener» (Sorbito00 llegó en 0,5 s a una de 145 s y cobró) |
 | `porcentaje_imposible` | retener | cartel | PD o estrellas por encima de 100 |
 | `precision_imposible` | retener | cartel | Milésimas > 999, o 100 % con milésimas (el tope es 100.000) |
 | `manija_escritura` | registrar | dll | Un programa tiene abierto el juego con permiso de escribir su memoria (Candy, R2AutoRouteLab: no se inyectan). El sistema no cuenta |
@@ -141,11 +142,13 @@ valor). Los bytes van como hex separados por `_`: `E9_46_81_A9_03_90_90_6A`. El 
 | `campanas_automaticas` | avisar | farmeo | Tocó campana en cada ronda, muchas rondas seguidas |
 | `combo_repetido` | avisar | farmeo | El mismo combo en canciones distintas (fallar a propósito al llegar a N) |
 | `precision_constante` | avisar | farmeo | La misma precisión en canciones de niveles muy distintos |
+| `auto_perfecto` | avisar | farmeo | ★ 28-nov: combo completo y precisión ≥ 98 en 6 de sus últimas 8 carreras de nivel ≥ 14 (`ANTITRAMPA_PERFECTA_*`). Señal fuerte de farmeo, la mide el server |
 | `modulo_permitido` | registrar | dll | Un módulo con nombre «de trampa» que no lo es: el motor de práctica de Ñ2Hock, `ToolBitPracticeEngine_<hash>.dll` (`ANTITRAMPA_MODULOS_PERMITIDOS`) |
 | `exe_desconocido` | registrar | dll | El R2Beat.exe no es uno de los aceptados (`ANTITRAMPA_EXE_MD5`) |
-| `memoria_ajena` | registrar | dll | Hay código inyectado (Ñ2Hock lo tiene siempre: por eso sólo se registra) |
+| `memoria_ajena` | registrar | dll | Hay código inyectado (la tiene TODO juego: controlador de video, Discord…). ★ 28-nov: fuera del panel (`ANTITRAMPA_FUERA_DEL_PANEL`): sólo log y jsonl |
 | `depurador` | registrar | dll | Un depurador pegado al juego |
-| `sin_antitrampa` | registrar | cartel | Terminó una carrera sin que su dll mandara el «hola» |
+| `sin_antitrampa` | **retener** | cartel | ★ 28-nov: sin el «hola» ni un latido de nuestra dll en `ANTITRAMPA_SIN_DLL_GRACIA_S` (150 s), o con la dll apagada en su ini: la carrera no paga y al jugador se le avisa una vez (`ANTITRAMPA_SIN_DLL_AVISO`). El latido cubre el reinicio del server (el «hola» va una vez por juego abierto) |
+| `dll_desconocida` | avisar | dll | ★ 28-nov: el «hola» trae el md5 de una d3d9.dll que no es ninguna de las nuestras (`ANTITRAMPA_DLL_MD5` + exe/d3d9.dll y datos/d3d9_prod.dll al arrancar). ⚠ Lo declara el cliente |
 | `expulsa_espectadores` | registrar | farmeo | El anfitrión echa espectadores en serie |
 
 Las acciones se cambian en `ANTITRAMPA_REGLAS` (`ajustes.py`), una por regla.
@@ -445,6 +448,17 @@ Fuentes: el código de ToolBit / Ñ2Hock externo y R2AutoRouteLab2013 (también 
 Cada evento guarda en su evidencia `usa` (una etiqueta corta: «Juego automático», «Auto farmeo», «Automático PD0 silencioso (R2AutoRouteLab2013)», «Programa abierto: cheatengine.exe», «Ñ2Hock: Sin piedra»…) y `usa_tipo`: `trampa` (rojo), `sospecha` (amarillo), `permitido` (verde, Ñ2Hock) o `info` (gris). La etiqueta sale de `antitrampa_firmas.usa_de` (del catálogo de firmas o, si no, de la regla); los eventos viejos se etiquetan al leerlos. La memoria ajena no se muestra (la tiene todo juego).
 
 El tablero la muestra en una columna «Está usando» (alertas, tiempo real, detecciones), en «Conectados» (lo de la sesión) y en la ficha del jugador («Está usando:» con lo más grave primero; lo marcado como falso positivo no cuenta). `/api/eventos` y `/api/jugador` (`usando`) la devuelven para cualquier otro panel.
+
+### 10.6d ★ 28-nov · Para el panel del administrador
+
+Todo sale de la tabla `antitrampa_eventos` (o de `/api/eventos` y `/api/jugador` del tablero). Lo nuevo para mostrar:
+
+- `evidencia.usa` — **qué está usando**, en palabras («Auto farmeo», «Automático PD0 silencioso (R2AutoRouteLab2013)», «Programa abierto: cheatengine.exe», «Ñ2Hock: Sin piedra»). Mostrarlo como etiqueta al lado del jugador.
+- `evidencia.usa_tipo` — el color: `trampa` (rojo), `sospecha` (amarillo), `permitido` (verde: Ñ2Hock), `info` (gris).
+- `evidencia.programa` / `evidencia.funcion` / `evidencia.clase` — cuando la dirección tocada está en el catálogo de firmas.
+- `/api/jugador` → `usando`: `[{texto, tipo, veces, ultimo}]`, lo más grave primero, sin lo marcado como falso positivo: para un «Está usando:» arriba de la ficha.
+- Los eventos viejos no traen `usa`: `antitrampa_firmas.usa_de(regla, evidencia)` lo calcula igual (es lo que hace el tablero).
+- El ruido de todos (`memoria_ajena`, `manija_conocida`, `arranque_restaurado`) ya no crea eventos.
 
 ### 10.7 Límites (lo que esto NO resuelve)
 

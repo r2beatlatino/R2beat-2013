@@ -154,6 +154,8 @@ _USA_REGLA = {
     "campanas_automaticas": ("Auto farmeo: campanas automáticas", "sospecha"),
     "combo_repetido": ("Auto farmeo: falla siempre en el mismo combo", "sospecha"),
     "precision_constante": ("Auto farmeo: misma precisión en todo", "sospecha"),
+    "auto_perfecto": ("Auto perfect (todo perfecto en difíciles)", "sospecha"),
+    "dll_desconocida": ("DLL del antitrampa cambiada", "sospecha"),
     "misma_cancion": ("Auto farmeo: siempre la misma canción", "sospecha"),
     "carreras_sin_hablar": ("Auto farmeo: muchas carreras sin hablar", "sospecha"),
     "expulsa_espectadores": ("Echa espectadores en serie", "sospecha"),

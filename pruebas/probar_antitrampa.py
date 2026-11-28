@@ -157,9 +157,15 @@ def probar_cliente():
     ok(antitrampa.al_ff59(c, "USN:5151\nc2DImage::LoadImage - rnr_bg/x.tga") is False,
        "revés: un FF59 normal no es del antitrampa")
     n0 = len(marcas_guardadas())
-    ok(antitrampa.juzgar_cartel(c, 60, 10, 90, 50, 77) is False, "sin «hola» la carrera se paga…")
-    antitrampa.juzgar_cartel(c, 120, 11, 90, 50, 77)
-    ok(nuevas(n0) == ["sin_antitrampa"], "…pero se anota UNA vez que no mandó el «hola»")
+    ok(antitrampa.juzgar_cartel(c, 60, 10, 90, 50, 77) is False, "★ sin «hola», dentro de la gracia, la carrera se paga…")
+    ok(nuevas(n0) == [], "…y todavía no se anota (se espera el latido)")
+    with antitrampa._cuentas_lock:
+        antitrampa._sesion(5151)["desde"] -= antitrampa.ANTITRAMPA_SIN_DLL_GRACIA_S + 1
+    c.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(c, 120, 11, 90, 50, 77) is True, "★ pasada la gracia sin «hola» ni latido: NO cobra")
+    c.at_ultimo = None
+    antitrampa.juzgar_cartel(c, 130, 12, 90, 50, 77)
+    ok(nuevas(n0) == ["sin_antitrampa"], "…y se anota UNA vez")
     n0 = len(marcas_guardadas())
     antitrampa.al_ff59(c, "USN:5151\nR2AT v=1 exe=0123456789abcdef0123456789abcdef previo=2 previo_va=0x00501000")
     ok(nuevas(n0) == ["exe_desconocido", "codigo_previo"], "«hola» con otro exe y el exe ya tocado")
@@ -915,9 +921,10 @@ def probar_suelo_chart():
         antes = len(marcas_guardadas())
         c.at_ultimo = None
         antitrampa.marcar_salida(c, ahora=60000.0)
-        antitrampa.juzgar_cartel(c, 600, 200, 95, 80, 7777, ahora=60011.0)
+        retener = antitrampa.juzgar_cartel(c, 600, 200, 95, 80, 7777, ahora=60011.0)
         ok(len(marcas_guardadas()) == antes + 1 and marcas_guardadas()[-1]["regla"] == "llegada_imposible",
            "por juzgar_cartel: llegada de 10 s en una canción nueva queda marcada")
+        ok(retener is True, "★ 28-nov: y esa carrera NO cobra (llegada_imposible = retener)")
         ok(len(almacen.antitrampa_llegadas(7777, 30)) == 0, "y no se guarda como llegada normal")
         c.at_ultimo = None
         antitrampa.marcar_salida(c, ahora=70000.0)
@@ -926,6 +933,89 @@ def probar_suelo_chart():
         ok(len(almacen.antitrampa_llegadas(7777, 30)) == 1, "y esa sí se guarda")
     finally:
         notas.duracion_minima_de = antes_dur
+
+
+def probar_mejoras_28nov():
+    print("★ 28-nov · sin dll sin premio, la dll nuestra, auto perfect, el ruido fuera del panel, una línea por página:")
+    from servidor import antitrampa_eventos as eventos, basedatos
+
+    def en_panel(usn):
+        eventos.esperar()
+        from servidor import almacen
+        return [x["regla"] for x in almacen.ev_listar({"usn": usn}, 100)]
+
+    # sin dll: el latido alcanza (un reinicio del server no repite el «hola»)
+    usn, _m = basedatos.cuenta_crear("conlatido", "P" * 64)
+    c = Conn()
+    c.usn, c.conn = usn, Socket()                    # sin el «hola» de jugador()
+    antitrampa.al_ff59(c, "R2AT latido=7 perdidas=0 abiertas=0")
+    with antitrampa._cuentas_lock:
+        antitrampa._sesion(usn)["desde"] -= antitrampa.ANTITRAMPA_SIN_DLL_GRACIA_S + 1
+    c.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(c, 7200, 300, 90, 50, 77) is False,
+       "sin «hola» pero con latido (el server se reinició): la dll está, cobra")
+    # sin dll: nada en la gracia
+    usn, _m = basedatos.cuenta_crear("sindll", "Q" * 64)
+    c = Conn()
+    c.usn, c.conn = usn, Socket()                    # sin el «hola» de jugador()
+    with antitrampa._cuentas_lock:
+        antitrampa._sesion(usn)["desde"] -= antitrampa.ANTITRAMPA_SIN_DLL_GRACIA_S + 1
+    c.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(c, 7200, 300, 90, 50, 77) is True, "sin nada de la dll pasada la gracia: no cobra")
+    c.at_ultimo = None
+    antitrampa.juzgar_cartel(c, 7300, 301, 90, 50, 78)
+    dichos = [n for _cmd, n in c.enviados if "antitrampa" in str(n)]
+    ok(len(dichos) == 1, "al jugador se le avisa UNA vez que no tiene el antitrampa")
+    # la dll apagada en su ini
+    usn, _m = basedatos.cuenta_crear("apagada", "R" * 64)
+    c = jugador(usn)
+    antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+    antitrampa.al_ff59(c, "R2AT apagado=1")
+    c.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(c, 7200, 300, 90, 50, 77) is True, "con la dll apagada en su ini: no cobra")
+    # nuestra dll
+    usn, _m = basedatos.cuenta_crear("dllrara", "S" * 64)
+    c = jugador(usn)
+    antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0 dll=deadbeef0000 lat=60")
+    ok("dll_desconocida" in reglas_de(usn), "una dll que no es nuestra: dll_desconocida")
+    usn, _m = basedatos.cuenta_crear("dllnuestra", "T" * 64)
+    c = jugador(usn)
+    antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0 dll=916babe83573 lat=60")
+    ok("dll_desconocida" not in reglas_de(usn), "revés: una de las nuestras no marca")
+    # el ruido fuera del panel
+    antitrampa.al_ff59(c, "R2AT memoria=0x12E70000 regiones=5")
+    antitrampa.al_ff59(c, "R2AT manija=n2launcher.exe acceso=0x1FFFFF")
+    antitrampa.al_ff59(c, "R2AT memoria=0x12E70000 regiones=6")
+    p = en_panel(usn)
+    ok("memoria_ajena" not in p and "manija_conocida" not in p, "la memoria ajena y el launcher no llegan al panel…")
+    ok(reglas_de(usn).count("memoria_ajena") == 1 and "manija_conocida" in reglas_de(usn),
+       "…pero quedan en el log una vez por sesión")
+    # una línea por página: cada función con su nombre
+    usn, _m = basedatos.cuenta_crear("paginas", "U" * 64)
+    c = jugador(usn)
+    antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0" + chr(10) + "R2AT codigo=0x0054F31A paginas=1 bytes=90_90_90_90_90_90_8B_46" + chr(10)
+                          + "R2AT codigo=0x004FE3A0 paginas=1 bytes=C3_90_90_90_90_8B_0D_00")
+    det = " ".join(m["detalle"] for m in marcas_guardadas() if m.get("usn") == usn)
+    ok("Sin piedra" in det and "Cámara fija" in det, "dos páginas en la misma vuelta: el panel nombra las dos")
+    # auto perfect
+    antes = (notas.nivel_de, notas.combo_total_de)
+    notas.nivel_de = lambda cancion, por_defecto=None: 16
+    notas.combo_total_de = lambda cancion: 900
+    try:
+        usn, _m = basedatos.cuenta_crear("perfecto", "V" * 64)
+        c = jugador(usn)
+        for i in range(8):
+            c.at_ultimo = None
+            antitrampa.juzgar_cartel(c, 7200 + i, 900, 99, 90, 300 + i)
+        ok("auto_perfecto" in reglas_de(usn), "combo completo y 99 % en 8 de 8 difíciles: auto_perfecto")
+        usn, _m = basedatos.cuenta_crear("bueno", "W" * 64)
+        c = jugador(usn)
+        for i in range(8):
+            c.at_ultimo = None
+            antitrampa.juzgar_cartel(c, 7200 + i, 900 if i < 4 else 850, 99 if i < 4 else 93, 90, 300 + i)
+        ok("auto_perfecto" not in reglas_de(usn), "revés: un buen jugador (4 de 8 perfectas) no marca")
+    finally:
+        notas.nivel_de, notas.combo_total_de = antes
 
 
 def main():
@@ -943,6 +1033,7 @@ def main():
         probar_llegadas()
         probar_mediana_envenenable()
         probar_suelo_chart()
+        probar_mejoras_28nov()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)
     if FALLAS:
