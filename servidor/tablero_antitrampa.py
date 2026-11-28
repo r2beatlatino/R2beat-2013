@@ -170,6 +170,11 @@ def accion(admin, d):
         return ev.banear(admin, cuenta, d.get("motivo", ""), evento)
     if a == "desbanear":
         return ev.desbanear(admin, cuenta)
+    if a == "sancionar":                               # ★ 28-nov: la tanda, ya, sólo para esta cuenta
+        from . import antitrampa
+        lineas = antitrampa.sancionar_tanda(admin, ya=True, solo_cuenta=cuenta)
+        hecho = len(lineas) > 1 and "NO se pudo" not in " ".join(lineas) and "ERROR" not in " ".join(lineas)
+        return hecho, " · ".join(lineas)
     return False, f"acción desconocida: {a}"
 
 
@@ -371,6 +376,8 @@ dialog::backdrop{background:#000a}.acciones{display:flex;gap:6px;flex-wrap:wrap;
 <option value="alto">alto o más</option><option value="critico">crítico</option></select>
 <select id="f-estado"><option value="">todo estado</option><option>nuevo</option><option>revisado</option><option>confirmado</option>
 <option>descartado</option><option>sancionado</option></select>
+<select id="f-usa"><option value="">todo lo que usa</option><option value="trampa">sólo trampas</option>
+<option value="sospecha">trampas y sospechas</option></select>
 <input id="f-desde" type="date"><input id="f-hasta" type="date"><button class="btn" id="buscar">Buscar</button></div>
 <table><thead><tr><th>Cuándo</th><th>Jugador</th><th>Está usando</th><th>Categoría</th><th>Regla</th><th>Riesgo</th><th>Conf.</th><th>Origen</th>
 <th>Reinc.</th><th>Rep.</th><th>Estado</th></tr></thead><tbody id="evs"></tbody></table></section>
@@ -402,6 +409,7 @@ for(const b of $("nav").querySelectorAll("button"))b.addEventListener("click",()
 function ver(v){VISTA=v;for(const b of $("nav").querySelectorAll("button"))b.classList.toggle("on",b.dataset.v===v);
  for(const s of document.querySelectorAll("main>section"))s.classList.toggle("oculto",s.id!=="v-"+v);cargar()}
 function jug(e){return (e.nick||"")+(e.cuenta?" ("+e.cuenta+")":e.usn?" (usn "+e.usn+")":"")}
+function pasaUsa(e,sel){if(!sel)return true;if(sel==="trampa")return e.usa_tipo==="trampa";return e.usa_tipo==="trampa"||e.usa_tipo==="sospecha"}
 function filaEvento(e,nuevo,completa){const c=[e.cuando,jug(e),usa(e.usa,e.usa_tipo),CAT[e.categoria]||e.categoria,e.regla,riesgo(e.riesgo),e.confianza+"%",e.origen];
  if(completa)c.push(e.reincidencias);c.push(e.repeticiones,e.estado);const tr=fila(c,"clic"+(nuevo?" nuevo":""));tr.addEventListener("click",()=>detalle(e));return tr}
 async function cargar(){try{
@@ -427,7 +435,8 @@ function barras(id,obj,nombres){const c=$(id);c.textContent="";const ent=Object.
  for(const [k,v] of ent){const f=el("div",null,"fila");f.appendChild(el("div",(nombres&&nombres[k])||k,"n"));const w=el("div",null,"v");const b=el("div",null,"barra");b.style.width=(100*v/max)+"%";w.appendChild(b);f.appendChild(w);f.appendChild(el("div",v));c.appendChild(f)}
  if(!ent.length)c.appendChild(el("div","sin datos","est"))}
 async function buscar(){const p=new URLSearchParams({limite:"300"});for(const k of ["jugador","categoria","estado","desde","hasta"]){const v=$("f-"+k).value;if(v)p.set(k,v)}
- const r=$("f-riesgo").value;if(r)p.set("riesgo_min",r);const d=await api("/api/eventos?"+p);const t=$("evs");t.textContent="";for(const e of d)t.appendChild(filaEvento(e,false,true))}
+ const r=$("f-riesgo").value;if(r)p.set("riesgo_min",r);const d=await api("/api/eventos?"+p);const t=$("evs");t.textContent="";const u=$("f-usa").value;
+ for(const e of d)if(pasaUsa(e,u))t.appendChild(filaEvento(e,false,true))}
 $("buscar").addEventListener("click",buscar);
 function botones(cont,e,cuenta){const acc=el("div",null,"acciones");
  const b=(txt,cls,f)=>{const x=el("button",txt,"btn "+(cls||""));x.addEventListener("click",f);acc.appendChild(x)};
@@ -439,6 +448,7 @@ function botones(cont,e,cuenta){const acc=el("div",null,"acciones");
   b("Levantar suspensión","",()=>hacer({accion:"levantar",cuenta}));
   b("Banear","rojo",()=>{const m=prompt("BANEO PERMANENTE de "+cuenta+". Motivo:","");if(m)hacer({accion:"banear",cuenta,evento:e&&e.evento,motivo:m})});
   b("Desbanear","",()=>{if(confirm("¿Desbanear "+cuenta+"?"))hacer({accion:"desbanear",cuenta})});
+  b("Sancionar ya","rojo",()=>{if(confirm("Aplicar YA la escalera a "+cuenta+" por sus detecciones pendientes (sin esperar la tanda)?"))hacer({accion:"sancionar",cuenta})});
   b("Historial","",()=>jugador(cuenta))}
  cont.appendChild(acc)}
 function detalle(e){const c=$("dlg-c");c.textContent="";c.appendChild(el("h3",e.regla+" · "+jug(e)));

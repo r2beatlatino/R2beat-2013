@@ -71,6 +71,15 @@ from .ajustes import (
     ANTITRAMPA_PERFECTA_PD,
     ANTITRAMPA_PERFECTA_CARRERAS,
     ANTITRAMPA_PERFECTA_VECES,
+    ANTITRAMPA_RETO_FALLOS,
+    ANTITRAMPA_RITMO_PULSOS,
+    ANTITRAMPA_RITMO_SD_MS,
+    ANTITRAMPA_SALTO_NIVEL,
+    ANTITRAMPA_SALTO_RECIENTES,
+    ANTITRAMPA_SALTO_HISTORIA,
+    ANTITRAMPA_SALTO_HISTORIA_MIN,
+    ANTITRAMPA_SALTO_PD_MIN,
+    ANTITRAMPA_SALTO_PUNTOS,
     ANTITRAMPA_R2AT_POR_MINUTO,
     ANTITRAMPA_RELOJ_CLIENTE_TOLERANCIA,
     ANTITRAMPA_RELOJ_CLIENTE_VECES,
@@ -198,6 +207,8 @@ def juzgar_cartel(st, frame, combo, pd, star, cancion, relevo=False, coop=False,
     # una llegada limpia (sin ninguna marca, con meta real, carrera suelta) enseña cuánto tarda la canción
     if not marcas and cancion and frame not in (0, FRAME_SIN_META) and not relevo and not coop and combo > 0:
         _anotar_llegada(cancion, frame, cuenta)
+        if not retener:
+            _salto_precision(st, cancion, pd, milesimas)       # ★ 28-nov
     for regla, detalle in marcas:
         retener |= anotar(st, regla, detalle, {"cancion": cancion, "frame": frame, "combo": combo,
                                                "pd": pd, "star": star}) in _QUE_RETIENEN
@@ -472,6 +483,90 @@ def _codigo_tocado(st, d, ev):
 _DLLS = None
 
 
+_ARCHIVOS_DLL = None
+
+
+def _archivos_dll():
+    """★ 28-nov: {md5 (12): bytes} de nuestras dll que este server tiene en disco (para el reto del latido)."""
+    global _ARCHIVOS_DLL
+    if _ARCHIVOS_DLL is None:
+        import hashlib
+        import os
+        raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        a = {}
+        for rel in (("exe", "d3d9.dll"), ("datos", "d3d9_prod.dll"), ("datos", "d3d9.dll")):
+            try:
+                with open(os.path.join(raiz, *rel), "rb") as f:
+                    b = f.read()
+                a[hashlib.md5(b).hexdigest()[:12]] = b
+            except OSError:
+                pass
+        _ARCHIVOS_DLL = a
+    return _ARCHIVOS_DLL
+
+
+def reto_esperado(archivo, nonce, latido):
+    """El md5 (8, minúsculas) de los 256 bytes que la dll tiene que resumir en ese latido (antitrampa.c, at_hilo)."""
+    import hashlib
+    n = len(archivo)
+    if n <= 512:
+        return None
+    off = ((nonce * 2654435761 + latido * 40503) & 0xFFFFFFFF) % (n - 256)
+    return hashlib.md5(archivo[off:off + 256]).hexdigest()[:8]
+
+
+def _reto_y_ritmo(st, d):
+    """★ 28-nov · el RETO (¿es nuestra dll de verdad?) y el RITMO de las teclas, que vienen en el latido."""
+    h = str(d.get("h") or "").lower()
+    with _cuentas_lock:
+        c = _sesion(st.usn)
+        nonce, dll = c.get("nonce"), str(c.get("dll") or "").lower()[:12]
+    archivo = _archivos_dll().get(dll) if dll else None
+    if h and h != "-" and nonce is not None and archivo is not None and str(d.get("latido", "")).isdigit():
+        bien = reto_esperado(archivo, nonce, int(d["latido"])) == h
+        with _cuentas_lock:
+            c = _sesion(st.usn)
+            c["reto_bien" if bien else "reto_mal"] = c.get("reto_bien" if bien else "reto_mal", 0) + 1
+            marcar = not bien and c["reto_mal"] == ANTITRAMPA_RETO_FALLOS
+        if marcar:
+            anotar(st, "dll_falsa", f"la dll dice ser la nuestra ({dll}…) pero no acierta el reto de sus propios bytes "
+                                    f"({ANTITRAMPA_RETO_FALLOS} latidos): recompilada o cambiada", {},
+                   evidencia={"dll": dll, "latido": d.get("latido"), "h": h})
+    if str(d.get("pulsos", "")).isdigit() and str(d.get("sd", "")).isdigit():
+        pulsos, sd = int(d["pulsos"]), int(d["sd"])
+        if pulsos >= ANTITRAMPA_RITMO_PULSOS and sd <= ANTITRAMPA_RITMO_SD_MS:
+            _senal(st, "teclas_robot", f"{pulsos} teclas en un minuto, cada una apretada {d.get('med', '?')} ms con "
+                                       f"apenas {sd} ms de diferencia (una persona varía mucho más)",
+                   evidencia={"pulsos": pulsos, "media_ms": d.get("med"), "desvio_ms": sd})
+
+
+def _salto_precision(st, cancion, pd, milesimas):
+    """★ 28-nov · el SALTO: anota la precisión de esta carrera limpia y mira si de golpe está muy por encima de la suya."""
+    try:
+        from . import almacen, notas
+        cuenta = _cuenta_de(st)
+        nivel = notas.nivel_de(cancion) if cancion else None
+        if not cuenta or nivel is None:
+            return
+        almacen.antitrampa_anotar_precision(cuenta, cancion, nivel, pd + milesimas / 1000.0)
+        if nivel < ANTITRAMPA_SALTO_NIVEL:
+            return
+        ps = almacen.antitrampa_precisiones(cuenta, ANTITRAMPA_SALTO_NIVEL,
+                                            ANTITRAMPA_SALTO_RECIENTES + ANTITRAMPA_SALTO_HISTORIA)
+    except Exception as e:                    # noqa: BLE001
+        log("TRAMP", f"  ⚠ no pude anotar la precisión de usn={getattr(st, 'usn', None)}: {e!r}")
+        return
+    recientes, antes = ps[:ANTITRAMPA_SALTO_RECIENTES], ps[ANTITRAMPA_SALTO_RECIENTES:]
+    if len(recientes) < ANTITRAMPA_SALTO_RECIENTES or len(antes) < ANTITRAMPA_SALTO_HISTORIA_MIN:
+        return
+    import statistics
+    prom, med = sum(recientes) / len(recientes), statistics.median(antes)
+    if prom >= ANTITRAMPA_SALTO_PD_MIN and prom - med >= ANTITRAMPA_SALTO_PUNTOS:
+        _senal(st, "salto_precision", f"sus últimas {len(recientes)} carreras difíciles promedian {prom:.1f} %; "
+                                      f"antes, la mitad de las suyas no pasaba de {med:.1f} %",
+               evidencia={"recientes": round(prom, 2), "historia": round(med, 2), "carreras_antes": len(antes)})
+
+
 def _dlls_nuestras():
     """★ 28-nov: los md5 (12) de nuestras dll: ANTITRAMPA_DLL_MD5 + exe/d3d9.dll y datos/d3d9_prod.dll de este server."""
     global _DLLS
@@ -509,6 +604,8 @@ def _al_hola(st, d, crudo):
             nuevo["reglas_pendientes"] = set(viejo.get("reglas_pendientes") or ())
         _CUENTAS[st.usn] = nuevo
         c = _sesion(st.usn)
+        n = str(d.get("n") or "")
+        c["nonce"] = int(n, 16) if n and all(ch in "0123456789abcdefABCDEF" for ch in n) and len(n) <= 8 else None
         c.update({"v": d.get("v"), "exe": d.get("exe"), "dll": d.get("dll") or d.get("dllmd5"),
                   "lat": int(d["lat"]) if d.get("lat", "").isdigit() else 0, "ult_latido": time.monotonic(),
                   "seq": int(d["s"]) if d.get("s", "").isdigit() else None})
@@ -544,6 +641,7 @@ def _al_latido(st, d, ahora=None):
     juego acelera también ese reloj."""
     t = time.monotonic() if ahora is None else ahora
     marca = None
+    _reto_y_ritmo(st, d)
     with _cuentas_lock:
         c = _sesion(st.usn)
         c["ult_latido"] = t
@@ -989,11 +1087,13 @@ def resumen_pendientes():
     return lineas
 
 
-def sancionar_tanda(quien="", ya=False):
+def sancionar_tanda(quien="", ya=False, solo_cuenta=None):
     """Aplica la escalera a cada cuenta con detecciones pendientes (de más de `ANTITRAMPA_TANDA_DEMORA_H` horas, o
-    todas con `ya`). -> las líneas para el GM."""
+    todas con `ya`). ★ 28-nov: `solo_cuenta` = sólo esa cuenta (el botón «Sancionar ya» del tablero). -> las líneas."""
     from . import almacen
     filas = almacen.antitrampa_pendientes(0 if ya else ANTITRAMPA_TANDA_DEMORA_H)
+    if solo_cuenta:
+        filas = [f for f in filas if (f.get("cuenta") or "").lower() == str(solo_cuenta).lower()]
     if not filas:
         return ["antitrampa: no hay detecciones para sancionar" + ("" if ya else
                 f" (con mas de {ANTITRAMPA_TANDA_DEMORA_H}h; '.sanciones aplicar ya' no espera)")]

@@ -416,11 +416,32 @@ static int at_juego_delante(void)
     return pid == GetCurrentProcessId();
 }
 
+/* ★ 28-nov · EL RITMO: cuánto se tiene apretada cada tecla (de que baja a que sube). Una persona varía (decenas de ms
+ *   de una a otra); un macro o un programa la suelta siempre igual. Se manda en el latido: pulsos, la media y el
+ *   desvío (ms), y se empieza de cero. */
+static DWORD g_at_baja[256];
+static LONG g_at_pulsos;
+static LONGLONG g_at_p_suma, g_at_p_cuad;
 static LRESULT CALLBACK at_teclado_ll(int codigo, WPARAM w, LPARAM l)
 {
-    if (codigo == HC_ACTION && (w == WM_KEYDOWN || w == WM_SYSKEYDOWN) && (g_at_teclas_siempre || at_juego_delante())) {
-        InterlockedIncrement(&g_at_teclas);
-        if (((KBDLLHOOKSTRUCT *)l)->flags & LLKHF_INJECTED) InterlockedIncrement(&g_at_inyectadas);
+    if (codigo == HC_ACTION && (g_at_teclas_siempre || at_juego_delante())) {
+        KBDLLHOOKSTRUCT *k = (KBDLLHOOKSTRUCT *)l;
+        BYTE vk = (BYTE)k->vkCode;
+        if (w == WM_KEYDOWN || w == WM_SYSKEYDOWN) {
+            if (!g_at_baja[vk]) {                                  /* la primera bajada (la repetición no cuenta) */
+                InterlockedIncrement(&g_at_teclas);
+                if (k->flags & LLKHF_INJECTED) InterlockedIncrement(&g_at_inyectadas);
+                g_at_baja[vk] = k->time | 1;
+            }
+        } else if ((w == WM_KEYUP || w == WM_SYSKEYUP) && g_at_baja[vk]) {
+            DWORD d = k->time - g_at_baja[vk];
+            g_at_baja[vk] = 0;
+            if (d > 0 && d < 1000 && g_at_ini) {
+                EnterCriticalSection(&g_at_cs);
+                g_at_pulsos++; g_at_p_suma += d; g_at_p_cuad += (LONGLONG)d * d;
+                LeaveCriticalSection(&g_at_cs);
+            }
+        }
     }
     return CallNextHookEx(NULL, codigo, w, l);
 }
@@ -928,13 +949,18 @@ static DWORD WINAPI at_hilo(LPVOID nada)
     /* ★ 26-nov: el md5 de NUESTRA dll (los 12 primeros): qué build tiene el jugador. Va antes que el del exe porque
      *   at_md5 escribe en g_at_md5. */
     HMODULE yo = NULL;
+    /* ★ 28-nov · EL RETO: el archivo de la dll queda en memoria; en cada latido va el md5 (8) de 256 bytes de él, en una
+     *   posición que sale de `n` (al azar, va en el «hola») y del número de latido. El server tiene nuestras dll y hace
+     *   la misma cuenta: una dll recompilada no la acierta (salvo que lleve la original entera adentro). */
+    BYTE *propio = NULL;
+    DWORD propio_n = 0, nonce = (GetTickCount() * 2654435761u) ^ (GetCurrentProcessId() << 16) ^ (DWORD)(ULONG_PTR)&tam;
     if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                            (LPCSTR)(void *)at_hilo, &yo) && GetModuleFileNameA(yo, exe, MAX_PATH)) {
-        BYTE *propio = at_leer_archivo(exe, &tam);
+        propio = at_leer_archivo(exe, &tam);
         if (propio) {
             at_md5(propio, tam);
             lstrcpynA(dll, g_at_md5, 13);
-            HeapFree(GetProcessHeap(), 0, propio);
+            propio_n = tam;
         }
     }
     BYTE *archivo = GetModuleFileNameA(NULL, exe, MAX_PATH) ? at_leer_archivo(exe, &tam) : NULL;
@@ -943,10 +969,11 @@ static DWORD WINAPI at_hilo(LPVOID nada)
         HeapFree(GetProcessHeap(), 0, archivo);
     }
     if (g_at_previo > 0)
-        at_encolar("R2AT v=1 exe=%s previo=%d previo_va=0x%08X dll=%s lat=%d", g_at_md5, g_at_previo, g_at_previo_va,
-                   dll, AT_LATIDO_S);
+        at_encolar("R2AT v=1 exe=%s previo=%d previo_va=0x%08X dll=%s lat=%d n=%08lX", g_at_md5, g_at_previo,
+                   g_at_previo_va, dll, AT_LATIDO_S, (unsigned long)nonce);
     else
-        at_encolar("R2AT v=1 exe=%s previo=%d dll=%s lat=%d", g_at_md5, g_at_previo, dll, AT_LATIDO_S);
+        at_encolar("R2AT v=1 exe=%s previo=%d dll=%s lat=%d n=%08lX", g_at_md5, g_at_previo, dll, AT_LATIDO_S,
+                   (unsigned long)nonce);
     int depurador = 0;
     DWORD latidos = 0;
     for (DWORD vuelta = 0;; vuelta++) {
@@ -955,7 +982,25 @@ static DWORD WINAPI at_hilo(LPVOID nada)
         if (vuelta % (AT_LATIDO_S / 5) == 0) {                   /* ★ 26-nov: el LATIDO (el server nota si se calla) */
             int abiertas = 0;
             for (DWORD p = 0; p < g_at_paginas; p++) abiertas += g_at_abiertas[p] > 0;
-            at_encolar("R2AT latido=%lu perdidas=%ld abiertas=%d", (unsigned long)++latidos, (long)g_at_perdidas, abiertas);
+            ++latidos;
+            char reto[16] = "-", ritmo[64] = "";
+            if (propio && propio_n > 512) {                      /* ★ 28-nov: el reto */
+                DWORD off = (nonce * 2654435761u + latidos * 40503u) % (propio_n - 256);
+                at_md5(propio + off, 256);
+                lstrcpynA(reto, g_at_md5, 9);
+            }
+            EnterCriticalSection(&g_at_cs);                      /* ★ 28-nov: el ritmo del último minuto */
+            LONG np = g_at_pulsos; LONGLONG su = g_at_p_suma, cu = g_at_p_cuad;
+            g_at_pulsos = 0; g_at_p_suma = g_at_p_cuad = 0;
+            LeaveCriticalSection(&g_at_cs);
+            if (np >= 20) {
+                LONGLONG med = su / np, var = cu / np - med * med;
+                int sd = 0;
+                while ((LONGLONG)(sd + 1) * (sd + 1) <= var && sd < 1000) sd++;
+                wsprintfA(ritmo, " pulsos=%ld med=%d sd=%d", (long)np, (int)med, sd);
+            }
+            at_encolar("R2AT latido=%lu perdidas=%ld abiertas=%d h=%s%s", (unsigned long)latidos, (long)g_at_perdidas,
+                       abiertas, reto, ritmo);
         }
         at_revisar_codigo();
         at_revisar_ganchos();

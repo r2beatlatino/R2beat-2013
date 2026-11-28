@@ -1018,6 +1018,79 @@ def probar_mejoras_28nov():
         notas.nivel_de, notas.combo_total_de = antes
 
 
+def probar_mejoras_28nov_b():
+    print("★ 28-nov · el reto de la dll, el ritmo de las teclas, el salto de precisión y «sancionar ya»:")
+    import hashlib
+    from servidor import basedatos
+    # el reto
+    falsa = bytes(range(256)) * 40
+    md = hashlib.md5(falsa).hexdigest()[:12]
+    antes_arch = antitrampa._archivos_dll()
+    antitrampa._ARCHIVOS_DLL = {**antes_arch, md: falsa}
+    try:
+        usn, _m = basedatos.cuenta_crear("conreto", "X" * 64)
+        c = Conn()
+        c.usn, c.conn = usn, Socket()
+        antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0 dll={md} lat=60 n=0000BEEF")
+        for lat in (1, 2, 3):
+            h = antitrampa.reto_esperado(falsa, 0xBEEF, lat)
+            antitrampa.al_ff59(c, f"R2AT latido={lat} perdidas=0 abiertas=0 h={h}")
+        ok("dll_falsa" not in reglas_de(usn), "la dll de verdad acierta el reto en cada latido")
+        antitrampa.al_ff59(c, "R2AT latido=4 perdidas=0 abiertas=0 h=deadbeef")
+        ok("dll_falsa" not in reglas_de(usn), "un reto mal solo no marca")
+        antitrampa.al_ff59(c, "R2AT latido=5 perdidas=0 abiertas=0 h=00000000")
+        ok("dll_falsa" in reglas_de(usn), "dos retos mal: dll_falsa")
+        usn2, _m = basedatos.cuenta_crear("sinarchivo", "Y" * 64)
+        c2 = Conn()
+        c2.usn, c2.conn = usn2, Socket()
+        antitrampa.al_ff59(c2, f"R2AT v=1 exe={EXE_BUENO} previo=0 dll=0123456789ab lat=60 n=0000BEEF")
+        antitrampa.al_ff59(c2, "R2AT latido=1 perdidas=0 abiertas=0 h=00000000")
+        antitrampa.al_ff59(c2, "R2AT latido=2 perdidas=0 abiertas=0 h=00000000")
+        ok("dll_falsa" not in reglas_de(usn2), "revés: una dll que el server no tiene no se puede juzgar (no marca)")
+        ok(antitrampa.reto_esperado(falsa, 0xBEEF, 1) != antitrampa.reto_esperado(falsa, 0xBEEF, 2),
+           "cada latido pide otro pedazo")
+    finally:
+        antitrampa._ARCHIVOS_DLL = antes_arch
+    # el ritmo
+    usn, _m = basedatos.cuenta_crear("macrero", "Z" * 64)
+    c = jugador(usn)
+    antitrampa.al_ff59(c, "R2AT latido=1 perdidas=0 abiertas=0 h=- pulsos=120 med=50 sd=2")
+    ok("teclas_robot" in reglas_de(usn), "120 teclas apretadas 50 ms con 2 ms de diferencia: teclas_robot")
+    usn, _m = basedatos.cuenta_crear("humano", "W" * 64)
+    c = jugador(usn)
+    antitrampa.al_ff59(c, "R2AT latido=1 perdidas=0 abiertas=0 h=- pulsos=120 med=95 sd=28")
+    ok("teclas_robot" not in reglas_de(usn), "revés: una persona (28 ms de diferencia) no marca")
+    # el salto
+    antes = notas.nivel_de
+    notas.nivel_de = lambda cancion, por_defecto=None: 15
+    try:
+        for nombre, pds in (("saltador", [80] * 30 + [99] * 8), ("parejo", [95] * 30 + [99] * 8)):
+            usn, _m = basedatos.cuenta_crear(nombre, nombre[0].upper() * 64)
+            c = jugador(usn)
+            for i, pd in enumerate(pds):
+                antitrampa._salto_precision(c, 900 + i, pd, 0)
+            if nombre == "saltador":
+                ok("salto_precision" in reglas_de(usn), "de 80 % de siempre a 99 % en sus últimas 8 difíciles: salto")
+            else:
+                ok("salto_precision" not in reglas_de(usn), "revés: de 95 % a 99 % es mejorar, no un salto")
+    finally:
+        notas.nivel_de = antes
+    # sancionar ya (sólo esa cuenta)
+    from servidor import almacen
+    antitrampa.ANTITRAMPA_SILENCIOSO = True
+    try:
+        ua, _m = basedatos.cuenta_crear("sancionable", "S" * 64)
+        ub, _m = basedatos.cuenta_crear("esperando", "E" * 64)
+        for u in (ua, ub):
+            antitrampa.al_ff59(jugador(u), "R2AT gancho=automatico va=0x005080B5 bytes=E9_46_81_B2_31_90_90_6A")
+        lineas = antitrampa.sancionar_tanda("prueba", ya=True, solo_cuenta="sancionable")
+        pend = [f["cuenta"] for f in almacen.antitrampa_pendientes(0)]
+        ok("sancionable" not in pend and "esperando" in pend, "«Sancionar ya» sanciona sólo esa cuenta: "
+                                                              + lineas[0])
+    finally:
+        antitrampa.ANTITRAMPA_SILENCIOSO = False
+
+
 def main():
     try:
         probar_catalogo()
@@ -1034,6 +1107,7 @@ def main():
         probar_mediana_envenenable()
         probar_suelo_chart()
         probar_mejoras_28nov()
+        probar_mejoras_28nov_b()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)
     if FALLAS:
