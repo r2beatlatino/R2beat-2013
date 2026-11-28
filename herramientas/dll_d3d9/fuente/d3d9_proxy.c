@@ -2611,6 +2611,7 @@ static int escribir_bytes(DWORD va, const BYTE *espera, const BYTE *nuevo, int n
 #include "estilos_texto.c"        /* ★ 23-oct: los estilos de letra (contorno grueso, arcoíris) — antes que los dos de abajo */
 #include "pausa_barra.c"          /* ★ 25-nov: A/B en la barra con la Pausa abierta (la idea del ToolBit 0.6.40) — después de estilos_texto.c y pausa.c */
 #include "far_juego_dibujo.c"     /* ★ 26-nov: el panel del Far (y la velocidad) dentro del juego — después de pausa_barra.c */
+#include "booster_dibujo.c"       /* ★ 28-nov: el aura y el marco grande del botón del booster — después de pausa_barra.c */
 #include "circulo_color.c"        /* ★ 23-oct: los crayones de círculo — el nombre del círculo de color por una marca (CRAYONES_MAZINO.md) */
 #include "crayones.c"             /* ★ 23-oct: los crayones del ID Mazino — 12 colores de apodo (CRAYONES_MAZINO.md) */
 #include "selector.c"             /* ★ 25-oct: «Elige tu personaje» encima de la creación (SELECTOR_PERSONAJE.md) — después de top5.c */

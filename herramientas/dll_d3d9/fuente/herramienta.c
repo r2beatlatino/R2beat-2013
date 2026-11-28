@@ -1014,6 +1014,7 @@ static int g_fj_crayon = 1;                           /* el estilo crayón (bord
 static int g_fj_ver_num = 1, g_fj_ver_chk = 1, g_fj_ver_barra = 1, g_fj_ver_vel = 1;   /* qué partes se ven */
 static void pb_por_cuadro(void);                     /* ★ 26-nov: la barra de la Pausa (pausa_barra.c) */
 static void fj_dibujar(void);                        /* ★ 26-nov: el panel del Far en la carrera (far_juego_dibujo.c) */
+static void bod_dibujar(void);                       /* ★ 28-nov: el aura y el marco grande del booster (booster_dibujo.c) */
 static void ht_por_cuadro(void)
 {
     if (!g_ht_base) return;

@@ -41,18 +41,20 @@ static COLORREF g_n2_acento = RGB(255, 0, 128);  /* el color de los títulos y d
 #define N2_W 330
 #define N2_H 761                                /* ★ 26-nov (boceto de anonimo03): +90 para el Idioma abajo */
 #define N2_PAGS 5                               /* las de la ventana principal */
-#define N2_PAGS_TOT 10                          /* + las 5 de Personalización (5 Ventana con AutoFar · 6 Far · 7 Piedras y booster · 8 PD
-                                                 *   · ★ 28-nov 9 Panel Far: el panel del Far en la carrera) */
+#define N2_PAGS_TOT 11                          /* + las 6 de Personalización (5 Ventana con AutoFar · 6 Far · 7 Piedras · 8 PD
+                                                 *   · ★ 28-nov 9 Panel Far: el panel del Far en la carrera · 10 Booster) */
 #define N2P_PIEDRAS 7                           /* ★ 26-nov (boceto de anonimo03): piedras y booster en UNA pestaña */
 #define N2P_AUTOFAR 5                           /* ★ y AutoFar debajo de la Personalización, en Ventana (AF_Y0) */
 #define N2P_PD      8
 #define N2P_FJ      9
+#define N2P_BO      10                          /* ★ 28-nov: el booster, en su pestaña (antes, debajo de las piedras) */
 #define WM_N2H_SYNC_ (WM_N2H_SYNC)
 
 enum { C_CHK, C_TECLA, C_COMBO, C_BOTON, C_SLIDER, C_EDIT, C_LISTA };
 enum { B_CONECTAR = 1, B_RESTAURAR, B_PERSONAL, B_NADA, B_FONDO, B_QUITAR, B_COLOR, B_RESTABLECER,
        B_IND_COLOR, B_IND_PROBAR, B_IND_FABRICA, B_IND_GUARDAR };
-enum { L_LETRA = 1, L_TEMA, L_IND_LETRA, L_IDIOMA, L_CUENTA, L_CANAL, L_COD, L_FJ_LETRA };
+enum { L_LETRA = 1, L_TEMA, L_IND_LETRA, L_IDIOMA, L_CUENTA, L_CANAL, L_COD, L_FJ_LETRA,
+       L_BO_BOTON, L_BO_MARCO, L_BO_AURA, L_BO_TENIR };   /* ★ 28-nov: los ejemplos del booster */
 #define N2_TRAMOS 12                       /* ★ 26-nov: las filas de la pestaña Tramos (antes 6; se ven de a 6) */
 enum { B_CHAT_VACIAR = 40, B_E_REINICIAR, B_E_GUARDAR, B_E_BORRAR_TODO, B_E_BORRAR0, B_E_MOVER0 = B_E_BORRAR0 + N2_TRAMOS,
        B_E_MAPA = B_E_MOVER0 + 4, B_E_TR_PAG };
@@ -112,7 +114,7 @@ static void n2_lista_cambio(int ref, HWND h);
 static void n2_per_abrir(void);
 static void n2_idioma_poner(int idi);
 static const wchar_t *const N2_PEST[5] = { L"Juego", L"Controles", L"Entreno", L"Tramos", L"Chat" };          /* ★ 26-nov */
-static const wchar_t *const N2_PER_PEST[5] = { L"Ventana", L"Far", L"Piedras y booster", L"PD", L"Panel Far" };
+static const wchar_t *const N2_PER_PEST[6] = { L"Ventana", L"Far", L"Piedras", L"PD", L"Panel Far", L"Booster" };
 static void n2_apodo_tick(void);
 static void n2_e_cambio(int *pb);
 static void n2_e_tick(void);
@@ -2142,6 +2144,15 @@ static void n2_per_guardar(HT_BUF *x, const char *eol)
         ht_buf_poner(x, "booster_tenir", u, eol);
         wsprintfA(u, "%d", g_bo_dx); ht_buf_poner(x, "booster_x", u, eol);
         wsprintfA(u, "%d", g_bo_dy); ht_buf_poner(x, "booster_y", u, eol);
+        wsprintfA(u, "%d", g_bo_aura_pct); ht_buf_poner(x, "booster_aura", u, eol);   /* ★ 28-nov */
+        wsprintfA(u, "%d", g_bo_anim_pct); ht_buf_poner(x, "booster_anim", u, eol);
+        wsprintfA(u, "%d", g_bo_brillo); ht_buf_poner(x, "booster_brillo", u, eol);
+        wsprintfA(u, "%d", g_bo_aura_lleno); ht_buf_poner(x, "booster_aura_lleno", u, eol);
+        wsprintfA(u, "%d", g_bo_tenir_lleno); ht_buf_poner(x, "booster_tenir_lleno", u, eol);
+        for (int i = 0; i < 4; i++) {                    /* ★ 28-nov: el ejemplo puesto de cada lista */
+            if (!WideCharToMultiByte(CP_UTF8, 0, g_bo_ej_puesto[i], -1, u, sizeof(u), NULL, NULL)) u[0] = 0;
+            ht_buf_poner(x, BO_EJ_INI[i], u, eol);
+        }
         wsprintfA(u, "%d", g_calc_opacidad); ht_buf_poner(x, "pd_opacidad", u, eol);
         wsprintfA(u, "%d", g_calc_quieto ? 1 : 0); ht_buf_poner(x, "pd_quieto", u, eol);
         wsprintfA(u, "#%06lX", (unsigned long)(g_calc_tinte & 0xFFFFFF)); ht_buf_poner(x, "pd_tinte", u, eol);
@@ -2421,7 +2432,7 @@ static void n2_per_armar(void)
         const wchar_t *const *T = N2_PER_PEST;
         SendMessageW(g_n2_per_tabs, WM_SETFONT, (WPARAM)g_n2_ftab, 0);
         SendMessageW(g_n2_per_tabs, TCM_SETPADDING, 0, MAKELPARAM(10, 4));
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             TCITEMW it; ZeroMemory(&it, sizeof(it));
             it.mask = TCIF_TEXT; it.pszText = (LPWSTR)TR(T[i]);
             SendMessageW(g_n2_per_tabs, TCM_INSERTITEMW, (WPARAM)i, (LPARAM)&it);
@@ -2553,7 +2564,7 @@ static void n2_idioma_poner(int idi)
     }
     HWND tb[2] = { g_n2_tabs, g_n2_per_tabs };
     const wchar_t *const *nom[2] = { N2_PEST, N2_PER_PEST };
-    int cuantas[2] = { N2_PAGS, 5 };
+    int cuantas[2] = { N2_PAGS, 6 };
     for (int k = 0; k < 2; k++)
         for (int i = 0; tb[k] && i < cuantas[k]; i++) {
             TCITEMW it; ZeroMemory(&it, sizeof(it));
@@ -2580,6 +2591,7 @@ static void n2_lista_cambio(int ref, HWND h)
     if (ref == L_COD) { g_n2_chat_cod = k; nc_elegir_codificacion(k); ht_pedir_guardar(); return; }
     if (ref == L_LETRA) { lstrcpyW(g_n2_letra, t); n2_fuentes_crear(); ht_pedir_guardar(); }
     else if (ref == L_IND_LETRA) { lstrcpyW(g_n2i.letra, t); if (g_n2_vista) InvalidateRect(g_n2_vista, NULL, FALSE); }
+    else if (ref >= L_BO_BOTON && ref <= L_BO_TENIR) bo_ejemplo(ref - L_BO_BOTON, k);   /* ★ 28-nov */
     else if (ref == L_FJ_LETRA) {                      /* ★ 28-nov: la letra del panel del Far */
         if (t[0] == L'(') g_fj_letra[0] = 0; else lstrcpynW(g_fj_letra, t, 64);
         InterlockedIncrement(&g_fj_letra_ver);
