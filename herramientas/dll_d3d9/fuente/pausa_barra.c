@@ -433,6 +433,9 @@ static int pb_subir(void)
 }
 
 /* un quad con la textura `tex` (w × h en pantalla, de una textura tw × th). ★ 26-nov: también lo usa el panel del Far */
+/* ★ 28-nov: para dibujar AGRANDADO o achicado (el panel del Far): el tamaño de lo pintado en la textura (0 = el
+ *   mismo que en pantalla) y el filtro suave. Se ponen justo antes de pb_quad_tam y él los vuelve a 0. */
+static int g_pb_quad_sw = 0, g_pb_quad_sh = 0, g_pb_quad_suave = 0;
 static void pb_quad_tam(void *dev, void *tex, int x, int y, int w, int h, int tw, int th)
 {
     void **vt = *(void ***)dev;
@@ -447,7 +450,8 @@ static void pb_quad_tam(void *dev, void *tex, int x, int y, int w, int h, int tw
         { 0, 1, 4 }, { 0, 2, 2 }, { 0, 3, 0 }, { 0, 4, 4 }, { 0, 5, 2 }, { 0, 6, 0 }, { 0, 11, 0 }, { 0, 24, 0 },
         { 1, 1, 1 }, { 1, 4, 1 },
     };
-    static const DWORD sa[][2] = { { 1, 3 }, { 2, 3 }, { 5, 1 }, { 6, 1 }, { 7, 0 }, { 11, 0 } };
+    DWORD sa[][2] = { { 1, 3 }, { 2, 3 }, { 5, 1 }, { 6, 1 }, { 7, 0 }, { 11, 0 } };
+    if (g_pb_quad_suave) { sa[2][1] = 2; sa[3][1] = 2; }        /* ★ 28-nov: LINEAR al escalar */
     enum { NRS = sizeof(rs) / sizeof(rs[0]), NTS = sizeof(ts) / sizeof(ts[0]), NSA = sizeof(sa) / sizeof(sa[0]) };
     DWORD vrs[NRS], vts[NTS], vsa[NSA], fvf = 0;
     void *tex0 = NULL, *vdecl = NULL, *vs = NULL, *ps = NULL, *vb = NULL;
@@ -473,7 +477,8 @@ static void pb_quad_tam(void *dev, void *tex, int x, int y, int w, int h, int tw
     ((D_DW)vt[89])(dev, 0x144);                                /* XYZRHW | DIFFUSE | TEX1 */
     struct { float x, y, z, w; DWORD c; float u, v; } q[4];
     float x0 = (float)x - 0.5f, y0 = (float)y - 0.5f, xx = x0 + (float)w, yy = y0 + (float)h;
-    float u1 = (float)w / tw, v1 = (float)h / th;
+    float u1 = (float)(g_pb_quad_sw ? g_pb_quad_sw : w) / tw, v1 = (float)(g_pb_quad_sh ? g_pb_quad_sh : h) / th;
+    g_pb_quad_sw = g_pb_quad_sh = g_pb_quad_suave = 0;
     float px[4][4] = { { x0, y0, 0, 0 }, { xx, y0, u1, 0 }, { x0, yy, 0, v1 }, { xx, yy, u1, v1 } };
     for (int i = 0; i < 4; i++) {
         q[i].x = px[i][0]; q[i].y = px[i][1]; q[i].z = 0; q[i].w = 1;

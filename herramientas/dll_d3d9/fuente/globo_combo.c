@@ -387,6 +387,40 @@ static int __cdecl gc_tropiezo_falso(BYTE *p)
     return 1;
 }
 
+/* ★ 28-nov (anonimo03: «el choque latino: cuando choco usando el booster me quedo chocando más de 3 segundos, la gente se
+ *   queja»): la animación del tropiezo la elige el juego (0x50ADD0, la cola de animaciones del corredor) y con el
+ *   impulsor viene una caída larga. El estado «tropezando» (0x50AAA0) termina cuando el tiempo de la animación
+ *   ([cPlayer+0x24], avanza [cPlayer+0x5C] por cuadro) llega a su largo ([[[0x931620]→0x413000(id)]+0x1C]+0x130]+0x18).
+ *   En el CHOQUE LATINO, justo después del tropiezo, se la adelanta para que dure como mucho g_gc_latino_ms (1 s, como
+ *   en el Latino): una caída corta no se toca. [entreno] choque_latino_ms en d3d9_proxy.ini (0 = sin tope). */
+typedef BYTE *(__fastcall *F_GC_MODELO)(void *ecx, void *edx, DWORD id);
+static int g_gc_latino_ms = 1000;
+static int g_gc_latino_pct = 50;          /* ★ 28-nov («la recuperación del choque, más rápida»): cuánto de la animación se juega */
+static LONG g_gc_latino_n;
+static void __cdecl gc_latino_acortar(BYTE *p)
+{
+    if (!p) return;
+    void *mgr = *(void **)GCV(0x931620);
+    if (!mgr) return;
+    BYTE *m = ((F_GC_MODELO)GCV(0x413000))(mgr, NULL, *(DWORD *)p);
+    BYTE *o = m ? *(BYTE **)(m + 0x1C) : NULL;
+    BYTE *an = o ? *(BYTE **)(o + 0x130) : NULL;
+    if (!an) return;
+    float largo = *(float *)(an + 0x18), paso = *(float *)(p + 0x5C), t = *(float *)(p + 0x24);
+    if (!(paso > 0.0f) || !(largo > 0.0f)) return;
+    float desde = -1.0f;
+    if (g_gc_latino_ms > 0) desde = largo - paso * 60.0f * (float)g_gc_latino_ms / 1000.0f;   /* el tope en ms */
+    if (g_gc_latino_pct > 0 && g_gc_latino_pct < 100) {                                    /* ★ y la parte que se juega */
+        float d2 = largo * (float)(100 - g_gc_latino_pct) / 100.0f;
+        if (d2 > desde) desde = d2;
+    }
+    int antes = (int)((largo - t) / paso * 1000.0f / 60.0f);
+    if (desde > t) *(float *)(p + 0x24) = desde;
+    if (g_gc_latino_n++ < 6)
+        apuntar("  [entreno] choque latino: animación %d, %d ms (largo×100 %d)%s", p[0x48], antes, (int)(largo * 100),
+                desde > t ? " → recortada" : " (no se toca)");
+}
+
 static void gc_tropiezo_instalar(void)
 {
     static const BYTE e[5] = { 0xD9, 0xEE, 0x6A, 0x01, 0x51 };   /* 0x50C4D7  fldz · push 1 · push ecx */
@@ -424,8 +458,14 @@ static void gc_tropiezo_instalar(void)
         static const BYTE t[15] = { 0xD9, 0xEE, 0x6A, 0x01, 0x51, 0x8B, 0x4C, 0x24, 0x0C, 0xD9, 0x1C, 0x24, 0x51, 0x8B, 0xCE };
         CopyMemory(k + i, t, 15); i += 15;
         k[i++] = 0xE8; *(int *)(k + i) = (int)((DWORD)GCV(0x50ACD0) - (DWORD)(k + i + 4)); i += 4;
+        k[i++] = 0x60;                                                              /* ★ 28-nov: pushad */
+        k[i++] = 0x56;                                                              /* push esi */
+        k[i++] = 0xE8; *(int *)(k + i) = (int)((DWORD)gc_latino_acortar - (DWORD)(k + i + 4)); i += 4;
+        k[i++] = 0x83; k[i++] = 0xC4; k[i++] = 0x04;                                /* add esp,4 */
+        k[i++] = 0x61;                                                              /* popad */
         k[i++] = 0xE9; *(int *)(k + i) = (int)((DWORD)GCV(0x50C4F6) - (DWORD)(k + i + 4)); i += 4;
     }
+    if (i > 128) { apuntar("  [globo] ⛔ la cueva del tropiezo se pasó (%d bytes)", i); return; }
     BYTE s[5] = { 0xE9, 0, 0, 0, 0 };
     *(int *)(s + 1) = (int)((DWORD)k - ((DWORD)GCV(0x50C4D7) + 5));
     gc_escribir(0x50C4D7, s, 5);
@@ -722,7 +762,8 @@ static void __fastcall gc_contador1(BYTE *hud, void *nada)
 static void __fastcall gc_etiqueta(BYTE *p, void *nada, int x, int y)
 {
     (void)nada;
-    ((F_GC_ETIQUETA)GCV(0x5009D0))(p, x, y);
+    /* ★ 28-nov: «Ocultar Nombres» de Ñ2Hock calla sólo el nombre; el globo sale igual (antes se saltaba todo) */
+    if (!g_op[O_NOMBRES].puesta) ((F_GC_ETIQUETA)GCV(0x5009D0))(p, x, y);
     BYTE *g = gc_juego();
     if (!g_gc_activo || !p || !g) return;
     int k = p[0x49], esp = g[0xC01] != 0;
@@ -786,6 +827,8 @@ static void globo_combo_iniciar(void)
     }
     g_gc_base = (BYTE *)GetModuleHandleA(NULL);
     g_gc_dy = GetPrivateProfileIntA("globo", "dy", 10, ini);
+    g_gc_latino_ms = GetPrivateProfileIntA("entreno", "choque_latino_ms", 1000, ini);   /* ★ 28-nov */
+    g_gc_latino_pct = GetPrivateProfileIntA("entreno", "choque_latino_pct", 50, ini);
     g_gc_z = GetPrivateProfileIntA("globo", "z", 780, ini) / 1000.0f;
     g_gc_log = GetPrivateProfileIntA("globo", "log", 0, ini);
     g_gc_escala = GetPrivateProfileIntA("globo", "escala", 380, ini);

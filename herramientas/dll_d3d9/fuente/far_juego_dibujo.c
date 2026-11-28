@@ -34,13 +34,39 @@ static int    g_fj_px0 = 0, g_fj_py0 = 0, g_fj_h = FJ_H_FAR;   /* el panel en pa
 static int    g_fj_arr = 0, g_fj_arr_dx = 0, g_fj_arr_dy = 0;   /* 1 moviendo el panel, 2 la barra del Far, 3 la de velocidad */
 static int    g_fj_hover = -1, g_fj_practica = 0;
 
-/* las piezas, en coordenadas del panel */
+/* las piezas, en coordenadas del panel. ★ 28-nov: se arman según lo que se ve (Personalización · Panel Far):
+ *   una parte escondida no deja hueco; sin casillas ni barra queda sólo «Far 16.5». */
 static const RECT FJ_TITULO = { 0, 0, FJ_W, 20 };
-static const RECT FJ_CHK_FAR = { 8, 24, 116, 42 }, FJ_CHK_AUTO = { 124, 24, 228, 42 };
-static const RECT FJ_BARRA = { 10, 48, 226, 62 };
-static const RECT FJ_TIT_VEL = { 0, 70, FJ_W, 90 };
-static const RECT FJ_CHK_VEL = { 8, 92, 200, 110 };
-static const RECT FJ_BARRA_VEL = { 10, 114, 226, 128 };
+static RECT FJ_CHK_FAR, FJ_CHK_AUTO, FJ_BARRA, FJ_TIT_VEL, FJ_CHK_VEL, FJ_BARRA_VEL, FJ_LINEA;
+static int g_fj_hay_chk, g_fj_hay_barra, g_fj_hay_vel;
+static void fj_poner(RECT *r, int l, int t, int ri, int b) { r->left = l; r->top = t; r->right = ri; r->bottom = b; }
+/* -> el alto del panel */
+static int fj_maquetar(int practica)
+{
+    int y = 20;
+    g_fj_hay_chk = g_fj_ver_chk; g_fj_hay_barra = g_fj_ver_barra; g_fj_hay_vel = practica && g_fj_ver_vel;
+    SetRectEmpty(&FJ_CHK_FAR); SetRectEmpty(&FJ_CHK_AUTO); SetRectEmpty(&FJ_BARRA);
+    SetRectEmpty(&FJ_TIT_VEL); SetRectEmpty(&FJ_CHK_VEL); SetRectEmpty(&FJ_BARRA_VEL); SetRectEmpty(&FJ_LINEA);
+    if (g_fj_hay_chk) { fj_poner(&FJ_CHK_FAR, 8, y + 4, 116, y + 22); fj_poner(&FJ_CHK_AUTO, 124, y + 4, 228, y + 22); y += 24; }
+    if (g_fj_hay_barra) { fj_poner(&FJ_BARRA, 10, y + 4, 226, y + 18); y += 22; }
+    if (!g_fj_hay_vel) return y + 2;
+    fj_poner(&FJ_LINEA, 8, y, FJ_W - 8, y + 1);
+    fj_poner(&FJ_TIT_VEL, 0, y + 4, FJ_W, y + 24);
+    fj_poner(&FJ_CHK_VEL, 8, y + 26, 200, y + 44);
+    fj_poner(&FJ_BARRA_VEL, 10, y + 48, 226, y + 62);
+    return y + 68;
+}
+/* los colores elegidos (o los de fábrica) */
+static COLORREF fj_c(DWORD v, COLORREF fab) { return v > 0xFFFFFF ? fab : RGB(v >> 16 & 255, v >> 8 & 255, v & 255); }
+static COLORREF fj_acento(void) { return fj_c(g_fj_acento, RGB(255, 0, 128)); }
+static COLORREF fj_titulo(void)
+{
+    if (g_fj_acento > 0xFFFFFF) return RGB(255, 40, 150);
+    COLORREF a = fj_acento();                                     /* un poco más claro que las casillas */
+    return RGB(GetRValue(a) + (255 - GetRValue(a)) * 15 / 100, GetGValue(a) + (255 - GetGValue(a)) * 15 / 100,
+               GetBValue(a) + (255 - GetBValue(a)) * 15 / 100);
+}
+static COLORREF fj_numero(void) { return fj_c(g_fj_numcol, RGB(250, 204, 21)); }
 
 static int fj_dentro(const RECT *r, int x, int y) { return x >= r->left && x < r->right && y >= r->top && y < r->bottom; }
 
@@ -67,17 +93,38 @@ static int fj_gdi(void)
     SelectObject(dc, bmp);
     /* ★ 26-nov (anonimo03: «Far Vision también con la letra de crayón Mazino, una que no lo haga ver feo»): la letra
      *   de los crayones ([estilos_texto] fuentes: Segoe UI Semibold), con su borde oscuro y el degradé (fj_txt_pegar) */
+    SetBkMode(dc, TRANSPARENT);
+    g_fj_dc = dc;
+    g_fj_gdi = (DWORD *)bits;
+    return 1;
+}
+/* ★ 28-nov: las letras (la elegida en Personalización · Panel Far, o la de los crayones); se rehacen al cambiarla */
+static LONG g_fj_letra_hecha = -1;
+static int fj_fuentes(void)
+{
+    LONG ver = g_fj_letra_ver;
+    if (g_fj_f && g_fj_fb && ver == g_fj_letra_hecha) return 1;
+    if (g_fj_f) { DeleteObject(g_fj_f); g_fj_f = NULL; }
+    if (g_fj_fb) { DeleteObject(g_fj_fb); g_fj_fb = NULL; }
     int peso = 600;
     const char *nf = calc_fuente_crayon(&peso);
     if (!nf || !nf[0]) nf = "Segoe UI";
     if (peso < 500) peso = 600;
-    g_fj_f = CreateFontA(-12, 0, 0, 0, peso, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
-                         ANTIALIASED_QUALITY, DEFAULT_PITCH, nf);
-    g_fj_fb = CreateFontA(-14, 0, 0, 0, peso + 100 > 900 ? 900 : peso + 100, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS,
-                          CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, nf);
-    SetBkMode(dc, TRANSPARENT);
-    g_fj_dc = dc;
-    g_fj_gdi = (DWORD *)bits;
+    wchar_t elegida[64];
+    lstrcpynW(elegida, g_fj_letra, 64);
+    if (elegida[0] && elegida[0] != L'(') {                       /* «(La de los crayones)» = la de siempre */
+        g_fj_f = CreateFontW(-12, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             ANTIALIASED_QUALITY, DEFAULT_PITCH, elegida);
+        g_fj_fb = CreateFontW(-14, 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
+                              ANTIALIASED_QUALITY, DEFAULT_PITCH, elegida);
+    } else {
+        g_fj_f = CreateFontA(-12, 0, 0, 0, peso, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             ANTIALIASED_QUALITY, DEFAULT_PITCH, nf);
+        g_fj_fb = CreateFontA(-14, 0, 0, 0, peso + 100 > 900 ? 900 : peso + 100, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS,
+                              CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, nf);
+    }
+    g_fj_letra_hecha = ver;
+    g_fj_firma = 0;                                              /* rearmar el panel con la letra nueva */
     return g_fj_f && g_fj_fb;
 }
 
@@ -85,7 +132,7 @@ static void fj_rect(const RECT *r, COLORREF c) { HBRUSH b = CreateSolidBrush(c);
 static void fj_marco(const RECT *r, COLORREF c) { HBRUSH b = CreateSolidBrush(c); FrameRect(g_fj_dc, r, b); DeleteObject(b); }
 typedef struct { RECT r; wchar_t s[48]; HFONT f; COLORREF c; UINT al; } FJ_TX;
 static FJ_TX g_fj_tx[16];
-static int   g_fj_ntx = 0, g_fj_anotar = 0, g_fj_crayon = 1;
+static int   g_fj_ntx = 0, g_fj_anotar = 0;                 /* g_fj_crayon: herramienta.c (★ 28-nov, se elige) */
 static void fj_txt_viejo(const RECT *r, const wchar_t *s, HFONT f, COLORREF c, UINT al);
 static void fj_txt(const RECT *r, const wchar_t *s, HFONT f, COLORREF c, UINT al)
 {
@@ -110,7 +157,7 @@ static void fj_txt_viejo(const RECT *r, const wchar_t *s, HFONT f, COLORREF c, U
 static void fj_casilla(const RECT *r, const wchar_t *t, int on, int hover)
 {
     RECT c = { r->left, r->top + 2, r->left + 14, r->top + 16 };
-    if (on) fj_rect(&c, RGB(255, 0, 128));
+    if (on) fj_rect(&c, fj_acento());
     fj_marco(&c, hover ? RGB(255, 255, 255) : RGB(200, 206, 220));
     if (on) {
         HPEN p = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
@@ -128,8 +175,8 @@ static void fj_barra(const RECT *br, int pos, int apagada, int activa)
     fj_rect(&pista, apagada ? RGB(70, 74, 90) : RGB(110, 116, 136));
     int x = br->left + pos * (br->right - br->left) / 1000;
     RECT lleno = { br->left, pista.top, x, pista.bottom };
-    if (!apagada) fj_rect(&lleno, RGB(255, 0, 128));
-    HBRUSH b = CreateSolidBrush(apagada ? RGB(120, 124, 140) : activa ? RGB(255, 255, 255) : RGB(255, 0, 128));
+    if (!apagada) fj_rect(&lleno, fj_acento());
+    HBRUSH b = CreateSolidBrush(apagada ? RGB(120, 124, 140) : activa ? RGB(255, 255, 255) : fj_acento());
     HPEN p = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
     HGDIOBJ ob = SelectObject(g_fj_dc, b), op = SelectObject(g_fj_dc, p);
     Ellipse(g_fj_dc, x - 6, br->top + 1, x + 6, br->top + 13);
@@ -144,26 +191,29 @@ static void fj_piezas(COLORREF fondo, int h)
     int fv = g_op[O_FAR].quiere, af = g_op[O_AUTOFAR].quiere, n2h = g_ht_far_n2h;
     wchar_t t[64];
     RECT r = { 8, 2, 120, 20 };
-    fj_txt(&r, L"Far", g_fj_fb, RGB(255, 40, 150), DT_LEFT);
-    if (af) {
+    fj_txt(&r, L"Far", g_fj_fb, fj_titulo(), DT_LEFT);
+    if (!g_fj_ver_num) t[0] = 0;
+    else if (af) {
         int f10 = (int)(g_ht_af_far * 10 + 0.5f);
         if (f10 > 0) wsprintfW(t, TR(L"auto · %d.%d"), f10 / 10, f10 % 10); else lstrcpyW(t, TR(L"auto"));
     } else if (fv) wsprintfW(t, L"%d.%d", n2h * 5 / 10, n2h * 5 % 10);
     else lstrcpyW(t, TR(L"el del juego"));
     RECT rv = { 90, 2, FJ_W - 8, 20 };
-    fj_txt(&rv, t, g_fj_fb, RGB(250, 204, 21), DT_RIGHT);
-    fj_casilla(&FJ_CHK_FAR, L"Far Vision", fv, g_fj_hover == 1);
-    fj_casilla(&FJ_CHK_AUTO, L"AutoFar", af, g_fj_hover == 2);
-    fj_barra(&FJ_BARRA, (n2h - 2) * 1000 / 42, af, g_fj_hover == 3 || g_fj_arr == 2);
-    if (h < FJ_H_VEL) return;
-    RECT linea = { 8, 66, FJ_W - 8, 67 };
-    fj_rect(&linea, RGB(80, 84, 100));
+    if (t[0]) fj_txt(&rv, t, g_fj_fb, fj_numero(), DT_RIGHT);
+    if (g_fj_hay_chk) {
+        fj_casilla(&FJ_CHK_FAR, L"Far Vision", fv, g_fj_hover == 1);
+        fj_casilla(&FJ_CHK_AUTO, L"AutoFar", af, g_fj_hover == 2);
+    }
+    if (g_fj_hay_barra) fj_barra(&FJ_BARRA, (n2h - 2) * 1000 / 42, af, g_fj_hover == 3 || g_fj_arr == 2);
+    (void)h;
+    if (!g_fj_hay_vel) return;
+    fj_rect(&FJ_LINEA, RGB(80, 84, 100));
     RECT rt = { 8, FJ_TIT_VEL.top, 120, FJ_TIT_VEL.bottom };
-    fj_txt(&rt, L"Velocidad", g_fj_fb, RGB(255, 40, 150), DT_LEFT);
+    fj_txt(&rt, L"Velocidad", g_fj_fb, fj_titulo(), DT_LEFT);
     int pct = g_e.vel_pct, on = g_e.vel_on;
     wsprintfW(t, L"%d %%", pct);
     RECT rp = { 90, FJ_TIT_VEL.top, FJ_W - 8, FJ_TIT_VEL.bottom };
-    fj_txt(&rp, t, g_fj_fb, on ? RGB(250, 204, 21) : RGB(160, 166, 180), DT_RIGHT);
+    if (g_fj_ver_num) fj_txt(&rp, t, g_fj_fb, on ? fj_numero() : RGB(160, 166, 180), DT_RIGHT);
     fj_casilla(&FJ_CHK_VEL, L"Activar velocidad", on, g_fj_hover == 6);
     fj_barra(&FJ_BARRA_VEL, (pct - 50) * 1000 / 100, 0, g_fj_hover == 7 || g_fj_arr == 3);
 }
@@ -300,15 +350,17 @@ static int fj_subir(void)
 static void fj_dibujar(void)
 {
     if (!g_fj_mostrar || !g_ht_arrancada || g_ht_apagada || !g_ancho || !g_alto || !ht_en_carrera()) return;
-    if (!fj_gdi()) return;
+    if (!fj_gdi() || !fj_fuentes()) return;
     void *dev = pb_dispositivo();
     if (!dev || !fj_textura(dev)) return;
     g_fj_practica = fj_en_practica();
-    int h = g_fj_practica ? FJ_H_VEL : FJ_H_FAR;
-    int x = g_fj_x >= 0 ? (int)((LONGLONG)g_fj_x * (int)g_ancho / 1000) : (int)g_ancho - FJ_W - 8;
+    int h = fj_maquetar(g_fj_practica);
+    int es = g_fj_escala < 70 ? 70 : g_fj_escala > 200 ? 200 : g_fj_escala;   /* ★ 28-nov: el tamaño */
+    int W = FJ_W * es / 100, H = h * es / 100;
+    int x = g_fj_x >= 0 ? (int)((LONGLONG)g_fj_x * (int)g_ancho / 1000) : (int)g_ancho - W - 8;
     int y = g_fj_y >= 0 ? (int)((LONGLONG)g_fj_y * (int)g_alto / 1000) : (int)g_alto * 31 / 100;
-    if (x > (int)g_ancho - FJ_W) x = (int)g_ancho - FJ_W;
-    if (y > (int)g_alto - h) y = (int)g_alto - h;
+    if (x > (int)g_ancho - W) x = (int)g_ancho - W;
+    if (y > (int)g_alto - H) y = (int)g_alto - H;
     if (x < 0) x = 0;
     if (y < 0) y = 0;
     g_fj_px0 = x; g_fj_py0 = y; g_fj_h = h;
@@ -317,6 +369,8 @@ static void fj_dibujar(void)
                    | (DWORD)(g_fj_hover + 1) << 8 | (DWORD)g_fj_arr << 12 | (DWORD)g_fj_practica << 14
                    | (DWORD)g_e.vel_on << 15 | (DWORD)g_e.vel_pct << 16) ^ (DWORD)f10 * 2654435761u ^ (DWORD)g_fj_fondo * 40503u;
     firma ^= (DWORD)g_fj_arco << 30 ^ (DWORD)g_tr_idi << 27;
+    firma ^= (g_fj_acento * 2246822519u) ^ (g_fj_numcol * 3266489917u) ^ (DWORD)h * 668265263u   /* ★ 28-nov */
+             ^ (DWORD)(g_fj_ver_num | g_fj_ver_chk << 1 | g_fj_ver_barra << 2 | g_fj_ver_vel << 3 | g_fj_crayon << 4) * 374761393u;
     if (firma != g_fj_firma) {
         fj_armar(h);
         if (fj_subir()) g_fj_firma = firma;
@@ -326,8 +380,9 @@ static void fj_dibujar(void)
         fj_letras_de_nuevo(h);
         fj_subir();
     }
-    pb_quad_tam(dev, g_fj_tex, x, y, FJ_W, h, FJ_TW, FJ_TH);
-    if (!g_fj_visto) apuntar("  [far_juego] ★ el panel del Far en pantalla: %dx%d en (%d,%d)", FJ_W, h, x, y);
+    g_pb_quad_sw = FJ_W; g_pb_quad_sh = h; g_pb_quad_suave = es != 100;
+    pb_quad_tam(dev, g_fj_tex, x, y, W, H, FJ_TW, FJ_TH);
+    if (!g_fj_visto) apuntar("  [far_juego] ★ el panel del Far en pantalla: %dx%d en (%d,%d), %d %%", W, H, x, y, es);
     g_fj_visto = GetTickCount() | 1;
 }
 
@@ -444,7 +499,10 @@ static int fj_mensaje(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     if (msg != WM_MOUSEMOVE && msg != WM_LBUTTONDOWN && msg != WM_LBUTTONDBLCLK && msg != WM_LBUTTONUP) return 0;
     int x, y;
     if (!pb_a_juego(h, lp, &x, &y)) return 0;
-    int lx = x - g_fj_px0, ly = y - g_fj_py0;
+    int es = g_fj_escala < 70 ? 70 : g_fj_escala > 200 ? 200 : g_fj_escala;   /* ★ 28-nov: el tamaño */
+    int lx = (x - g_fj_px0) * 100 / es, ly = (y - g_fj_py0) * 100 / es;
+    if (x < g_fj_px0) lx = -1;
+    if (y < g_fj_py0) ly = -1;
     int dentro = lx >= 0 && lx < FJ_W && ly >= 0 && ly < g_fj_h;
     int vel = g_fj_practica;
     if (msg == WM_MOUSEMOVE) {
@@ -478,8 +536,8 @@ static int fj_mensaje(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     else if (vel && fj_dentro(&FJ_BARRA_VEL, lx, ly)) {
         g_fj_arr = 3; SetCapture(h);
         InterlockedExchange(&g_fj_ped_pct, fj_valor_vel(lx));
-    } else if (!fj_dentro(&FJ_BARRA, lx, ly)) {                  /* ★ 26-nov: cualquier parte vacía mueve el panel */
-        g_fj_arr = 1; g_fj_arr_dx = lx; g_fj_arr_dy = ly; SetCapture(h);
+    } else if (!fj_dentro(&FJ_BARRA, lx, ly) && !g_fj_fijo) {   /* ★ 26-nov: cualquier parte vacía mueve el panel */
+        g_fj_arr = 1; g_fj_arr_dx = x - g_fj_px0; g_fj_arr_dy = y - g_fj_py0; SetCapture(h);   /* ★ 28-nov: fijo = no */
     }
     return 1;
 }

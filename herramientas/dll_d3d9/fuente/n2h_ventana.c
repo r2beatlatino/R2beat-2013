@@ -41,16 +41,18 @@ static COLORREF g_n2_acento = RGB(255, 0, 128);  /* el color de los títulos y d
 #define N2_W 330
 #define N2_H 761                                /* ★ 26-nov (boceto de anonimo03): +90 para el Idioma abajo */
 #define N2_PAGS 5                               /* las de la ventana principal */
-#define N2_PAGS_TOT 9                           /* + las 4 de Personalización (5 Ventana con AutoFar · 6 Far · 7 Piedras y booster · 8 PD) */
+#define N2_PAGS_TOT 10                          /* + las 5 de Personalización (5 Ventana con AutoFar · 6 Far · 7 Piedras y booster · 8 PD
+                                                 *   · ★ 28-nov 9 Panel Far: el panel del Far en la carrera) */
 #define N2P_PIEDRAS 7                           /* ★ 26-nov (boceto de anonimo03): piedras y booster en UNA pestaña */
 #define N2P_AUTOFAR 5                           /* ★ y AutoFar debajo de la Personalización, en Ventana (AF_Y0) */
 #define N2P_PD      8
+#define N2P_FJ      9
 #define WM_N2H_SYNC_ (WM_N2H_SYNC)
 
 enum { C_CHK, C_TECLA, C_COMBO, C_BOTON, C_SLIDER, C_EDIT, C_LISTA };
 enum { B_CONECTAR = 1, B_RESTAURAR, B_PERSONAL, B_NADA, B_FONDO, B_QUITAR, B_COLOR, B_RESTABLECER,
        B_IND_COLOR, B_IND_PROBAR, B_IND_FABRICA, B_IND_GUARDAR };
-enum { L_LETRA = 1, L_TEMA, L_IND_LETRA, L_IDIOMA, L_CUENTA, L_CANAL, L_COD };
+enum { L_LETRA = 1, L_TEMA, L_IND_LETRA, L_IDIOMA, L_CUENTA, L_CANAL, L_COD, L_FJ_LETRA };
 #define N2_TRAMOS 12                       /* ★ 26-nov: las filas de la pestaña Tramos (antes 6; se ven de a 6) */
 enum { B_CHAT_VACIAR = 40, B_E_REINICIAR, B_E_GUARDAR, B_E_BORRAR_TODO, B_E_BORRAR0, B_E_MOVER0 = B_E_BORRAR0 + N2_TRAMOS,
        B_E_MAPA = B_E_MOVER0 + 4, B_E_TR_PAG };
@@ -110,7 +112,7 @@ static void n2_lista_cambio(int ref, HWND h);
 static void n2_per_abrir(void);
 static void n2_idioma_poner(int idi);
 static const wchar_t *const N2_PEST[5] = { L"Juego", L"Controles", L"Entreno", L"Tramos", L"Chat" };          /* ★ 26-nov */
-static const wchar_t *const N2_PER_PEST[4] = { L"Ventana", L"Far", L"Piedras y booster", L"PD" };
+static const wchar_t *const N2_PER_PEST[5] = { L"Ventana", L"Far", L"Piedras y booster", L"PD", L"Panel Far" };
 static void n2_apodo_tick(void);
 static void n2_e_cambio(int *pb);
 static void n2_e_tick(void);
@@ -2261,6 +2263,43 @@ static LRESULT CALLBACK n2_vista_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
 #include "n2h_booster.c"                         /* ★ 25-nov: Personalización · Booster (el botón lleno / sin carga, teñido) */
 #include "n2h_pd.c"                              /* ★ 25-nov: Personalización · Panel PD (la calculadora 2019) */
 
+/* ★ 28-nov (anonimo03: «que esto también se pueda modificar»): Personalización · Panel Far — el panel del Far (y de la
+ *   velocidad, en práctica) dentro de la carrera: verlo, su tecla, fijarlo, tamaño, fondo, qué partes, colores y letra. */
+static void n2_fj_maquetar(void)
+{
+    n2_lienzo(N2P_FJ);
+    n2_chk_b(14, 14, 320, 20, L"El panel del Far en la carrera (y la velocidad, en práctica)", &g_fj_mostrar);
+    n2_lbl(14, 42, 160, 22, L"Mostrar / esconder (tecla)", N2_TEXTO, N2_IZQ);
+    n2_combo(180, 40, 158, 22, &g_fj_tecla, NULL);
+    n2_chk_b(14, 74, 320, 20, L"Fijar el panel (no se mueve al arrastrarlo)", &g_fj_fijo);
+    n2_lbl(14, 102, 160, 24, NULL, N2_TEXTO, N2_IZQ); g_n2l[g_n2nl - 1].dyn = g_fj_txt_tam;
+    n2_boton(180, 100, 76, 26, L"Menos", B_FJ_TAM_MENOS);
+    n2_boton(262, 100, 76, 26, L"Más", B_FJ_TAM_MAS);
+    n2_lbl(14, 134, 160, 24, NULL, N2_TEXTO, N2_IZQ); g_n2l[g_n2nl - 1].dyn = g_fj_txt_fondo;
+    n2_boton(180, 132, 76, 26, L"Menos", B_FJ_FONDO_MENOS);
+    n2_boton(262, 132, 76, 26, L"Más", B_FJ_FONDO_MAS);
+    n2_boton(14, 166, 160, 26, L"Volver a su lugar", B_FJ_POS_FAB);
+    n2_lbl(14, 206, 320, 20, L"Qué se ve", N2_C_ACENTO, N2_IZQ);
+    n2_chk_b(14, 230, 160, 20, L"Número del Far", &g_fj_ver_num);
+    n2_chk_b(180, 230, 160, 20, L"Far Vision y AutoFar", &g_fj_ver_chk);
+    n2_chk_b(14, 254, 160, 20, L"Barra del Far", &g_fj_ver_barra);
+    n2_chk_b(180, 254, 160, 20, L"Velocidad (en práctica)", &g_fj_ver_vel);
+    n2_lbl(14, 292, 320, 20, L"Colores y letra", N2_C_ACENTO, N2_IZQ);
+    n2_boton(14, 316, 102, 26, L"Color…", B_FJ_COLOR);
+    n2_boton(122, 316, 130, 26, L"Color del número…", B_FJ_NUMCOL);
+    n2_boton(258, 316, 80, 26, L"De fábrica", B_FJ_COLOR_FAB);
+    n2_lbl(14, 352, 60, 22, L"Letra", N2_TEXTO, N2_IZQ);
+    {
+        HWND cb = n2_combo_lista(80, 351, 258, 22, L_FJ_LETRA, CBS_SORT);
+        if (cb) SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)TR(L"(La de los crayones)"));
+        n2_letras_llenar(cb, g_fj_letra[0] ? g_fj_letra : TR(L"(La de los crayones)"));
+    }
+    n2_chk_b(14, 382, 320, 20, L"Estilo crayón (borde oscuro y brillo)", &g_fj_crayon);
+    n2_chk_b(14, 406, 320, 20, L"Arcoíris de los crayones (panel del Far y barra de la Pausa)", &g_fj_arco);
+    n2_lbl(14, 436, 324, 64, L"Con el arcoíris prendido las letras van en arcoíris: el color se ve en las casillas y "
+                             L"la barra. Sin casillas ni barra queda sólo «Far 16.5». Se guarda solo.", N2_SUAVE, N2_PARR);
+}
+
 static void n2_per_maquetar(void)
 {
     /* Ventana: BuildAppearanceGroup(windowPage, 6) */
@@ -2293,13 +2332,7 @@ static void n2_per_maquetar(void)
     g_n2_vista = CreateWindowExW(0, L"N2HVista", L"", WS_CHILD | WS_VISIBLE, 3 + 14, 3 + 12, 324, 182,
                                  g_n2_pag[6], NULL, GetModuleHandleA(NULL), NULL);
     n2_chk(14, 202, 320, 20, L"Mostrar el indicador del Far", O_FAR_IND, 0);
-    n2_chk_b(14, 524, 320, 20, L"El panel del Far en la carrera (y la velocidad, en práctica)", &g_fj_mostrar);
-    n2_lbl(14, 552, 160, 24, NULL, N2_TEXTO, N2_IZQ); g_n2l[g_n2nl - 1].dyn = g_fj_txt_fondo;   /* ★ 26-nov */
-    n2_boton(180, 550, 76, 26, L"Menos", B_FJ_FONDO_MENOS);
-    n2_boton(262, 550, 76, 26, L"Más", B_FJ_FONDO_MAS);
-    n2_chk_b(14, 582, 320, 20, L"Arcoíris de los crayones (panel del Far y barra de la Pausa)", &g_fj_arco);
-    n2_lbl(14, 612, 160, 22, L"Mostrar / esconder (tecla)", N2_TEXTO, N2_IZQ);   /* ★ 26-nov */
-    n2_combo(180, 610, 158, 22, &g_fj_tecla, NULL);
+    /* ★ 28-nov: lo del panel del Far en la carrera pasó a su pestaña, «Panel Far» (n2_fj_maquetar) */
     n2_chk_b(14, 226, 320, 20, L"Con animación (salta y se desvanece)", &g_n2i.animar);
     n2_chk_b(14, 250, 320, 20, L"Mostrar al conectar con el juego", &g_n2i.conectar);
     n2_chk_b(14, 274, 320, 20, L"Mostrar al empezar cada ronda", &g_n2i.ronda);
@@ -2322,6 +2355,8 @@ static void n2_per_maquetar(void)
 
     /* ★ 26-nov (boceto de anonimo03): el Idioma va en la ventana principal (n2_maquetar) */
 
+    /* ★ 28-nov: Panel Far */
+    n2_fj_maquetar();
     /* Piedras */
     pie_maquetar();
     /* AutoFar */
@@ -2386,7 +2421,7 @@ static void n2_per_armar(void)
         const wchar_t *const *T = N2_PER_PEST;
         SendMessageW(g_n2_per_tabs, WM_SETFONT, (WPARAM)g_n2_ftab, 0);
         SendMessageW(g_n2_per_tabs, TCM_SETPADDING, 0, MAKELPARAM(10, 4));
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             TCITEMW it; ZeroMemory(&it, sizeof(it));
             it.mask = TCIF_TEXT; it.pszText = (LPWSTR)TR(T[i]);
             SendMessageW(g_n2_per_tabs, TCM_INSERTITEMW, (WPARAM)i, (LPARAM)&it);
@@ -2518,7 +2553,7 @@ static void n2_idioma_poner(int idi)
     }
     HWND tb[2] = { g_n2_tabs, g_n2_per_tabs };
     const wchar_t *const *nom[2] = { N2_PEST, N2_PER_PEST };
-    int cuantas[2] = { N2_PAGS, 4 };
+    int cuantas[2] = { N2_PAGS, 5 };
     for (int k = 0; k < 2; k++)
         for (int i = 0; tb[k] && i < cuantas[k]; i++) {
             TCITEMW it; ZeroMemory(&it, sizeof(it));
@@ -2545,6 +2580,11 @@ static void n2_lista_cambio(int ref, HWND h)
     if (ref == L_COD) { g_n2_chat_cod = k; nc_elegir_codificacion(k); ht_pedir_guardar(); return; }
     if (ref == L_LETRA) { lstrcpyW(g_n2_letra, t); n2_fuentes_crear(); ht_pedir_guardar(); }
     else if (ref == L_IND_LETRA) { lstrcpyW(g_n2i.letra, t); if (g_n2_vista) InvalidateRect(g_n2_vista, NULL, FALSE); }
+    else if (ref == L_FJ_LETRA) {                      /* ★ 28-nov: la letra del panel del Far */
+        if (t[0] == L'(') g_fj_letra[0] = 0; else lstrcpynW(g_fj_letra, t, 64);
+        InterlockedIncrement(&g_fj_letra_ver);
+        ht_pedir_guardar();
+    }
 }
 
 /* el apodo de la cuenta (usuario [0x9314E0] + 0x1A8, medido en el juego vivo): en la lista y en el título */

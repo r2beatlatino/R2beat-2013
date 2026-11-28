@@ -12,8 +12,9 @@
 enum { B_PD_VER = 120, B_PD_FIJAR, B_PD_MENOS, B_PD_MAS, B_PD_OP_MENOS, B_PD_OP_MAS, B_PD_COLOR, B_PD_SIN_COLOR,
        B_PD_FABRICA, B_PD_QUIETO,
        B_PD_FONDO_IMG, B_PD_FONDO_QUITAR, B_PD_FONDO_COLOR, B_PD_FONDO_FAB, B_PD_FOP_MENOS, B_PD_FOP_MAS, B_PD_NUM_COLOR,
-       B_FJ_FONDO_MENOS, B_FJ_FONDO_MAS };                       /* ★ 26-nov: el fondo del panel del Far (pestaña Far) */
-static wchar_t g_fj_txt_fondo[40];
+       B_FJ_FONDO_MENOS, B_FJ_FONDO_MAS,                         /* ★ 26-nov: el fondo del panel del Far (pestaña Far) */
+       B_FJ_TAM_MENOS, B_FJ_TAM_MAS, B_FJ_POS_FAB, B_FJ_COLOR, B_FJ_NUMCOL, B_FJ_COLOR_FAB };   /* ★ 28-nov: Panel Far */
+static wchar_t g_fj_txt_fondo[40], g_fj_txt_tam[40];
 
 static wchar_t g_pd_txt_estado[120], g_pd_txt_tam[40], g_pd_txt_op[40], g_pd_aviso[200], g_pd_txt_fop[40];
 static int     g_pd_quieto_ui = 0;
@@ -28,7 +29,9 @@ static void pd_textos(void)
     wchar_t d[40], e[40];
     wsprintfW(d, TR(L"Fondo %d %%"), g_pdn_fondo_op);
     wsprintfW(e, TR(L"Fondo del panel %d %%"), g_fj_fondo);
-    if (lstrcmpW(e, g_fj_txt_fondo)) { lstrcpyW(g_fj_txt_fondo, e); if (g_n2_pag[6]) InvalidateRect(g_n2_pag[6], NULL, FALSE); }
+    if (lstrcmpW(e, g_fj_txt_fondo)) { lstrcpyW(g_fj_txt_fondo, e); if (g_n2_pag[N2P_FJ]) InvalidateRect(g_n2_pag[N2P_FJ], NULL, FALSE); }
+    wsprintfW(e, TR(L"Tamaño del panel %d %%"), g_fj_escala);                    /* ★ 28-nov */
+    if (lstrcmpW(e, g_fj_txt_tam)) { lstrcpyW(g_fj_txt_tam, e); if (g_n2_pag[N2P_FJ]) InvalidateRect(g_n2_pag[N2P_FJ], NULL, FALSE); }
     int cambio = lstrcmpW(a, g_pd_txt_estado) || lstrcmpW(b, g_pd_txt_tam) || lstrcmpW(c, g_pd_txt_op) || lstrcmpW(d, g_pd_txt_fop);
     lstrcpyW(g_pd_txt_estado, a); lstrcpyW(g_pd_txt_tam, b); lstrcpyW(g_pd_txt_op, c); lstrcpyW(g_pd_txt_fop, d);
     if (g_pd_quieto_ui != g_calc_quieto) { g_pd_quieto_ui = g_calc_quieto; cambio = 1; }
@@ -107,6 +110,25 @@ static int pd_comando(int ref)
 {
     switch (ref) {
     case B_PD_FONDO_IMG: pd_fondo_elegir(); return 1;
+    case B_FJ_TAM_MENOS: case B_FJ_TAM_MAS: {                       /* ★ 28-nov: el tamaño del panel del Far */
+        int v = g_fj_escala + (ref == B_FJ_TAM_MAS ? 10 : -10);
+        g_fj_escala = v < 70 ? 70 : v > 200 ? 200 : v;
+        ht_pedir_guardar();
+        pd_textos();
+        return 1;
+    }
+    case B_FJ_POS_FAB: g_fj_x = g_fj_y = -1; ht_pedir_guardar(); return 1;
+    case B_FJ_COLOR: case B_FJ_NUMCOL: {
+        volatile DWORD *v = ref == B_FJ_COLOR ? &g_fj_acento : &g_fj_numcol;
+        DWORD t = *v > 0xFFFFFF ? (ref == B_FJ_COLOR ? 0xFF0080 : 0xFACC15) : *v;
+        COLORREF c = RGB((t >> 16) & 0xFF, (t >> 8) & 0xFF, t & 0xFF);
+        if (n2_elegir_color(&c)) {
+            *v = ((DWORD)GetRValue(c) << 16) | ((DWORD)GetGValue(c) << 8) | GetBValue(c);
+            ht_pedir_guardar();
+        }
+        return 1;
+    }
+    case B_FJ_COLOR_FAB: g_fj_acento = g_fj_numcol = 0xFFFFFFFF; ht_pedir_guardar(); return 1;
     case B_FJ_FONDO_MENOS: case B_FJ_FONDO_MAS: {
         int v = g_fj_fondo + (ref == B_FJ_FONDO_MAS ? 10 : -10);
         g_fj_fondo = v < 0 ? 0 : v > 100 ? 100 : v;

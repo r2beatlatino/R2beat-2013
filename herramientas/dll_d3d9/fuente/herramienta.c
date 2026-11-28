@@ -203,7 +203,11 @@ static const HT_TRAMO T_PIEDRA_S[] = {
     { 0x0054F318, 8, {0x84,0xC0,0x0F,0x84,0xD3,0x00,0x00,0x00}, {0x38,0xC0,0x0F,0x84,0xD3,0x00,0x00,0x00} },
     { 0x00550B2F, 4, {0x84,0xC0,0x75,0x4D}, {0x84,0xC0,0x75,0x00} } };
 /* Ocultar nombres — 0x500C40: «si el asiento NO es el mío, dibujar su apodo»: nunca */
-static const HT_TRAMO T_NOMBRES[] = { { 0x00500C40, 5, {0x3A,0x56,0x49,0x74,0x26}, {0x3A,0x56,0x49,0xEB,0x26} } };
+/* ★ 28-nov (anonimo03: «estoy en modo espectador, debería salir [el globo del combo]»): el salto `74 26 -> EB 26` se
+ *   saltaba TODO el bloque del nombre, y con él la llamada de 0x500C61 donde globo_combo.c dibuja el globo. Ahora el
+ *   tramo deja los bytes como están (sólo comprueba que el exe es el esperado) y el nombre lo calla gc_etiqueta
+ *   (globo_combo.c) cuando O_NOMBRES está prendida: el globo sale igual, sin el nombre. */
+static const HT_TRAMO T_NOMBRES[] = { { 0x00500C40, 5, {0x3A,0x56,0x49,0x74,0x26}, {0x3A,0x56,0x49,0x74,0x26} } };
 /* Efecto velocidad — 0x4E9F61 (las líneas): volver al entrar · 0x4FBE1C (el modo de
  * dibujo con el impulsor, [+0x860]): saltearlo siempre */
 static const HT_TRAMO T_VELOCIDAD[] = {
@@ -299,10 +303,10 @@ static HT_OP g_op[O_N] = {
       L"Prende las teclas de atajo de cada opción (las que muestran los botoncitos)." },
     /* ★ 26-nov (Eñeños: «abajo de Visual, una columna experimental, apagado por defecto»): lo de en_vivo_real.c. Lo que
      *   se MANDA sale siempre (así el que las prende ve a todos); estas dos sólo deciden qué ve uno */
-    { "combo_en_vivo",    L"Combo en vivo (jugadores y espectadores)", -1, NULL, 0, 1, 0,
-      L"El globo del combo de cada rival, en vivo y con el BREAK cuando falla: igual para el que corre y el que mira." },
-    { "pd_en_vivo",       L"PD en vivo en las tarjetas", -1, NULL, 0,    1, 0,
-      L"El porcentaje (PD) de cada corredor en su tarjeta, en vivo." },
+    { "combo_en_vivo",    L"Combo en vivo (al mirar)", -1, NULL, 0, 1, 0,          /* ★ 28-nov: sólo de espectador */
+      L"De espectador: el globo del combo de cada corredor, en vivo y con el BREAK cuando falla. Corriendo, el juego queda como siempre." },
+    { "pd_en_vivo",       L"PD en vivo en las tarjetas (al mirar)", -1, NULL, 0,    1, 0,
+      L"De espectador: el porcentaje (PD) de cada corredor en su tarjeta, en vivo." },
 };
 
 /* los niveles de los dos deslizadores */
@@ -999,6 +1003,15 @@ static int g_fj_tecla = VK_F7;                        /* ★ 26-nov: la tecla qu
 static int g_fj_arco = 1;                             /* ★ 26-nov: las letras del panel con el arcoíris de los crayones */
 static volatile int g_fj_fondo = 0;                   /* ★ 26-nov: cuánto se ve el fondo del panel (0..100 %) */
 static volatile LONG g_fj_x = -1, g_fj_y = -1;         /* la posición en milésimas de la pantalla (-1 = de fábrica) */
+/* ★ 28-nov (anonimo03: «que esto también se pueda modificar»): Personalización · Panel Far */
+static volatile int g_fj_escala = 100;                /* el tamaño del panel (70..200 %) */
+static int g_fj_fijo = 0;                             /* 1 = no se mueve al arrastrarlo (las casillas y barras andan igual) */
+static volatile DWORD g_fj_acento = 0xFFFFFFFF;       /* 0xRRGGBB del título, las casillas y la barra (FFFFFFFF = rosa) */
+static volatile DWORD g_fj_numcol = 0xFFFFFFFF;       /* 0xRRGGBB del número (FFFFFFFF = amarillo) */
+static wchar_t g_fj_letra[64];                        /* la letra del panel ("" = la de los crayones) */
+static volatile LONG g_fj_letra_ver = 0;              /* sube al cambiarla: el hilo del juego rehace las letras */
+static int g_fj_crayon = 1;                           /* el estilo crayón (borde oscuro y brillo arriba) */
+static int g_fj_ver_num = 1, g_fj_ver_chk = 1, g_fj_ver_barra = 1, g_fj_ver_vel = 1;   /* qué partes se ven */
 static void pb_por_cuadro(void);                     /* ★ 26-nov: la barra de la Pausa (pausa_barra.c) */
 static void fj_dibujar(void);                        /* ★ 26-nov: el panel del Far en la carrera (far_juego_dibujo.c) */
 static void ht_por_cuadro(void)
@@ -1130,6 +1143,18 @@ static void ht_guardar(void)
     wsprintfA(v, "%d", g_fj_fondo);      ht_buf_poner(&x, "far_juego_fondo", v, eol);
     wsprintfA(v, "%d", g_fj_arco);       ht_buf_poner(&x, "far_juego_arcoiris", v, eol);
     wsprintfA(v, "%d", g_fj_tecla);      ht_buf_poner(&x, "far_juego_tecla", v, eol);
+    wsprintfA(v, "%d", g_fj_escala);     ht_buf_poner(&x, "far_juego_tamano", v, eol);      /* ★ 28-nov */
+    wsprintfA(v, "%d", g_fj_fijo);       ht_buf_poner(&x, "far_juego_fijo", v, eol);
+    wsprintfA(v, "%lX", (unsigned long)g_fj_acento); ht_buf_poner(&x, "far_juego_color", v, eol);
+    wsprintfA(v, "%lX", (unsigned long)g_fj_numcol); ht_buf_poner(&x, "far_juego_color_numero", v, eol);
+    wsprintfA(v, "%d", g_fj_crayon);     ht_buf_poner(&x, "far_juego_crayon", v, eol);
+    wsprintfA(v, "%d%d%d%d", g_fj_ver_num, g_fj_ver_chk, g_fj_ver_barra, g_fj_ver_vel);
+    ht_buf_poner(&x, "far_juego_partes", v, eol);
+    {
+        char u[200];
+        if (!WideCharToMultiByte(CP_UTF8, 0, g_fj_letra, -1, u, sizeof(u), NULL, NULL)) u[0] = 0;
+        ht_buf_poner(&x, "far_juego_letra", u, eol);
+    }
     wsprintfA(v, "%d", g_ht_tk_far_menos);  ht_buf_poner(&x, "tk_far_menos", v, eol);
     wsprintfA(v, "%d", g_ht_tk_far_mas);    ht_buf_poner(&x, "tk_far_mas", v, eol);
     wsprintfA(v, "%d", g_ht_tk_alfa_menos); ht_buf_poner(&x, "tk_opacidad_menos", v, eol);

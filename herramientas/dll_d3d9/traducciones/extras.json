@@ -44,26 +44,6 @@
  "실험적",
  "实验性",
  "実験的"],
-"Combo en vivo (jugadores y espectadores)": [
- "Combo ao vivo (jogadores e espectadores)",
- "실시간 콤보 (플레이어와 관전자)",
- "实时连击（玩家和观众）",
- "ライブコンボ（プレイヤーと観戦者）"],
-"PD en vivo en las tarjetas": [
- "PD ao vivo nos cartões",
- "카드에 실시간 PD",
- "卡片上的实时 PD",
- "カードにライブPD"],
-"El globo del combo de cada rival, en vivo y con el BREAK cuando falla: igual para el que corre y el que mira.": [
- "O balão do combo de cada rival, ao vivo e com o BREAK quando erra: igual para quem corre e quem assiste.",
- "각 상대의 콤보 말풍선을 실시간으로, 실수하면 BREAK와 함께: 달리는 사람과 관전자 모두 똑같이.",
- "每个对手的连击气泡，实时显示，失误时显示 BREAK：跑者和观众看到的一样。",
- "各ライバルのコンボ吹き出しをライブで、ミスするとBREAK付き：走る人も観戦者も同じ。"],
-"El porcentaje (PD) de cada corredor en su tarjeta, en vivo.": [
- "A porcentagem (PD) de cada corredor no seu cartão, ao vivo.",
- "각 주자의 카드에 퍼센트(PD)를 실시간으로.",
- "每位跑者卡片上的百分比（PD），实时显示。",
- "各ランナーのカードにパーセント（PD）をライブで。"],
 "Sin chocar": [
  "Sem bater",
  "충돌 없음",
@@ -83,5 +63,95 @@
  "Ativa",
  "활성",
  "已启用",
- "有効"]
+ "有効"],
+"Panel Far": [
+ "Painel Far",
+ "Far 패널",
+ "Far 面板",
+ "Far パネル"],
+"Fijar el panel (no se mueve al arrastrarlo)": [
+ "Fixar o painel (não se move ao arrastar)",
+ "패널 고정 (드래그해도 움직이지 않음)",
+ "固定面板（拖动时不移动）",
+ "パネルを固定（ドラッグしても動かない）"],
+"Tamaño del panel %d %%": [
+ "Tamanho do painel %d %%",
+ "패널 크기 %d %%",
+ "面板大小 %d %%",
+ "パネルの大きさ %d %%"],
+"Volver a su lugar": [
+ "Voltar ao lugar",
+ "원래 위치로",
+ "恢复原位",
+ "元の位置に戻す"],
+"Qué se ve": [
+ "O que aparece",
+ "표시할 항목",
+ "显示内容",
+ "表示する項目"],
+"Número del Far": [
+ "Número do Far",
+ "Far 숫자",
+ "Far 数值",
+ "Far の数値"],
+"Far Vision y AutoFar": [
+ "Far Vision e AutoFar",
+ "Far Vision 및 AutoFar",
+ "Far Vision 和 AutoFar",
+ "Far Vision と AutoFar"],
+"Barra del Far": [
+ "Barra do Far",
+ "Far 바",
+ "Far 滑条",
+ "Far バー"],
+"Velocidad (en práctica)": [
+ "Velocidade (no treino)",
+ "속도 (연습 중)",
+ "速度（练习中）",
+ "速度（練習中）"],
+"Colores y letra": [
+ "Cores e fonte",
+ "색상과 글꼴",
+ "颜色和字体",
+ "色とフォント"],
+"Color del número…": [
+ "Cor do número…",
+ "숫자 색상…",
+ "数值颜色…",
+ "数値の色…"],
+"(La de los crayones)": [
+ "(A dos giz de cera)",
+ "(크레용 글꼴)",
+ "（蜡笔字体）",
+ "（クレヨンのフォント）"],
+"Estilo crayón (borde oscuro y brillo)": [
+ "Estilo giz de cera (borda escura e brilho)",
+ "크레용 스타일 (어두운 테두리와 광택)",
+ "蜡笔风格（深色描边和高光）",
+ "クレヨン風（暗い縁取りと光沢）"],
+"Con el arcoíris prendido las letras van en arcoíris: el color se ve en las casillas y la barra. Sin casillas ni barra queda sólo «Far 16.5». Se guarda solo.": [
+ "Com o arco-íris ligado as letras ficam em arco-íris: a cor aparece nas caixas e na barra. Sem caixas nem barra fica só «Far 16.5». Salva sozinho.",
+ "무지개를 켜면 글자가 무지개색이 되고, 선택한 색은 체크박스와 바에 보입니다. 체크박스와 바를 끄면 «Far 16.5»만 남습니다. 자동 저장됩니다.",
+ "开启彩虹时文字为彩虹色，所选颜色显示在复选框和滑条上。不显示复选框和滑条时只剩«Far 16.5»。自动保存。",
+ "虹色をオンにすると文字は虹色になり、選んだ色はチェックボックスとバーに出ます。チェックボックスとバーを消すと «Far 16.5» だけ残ります。自動で保存されます。"],
+"Combo en vivo (al mirar)": [
+ "Combo ao vivo (ao assistir)",
+ "실시간 콤보 (관전 시)",
+ "实时连击（观战时）",
+ "ライブコンボ（観戦時）"],
+"De espectador: el globo del combo de cada corredor, en vivo y con el BREAK cuando falla. Corriendo, el juego queda como siempre.": [
+ "Como espectador: o balão de combo de cada corredor, ao vivo e com o BREAK quando erra. Correndo, o jogo fica como sempre.",
+ "관전 중: 각 주자의 콤보 말풍선을 실시간으로, 실수하면 BREAK와 함께 표시합니다. 직접 달릴 때는 게임이 그대로입니다.",
+ "观战时：每位跑者的连击气泡实时显示，失误时显示 BREAK。自己比赛时游戏保持原样。",
+ "観戦中：各ランナーのコンボ吹き出しをライブで、ミスすると BREAK 付きで表示します。自分が走るときはいつも通りです。"],
+"PD en vivo en las tarjetas (al mirar)": [
+ "PD ao vivo nos cartões (ao assistir)",
+ "카드에 실시간 PD (관전 시)",
+ "卡片上的实时 PD（观战时）",
+ "カードにライブPD（観戦時）"],
+"De espectador: el porcentaje (PD) de cada corredor en su tarjeta, en vivo.": [
+ "Como espectador: a porcentagem (PD) de cada corredor no seu cartão, ao vivo.",
+ "관전 중: 각 주자의 카드에 퍼센트(PD)를 실시간으로 표시합니다.",
+ "观战时：在每位跑者的卡片上实时显示百分比（PD）。",
+ "観戦中：各ランナーのカードにパーセント（PD）をライブで表示します。"]
 }
