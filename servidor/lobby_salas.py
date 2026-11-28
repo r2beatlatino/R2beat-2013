@@ -1539,6 +1539,11 @@ def h_19_ff13(st, cmd, data):
             mision_hoy.al_volver(st)
         except Exception as _e_mh:                                   # noqa: BLE001
             log("LOBBY", f"  ⚠ misión de hoy al volver: {_e_mh!r}")
+        try:                                                         # ★ 27-nov: la Lucky Star que ganó (FFC6)
+            from . import lucky_star
+            lucky_star.al_volver(st)
+        except Exception as _e_ls:                                   # noqa: BLE001
+            log("LOBBY", f"  ⚠ lucky star al volver: {_e_ls!r}")
     _rid_pend = getattr(st, "room_id", None)
     # ★ El marcador, al que vuelve. Va sólo A ÉL: cada uno vuelve del cartel a su ritmo, y
     #   difundirlo haría que la sala reciba la misma línea una vez por jugador.

@@ -16,6 +16,7 @@ from .ajustes import (
     FF0C_MARCA_CIRCULO,
     FF0C_MEDALLA,
     FF0C_JOYAS_ALMA,
+    FF0C_NOTAS_ESPECIALES,
     MARCO_DE_ASIENTO,
     TARJETA_DE_NOMBRE,
     FF0C_TEXTO_DE_CABEZA,
@@ -920,6 +921,15 @@ def build_ff0c_2013_real(occ, k=2):
     #     lista viaja con un contador de UN byte — un número raro ahí desalinea todo el paquete.
     _joyas = [int(j) & 0xFF for j in (occ.get("joyas_alma") or [])][:3] if FF0C_JOYAS_ALMA else []
     cola_b = bytes(cola[:40]) + bytes([len(_joyas)]) + bytes(_joyas) + bytes(cola[41:])
+    # ★★ 27-nov · LA LUCKY STAR EN LA PISTA — `cola[18]` es la BANDERA de las notas especiales (`FF0C_NOTAS_ESPECIALES`).
+    #   MEDIDO (Frida, `_trabajo/lucky_star/NOTAS.md` §8): `0x5E85E9` -> desc+0x3F -> `0x5278D0` -> `[sRoomUser+0xC1]`, que
+    #   lee `0x4ECBD0` («bandera 1» del armador de la pista): en 0 `0x565C20` NUNCA corre y no hay Lucky Star (ni el huevo
+    #   «R» del PC-bang, `0xF1`). En prod iba siempre 0 (y el referente también: 505 colas).
+    #   ⛔ Y con la bandera en 1 el cliente LEE UN BYTE MÁS (`0x5E8601`; si ≠ 0 copia un texto): se INSERTA un 0 detrás,
+    #     igual que el texto de `cola[4]` y las joyas — todo lo de atrás conserva su posición y el corrimiento lo hace el
+    #     cliente al leer.
+    if FF0C_NOTAS_ESPECIALES:
+        cola_b = cola_b[:18] + b"\x01\x00" + cola_b[19:]
     _txt = str(occ.get("texto_cabeza", "") or "").encode("cp1252", "replace")[:0x40]
     if _txt:
         _txt = _marca_circulo(occ) + _txt            # ★ 23-oct: el crayón de círculo
