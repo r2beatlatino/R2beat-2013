@@ -123,6 +123,10 @@ valor). Los bytes van como hex separados por `_`: `E9_46_81_A9_03_90_90_6A`. El 
 | `porcentaje_imposible` | retener | cartel | PD o estrellas por encima de 100 |
 | `precision_imposible` | retener | cartel | Milésimas > 999, o 100 % con milésimas (el tope es 100.000) |
 | `manija_escritura` | registrar | dll | Un programa tiene abierto el juego con permiso de escribir su memoria (Candy, R2AutoRouteLab: no se inyectan). El sistema no cuenta |
+| `manija_conocida` | registrar | dll | ★ 28-nov: lo mismo, pero el launcher que abrió el juego, una superposición (Discord, Steam, OBS…) o un antivirus (`ANTITRAMPA_MANIJAS_CONOCIDAS`). No correlaciona |
+| `trampa_conocida` | expulsar | dll | ★ 28-nov: la dirección tocada es, según el catálogo `antitrampa_firmas.py`, una trampa que NO es de Ñ2Hock (los automáticos, el resultado falso de R2AutoRouteLab). El detalle dice «usa: programa · función» |
+| `n2hock_permitido` | registrar | dll | ★ 28-nov: la dirección tocada es una función de Ñ2Hock (sin piedra, Supr, niebla, obstáculos, autoimpulso, teclado, precisión, cámara, Far, práctica…). **Todo lo de Ñ2Hock está permitido**: no retiene ni correlaciona |
+| `arranque_restaurado` | registrar | dll | ★ 28-nov: el punto de entrada del exe lo tocó un inyector/launcher al abrir el juego y ya está de fábrica |
 | `llegada_anticipada` | avisar | cartel | Llegó a la meta en menos del 75 % de lo que tarda esa canción (mediana de sus llegadas limpias): «Simular llegada» |
 | `codigo_modificado` | avisar | dll | El exe fue tocado desde afuera (otros parches de Ñ2Hock: far, teclado…) |
 | `codigo_previo` | avisar | dll | El exe ya estaba tocado antes de que arrancara la dll |
@@ -427,6 +431,14 @@ El panel del servidor de parches (`/admin`) lee la base: puede leer `antitrampa_
 SELECT cuando, nick, cuenta, regla, riesgo, confianza, descripcion FROM antitrampa_eventos
 WHERE estado = 'nuevo' AND riesgo IN ('alto', 'critico') ORDER BY id DESC LIMIT 50;
 ```
+
+### 10.6b ★ 28-nov · Qué está usando: el catálogo de firmas (`antitrampa_firmas.py`)
+
+Cada programa de trampas parchea siempre las mismas direcciones del exe. Con la dirección que informa la dll (`codigo=`, `gancho=`, `previo_va=`) el server dice **el programa y la función** («usa: R2AutoRouteLab2013 · Resultado personalizado») y elige la regla por la clase: `trampa` (lo que no es de Ñ2Hock) → su regla propia o `trampa_conocida`, `permitida` (Ñ2Hock) → `n2hock_permitido`, `arranque` → `arranque_restaurado` si ya está de fábrica. Lo que no está en el catálogo sigue siendo `codigo_modificado`.
+
+Fuentes: el código de ToolBit / Ñ2Hock externo y R2AutoRouteLab2013 (también la versión «Release-next», cuyo perfil «SpaceWander» es nuestro exe y engancha el resultado en `+0x101451`; la dll lo vigila como `gancho=resultado_b`). Las direcciones se comprobaron byte por byte contra el R2Beat.exe del launcher.
+
+⚠ La dll informa sólo la **primera** dirección distinta de cada página: si dos funciones caen en la misma página, el panel nombra la primera.
 
 ### 10.7 Límites (lo que esto NO resuelve)
 

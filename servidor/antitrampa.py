@@ -69,6 +69,7 @@ from .ajustes import (
     ANTITRAMPA_SENALES_DEBILES,
 )
 from . import antitrampa_eventos as eventos
+from . import antitrampa_firmas as firmas
 from .registro import log
 
 FPS = 60
@@ -271,7 +272,19 @@ _GANCHOS = {"automatico": "juego_automatico", "sala": "sala_automatica", "relevo
             # ★ 24-nov: las rutas del laboratorio (INFORME_LABORATORIO.md §4-5)
             "tick_meta": "juego_automatico", "auto_normal": "juego_automatico", "pd0": "juego_automatico",
             "larga_a": "juego_automatico", "larga_b": "juego_automatico", "item_auto": "juego_automatico",
-            "resultado": "resultado_alterado", "resultado_solo": "resultado_alterado"}
+            "resultado": "resultado_alterado", "resultado_solo": "resultado_alterado",
+            # ★ 28-nov: R2AutoRouteLab «Release-next» engancha el resultado 7 bytes antes (+0x101451)
+            "resultado_b": "resultado_alterado"}
+# ★ 28-nov · lo que dice el catálogo de firmas (antitrampa_firmas.py) según la clase de lo que se tocó
+_REGLA_DE_CLASE = {"trampa": "trampa_conocida", "permitida": "n2hock_permitido"}
+
+
+def _usa(va):
+    """-> (firma o None, « · usa: programa · función» para el detalle, dict para la evidencia)."""
+    f = firmas.identificar(va)
+    if not f:
+        return None, "", {}
+    return f, f" · usa: {firmas.texto(f)}", {"programa": f.programa, "funcion": f.funcion, "clase": f.clase}
 
 
 def _va(texto):
@@ -365,16 +378,16 @@ def _un_r2at(st, d, crudo):
         anotar(st, "vigia_parado", "el hilo del antitrampa dejó de correr dentro del juego", {}, evidencia=ev)
     elif "gancho" in d:                                    # un gancho conocido de un programa de trampas
         regla = _GANCHOS.get(d["gancho"], "codigo_modificado")
-        anotar(st, regla, f"gancho «{d['gancho']}» en {d.get('va')}: {d.get('bytes', '').replace('_', ' ')}", {},
-               evidencia=ev, firma=d["gancho"])
+        _f, usa, ev_usa = _usa(_va(d.get("va", "")))
+        anotar(st, regla, f"gancho «{d['gancho']}» en {d.get('va')}: {d.get('bytes', '').replace('_', ' ')}{usa}", {},
+               evidencia={**ev, **ev_usa}, firma=d["gancho"])
     elif "codigo" in d and _va(d["codigo"]) in ANTITRAMPA_GANCHOS:   # dll sin «gancho=»: por la dirección
+        _f, usa, ev_usa = _usa(_va(d["codigo"]))
         anotar(st, _GANCHOS[ANTITRAMPA_GANCHOS[_va(d["codigo"])]],
                f"gancho «{ANTITRAMPA_GANCHOS[_va(d['codigo'])]}» en {d['codigo']}: "
-               f"{d.get('bytes', '').replace('_', ' ')}", {}, evidencia=ev, firma=d["codigo"])
+               f"{d.get('bytes', '').replace('_', ' ')}{usa}", {}, evidencia={**ev, **ev_usa}, firma=d["codigo"])
     elif "codigo" in d:
-        anotar(st, "codigo_modificado", f"{d.get('paginas')} página(s) del exe tocadas por fuera, la primera en "
-                                        f"{d['codigo']}: {d.get('bytes', '').replace('_', ' ')}", {},
-               evidencia=ev, firma=d["codigo"])
+        _codigo_tocado(st, d, ev)
     elif "modulo" in d and d["modulo"].lower().startswith(ANTITRAMPA_MODULOS_PERMITIDOS):
         # ★ 19-nov: el motor de práctica de Ñ2Hock (ToolBitPracticeEngine_<hash>.dll): la dll del launcher
         #   todavía lo informa como «toolbit», pero NO es el ToolBit de trampas. Sólo queda registrado.
@@ -405,10 +418,31 @@ def _un_r2at(st, d, crudo):
         log("TRAMP", f"  ? usn={st.usn}: renglón R2AT que no conozco: {crudo!r}")
 
 
+def _codigo_tocado(st, d, ev):
+    """★ 28-nov: `R2AT codigo=` — una página del exe cambió por fuera. El catálogo de firmas dice QUÉ programa y QUÉ
+    función es por la dirección, y de eso sale la regla: trampa_conocida (retener en silencio), n2hock_permitido (una
+    función de Ñ2Hock: registrar), arranque_restaurado (registrar) o, si no se conoce, codigo_modificado."""
+    va, b = _va(d["codigo"]), d.get("bytes", "")
+    f, usa, ev_usa = _usa(va)
+    base = (f"{d.get('paginas')} página(s) del exe tocadas por fuera, la primera en {d['codigo']}: "
+            f"{b.replace('_', ' ')}")
+    if f and f.clase == "arranque":
+        if firmas.arranque_restaurado(va, b):
+            anotar(st, "arranque_restaurado", base + " · el punto de entrada del exe lo cambió un inyector o un launcher "
+                                                     "al abrir el juego y ya está como de fábrica", {},
+                   evidencia={**ev, **ev_usa}, firma=d["codigo"])
+            return
+        regla = "codigo_modificado"
+    else:
+        regla = _REGLA_DE_CLASE.get(f.clase, "codigo_modificado") if f else "codigo_modificado"
+    anotar(st, regla, base + usa, {}, evidencia={**ev, **ev_usa}, firma=d["codigo"])
+
+
 def manija_conocida(nombre):
     """★ 28-nov: ¿es el launcher, una superposición o un programa de sistema (no una herramienta de trampa)?"""
     n = str(nombre or "").strip().lower()
-    return bool(n) and n != "?" and any(n.startswith(k) for k in ANTITRAMPA_MANIJAS_CONOCIDAS)
+    # ★ 28-nov: «Ñ2Hock.exe» llega según la página de códigos del jugador («ñ2hock», «?2hock», «�2hock»…): basta «2hock.exe»
+    return bool(n) and n != "?" and (any(n.startswith(k) for k in ANTITRAMPA_MANIJAS_CONOCIDAS) or n.endswith("2hock.exe"))
 
 
 def _al_hola(st, d, crudo):
@@ -433,8 +467,9 @@ def _al_hola(st, d, crudo):
         anotar(st, "exe_desconocido", f"R2Beat.exe con md5 {d.get('exe')}", {"exe": d.get("exe")}, evidencia=ev,
                firma=d.get("exe"))
     if d.get("previo", "0") not in ("0", "-1"):
+        f, usa, ev_usa = _usa(_va(d.get("previo_va") or ""))
         anotar(st, "codigo_previo", f"{d['previo']} página(s) del exe ya tocadas al abrir el juego, la primera "
-                                    f"en {d.get('previo_va')}", {}, evidencia=ev)
+                                    f"en {d.get('previo_va')}{usa}", {}, evidencia={**ev, **ev_usa})
 
 
 def _tiene_pendientes(usn):

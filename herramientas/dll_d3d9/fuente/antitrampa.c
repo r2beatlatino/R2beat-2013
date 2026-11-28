@@ -260,6 +260,8 @@ static struct { DWORD rva; const char *nombre; BYTE visto; } g_at_ganchos[] = {
     { 0x10CAB6, "item_auto", 0 },         /* el activador del ítem 1000659 (evento 0xDC, estado 0x19) */
     { 0x101458, "resultado", 0 },         /* el armado del FF28: precisión / combo personalizados */
     { 0x1C887B, "resultado_solo", 0 },    /* el resultado de Juego Solo */
+    { 0x101451, "resultado_b", 0 },       /* ★ 28-nov: R2AutoRouteLab «Release-next» engancha el MISMO armado 7 bytes
+                                           *   antes (0F B6 8F 4C 03 00 00 -> salto a su cueva); 0x101458 no cambia */
 };
 
 static void at_revisar_ganchos(void)

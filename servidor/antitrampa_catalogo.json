@@ -163,6 +163,14 @@
       "funciones": [
         "Precisión personalizada en Juego Solo (lab)"
       ]
+    },
+    {
+      "id": "resultado_b",
+      "va": "0x00501451",
+      "regla": "resultado_alterado",
+      "funciones": [
+        "Resultado personalizado (lab «Release-next»)"
+      ]
     }
   ],
   "reglas": [
@@ -560,6 +568,42 @@
       "categoria": "herramienta_memoria",
       "riesgo": "informativo",
       "confianza": 5,
+      "comprobado_por": "cliente"
+    },
+    {
+      "id": "trampa_conocida",
+      "accion": "expulsar",
+      "origen": "dll",
+      "gravedad": 3,
+      "nombre": "Función de trampa conocida",
+      "descripcion": "Una dirección del exe tocada que el catálogo de firmas (antitrampa_firmas.py) reconoce como trampa que NO es de Ñ2Hock: los automáticos, el resultado falso de R2AutoRouteLab, el auto listo / auto relevo del ToolBit viejo. El panel dice el programa y la función.",
+      "categoria": "memoria_alterada",
+      "riesgo": "alto",
+      "confianza": 80,
+      "comprobado_por": "cliente"
+    },
+    {
+      "id": "n2hock_permitido",
+      "accion": "registrar",
+      "origen": "dll",
+      "gravedad": 0,
+      "nombre": "Función de Ñ2Hock (permitida)",
+      "descripcion": "Una dirección del exe tocada que es una función de Ñ2Hock: sin piedra, Supr, niebla, obstáculos, autoimpulso, teclado, precisión, cámara, Far, práctica… Todo lo de Ñ2Hock está permitido: sólo se anota.",
+      "categoria": "memoria_alterada",
+      "riesgo": "informativo",
+      "confianza": 5,
+      "comprobado_por": "cliente"
+    },
+    {
+      "id": "arranque_restaurado",
+      "accion": "registrar",
+      "origen": "dll",
+      "gravedad": 0,
+      "nombre": "Arranque restaurado",
+      "descripcion": "El punto de entrada del exe lo cambió un inyector o un launcher al abrir el juego y ya está como de fábrica. Solo no prueba nada.",
+      "categoria": "memoria_alterada",
+      "riesgo": "bajo",
+      "confianza": 20,
       "comprobado_por": "cliente"
     },
     {

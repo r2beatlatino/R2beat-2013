@@ -5494,7 +5494,10 @@ ANTITRAMPA_GANCHOS = {0x005080B5: "automatico", 0x005AEDD4: "sala", 0x00505340: 
 #   ★ 19-nov: módulos con nombre «de trampa» que NO lo son (empiezan así, sin mayúsculas). El motor de práctica
 #   de Ñ2Hock (Entreno: velocidad, tramo A/B) se carga como ToolBitPracticeEngine_<hash>.dll: la dll vieja lo
 #   manda como «modulo=» por el «toolbit», y expulsaba a quien practicara. Queda sólo registrado.
-ANTITRAMPA_MODULOS_PERMITIDOS = ("toolbitpracticeengine",)
+ANTITRAMPA_MODULOS_PERMITIDOS = ("toolbitpracticeengine",
+                                 # ★ 28-nov (anonimo03: «todo lo que tenemos en Ñ2Hock está permitido»): la dll todavía
+                                 #   busca «n2hock» entre los módulos de trampa; un módulo de Ñ2Hock sólo se registra.
+                                 "n2hock", "ñ2hock")
 ANTITRAMPA_REGLAS["modulo_permitido"] = "registrar"
 ANTITRAMPA_REGLAS["juego_automatico"] = "expulsar"
 ANTITRAMPA_REGLAS["sala_automatica"] = "expulsar"
@@ -5511,6 +5514,7 @@ ANTITRAMPA_GANCHOS.update({
     0x0050CAB6: "item_auto",       # el activador del ítem 1000659 (evento 0xDC, estado 0x19)
     0x00501458: "resultado",       # el FF28 de la sala: precisión / combo personalizados
     0x005C887B: "resultado_solo",  # el resultado de Juego Solo (FF3A sub 3)
+    0x00501451: "resultado_b",     # ★ 28-nov: el mismo armado, como lo engancha R2AutoRouteLab «Release-next»
 })
 ANTITRAMPA_REGLAS.update({
     "resultado_alterado":  "expulsar",   # el armado del FF28 (o del de Juego Solo) reescrito en el cliente
@@ -5523,6 +5527,13 @@ ANTITRAMPA_REGLAS.update({
     # ⏳ "registrar" hasta ver qué aparece en los limpios (el que lanzó el juego, overlays): después, "avisar" o más.
     "manija_escritura":    "registrar",  # un programa tiene abierto el juego con permiso de escribir su memoria
     "manija_conocida":     "registrar",  # ★ 28-nov: lo mismo, pero el launcher o una superposición (no correlaciona)
+    # ★ 28-nov (anonimo03: «que el panel diga qué está usando según lo que modifica la RAM, más rápido y estricto»):
+    #   el catálogo `antitrampa_firmas.py` reconoce por la DIRECCIÓN tocada el programa y la función.
+    "trampa_conocida":     "expulsar",   # una función de trampa que NO es de Ñ2Hock (los automáticos, el resultado falso)
+    #   ★ anonimo03: «todo lo que tenemos en Ñ2Hock está permitido» (sin piedra, Supr, niebla, obstáculos, autoimpulso,
+    #   teclado, precisión, cámara, Far, práctica…): aunque la ponga desde afuera el Ñ2Hock.exe, sólo se registra.
+    "n2hock_permitido":    "registrar",
+    "arranque_restaurado": "registrar",  # el punto de entrada lo tocó un inyector/launcher y ya está de fábrica
 })
 #   Llegada anticipada: frame < mediana de las últimas HISTORIA llegadas limpias de ESA canción × FACTOR, con al menos
 #   MUESTRAS llegadas guardadas. «Simular llegada» dispara la meta en cualquier momento: el tiempo declarado cuadra con
@@ -5663,6 +5674,9 @@ ANTITRAMPA_CLASIFICACION = {
     "proceso_prohibido":       ("herramienta_memoria",   "bajo",        30, "cliente"),
     "manija_escritura":        ("herramienta_memoria",   "medio",       55, "cliente"),
     "manija_conocida":         ("herramienta_memoria",   "informativo", 5,  "cliente"),
+    "trampa_conocida":         ("memoria_alterada",      "alto",        80, "cliente"),
+    "n2hock_permitido":        ("memoria_alterada",      "informativo", 5,  "cliente"),
+    "arranque_restaurado":     ("memoria_alterada",      "bajo",        20, "cliente"),
     "manipulacion_correlacionada": ("herramienta_memoria", "critico",   85, "servidor"),
     "teclas_inyectadas":       ("macros",                "bajo",        40, "cliente"),
     "listo_automatico":        ("bots",                  "medio",       60, "servidor"),
@@ -5689,12 +5703,13 @@ ANTITRAMPA_CORRELACION_HERRAMIENTA = ("proceso_prohibido", "manija_escritura", "
 #   con la manija del launcher que abrió el juego daba `manipulacion_correlacionada` a cualquiera → premio retenido.
 ANTITRAMPA_CORRELACION_ALTERACION = ("codigo_modificado", "codigo_previo", "hilo_ajeno",
                                      "juego_automatico", "sala_automatica", "relevo_automatico", "resultado_alterado",
-                                     "modulo_prohibido", "reloj_rapido", "reloj_cliente")
+                                     "modulo_prohibido", "reloj_rapido", "reloj_cliente", "trampa_conocida")
 #   ★ 28-nov · los programas que tienen el juego abierto CON permiso de escribir y no son trampa: el launcher que lo
 #   lanzó (quien crea un proceso se queda con una manija completa), las superposiciones y las tiendas. Se comparan con
 #   el comienzo del nombre del exe, sin mayúsculas. Quedan como `manija_conocida` (sólo registrar) y NO cuentan para la
 #   correlación.
 ANTITRAMPA_MANIJAS_CONOCIDAS = (
+    "ñ2hock", "n2hock",                          # ★ 28-nov: Ñ2Hock.exe (todo lo de Ñ2Hock está permitido)
     "n2launcher", "nyxlauncher", "launcher.exe", "r2beat.exe", "r2beatmultitest", "r2prueba", "replacer",
     "full_downloader", "hw_spec", "explorer.exe", "discord", "steam", "gameoverlayui", "obs", "rtss", "msiafterburner",
     "nvcontainer", "nvidia", "nvsphelper", "amdrsserv", "radeonsoftware", "amdow", "overwolf", "medal", "xboxgamebar",

@@ -164,7 +164,7 @@ def probar_cliente():
     antitrampa.al_ff59(c, "USN:5151\nR2AT v=1 exe=0123456789abcdef0123456789abcdef previo=2 previo_va=0x00501000")
     ok(nuevas(n0) == ["exe_desconocido", "codigo_previo"], "«hola» con otro exe y el exe ya tocado")
     n0, a0 = len(marcas_guardadas()), len(avisos)
-    antitrampa.al_ff59(c, "USN:5151\nR2AT codigo=0x00505447 paginas=1 bytes=E9_11_22_33_44_00_00_00")
+    antitrampa.al_ff59(c, "USN:5151\nR2AT codigo=0x00505600 paginas=1 bytes=E9_11_22_33_44_00_00_00")
     ok(nuevas(n0) == ["codigo_modificado"] and "E9 11 22 33 44" in avisos[a0], "código tocado: el GM ve los bytes")
     ok(antitrampa.juzgar_cartel(c, 180, 12, 90, 50, 77) is False, "«codigo_modificado» sólo avisa: se paga")
     antitrampa.al_ff59(c, "USN:5151\nR2AT modulo=toolbitdll.dll")
@@ -672,6 +672,14 @@ def probar_limpio_con_launcher(pendientes):
     ok(antitrampa.manija_conocida("N2Launcher.exe") and not antitrampa.manija_conocida("candy0503.exe")
        and not antitrampa.manija_conocida("cheatengine-x86_64.exe") and not antitrampa.manija_conocida("?"),
        "revés: Candy y Cheat Engine no son conocidos")
+    ok(all(antitrampa.manija_conocida(n) for n in ("Ñ2Hock.exe", "ñ2hock.exe", "?2hock.exe", "�2hock.exe")),
+       "★ Ñ2Hock.exe (todo lo de Ñ2Hock está permitido) es conocido, llegue como llegue la Ñ")
+    usn5, _m = basedatos.cuenta_crear("conmodulo", "N" * 64)
+    m5 = jugador(usn5)
+    antitrampa.al_ff59(m5, "R2AT modulo=n2hock_overlay.dll")
+    ok(reglas_de(usn5)[-1] == "modulo_permitido", "un módulo de Ñ2Hock: modulo_permitido (no retiene)")
+    m5.at_ultimo = None
+    ok(antitrampa.juzgar_cartel(m5, 7200, 300, 90, 50, 84) is False, "y cobra")
     # Revés: una herramienta de verdad con un gancho sigue correlacionando
     usn2, _m = basedatos.cuenta_crear("tramposo2", "F" * 64)
     t = jugador(usn2)
@@ -712,6 +720,76 @@ def probar_limpio_con_launcher(pendientes):
     antitrampa.perdonar_pendientes("perdonable", "prueba")
     p4.at_ultimo = None
     ok(antitrampa.juzgar_cartel(p4, 7300, 301, 90, 50, 83) is False, "perdonado: cobra la próxima carrera")
+
+
+def probar_firmas():
+    print("★ 28-nov · el panel dice QUÉ está usando según la dirección tocada (antitrampa_firmas.py):")
+    from servidor import antitrampa_firmas as firmas, basedatos
+
+    def ultima(usn):
+        m = [x for x in marcas_guardadas() if x.get("usn") == usn]
+        return m[-1] if m else {}
+
+    antitrampa.ANTITRAMPA_SILENCIOSO = True
+    try:
+        usn, _m = basedatos.cuenta_crear("piedrero", "J" * 64)
+        c = jugador(usn)
+        antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+        antitrampa.al_ff59(c, "R2AT codigo=0x0054F31A paginas=1 bytes=90_90_90_90_90_90_8B_46")
+        u = ultima(usn)
+        ok(u.get("regla") == "n2hock_permitido" and "Sin piedra" in u.get("detalle", "")
+           and "Ñ2Hock" in u.get("detalle", ""), "Sin piedra de Ñ2Hock: permitido, y el panel dice cuál")
+        c.at_ultimo = None
+        ok(antitrampa.juzgar_cartel(c, 7200, 300, 90, 50, 90) is False, "todo lo de Ñ2Hock está permitido: cobra")
+        antitrampa.al_ff59(c, "R2AT manija=candy0503.exe acceso=0x1FFFFF")
+        ok("manipulacion_correlacionada" not in reglas_de(usn), "revés: Ñ2Hock + otra herramienta no correlaciona")
+        antitrampa.al_ff59(c, "R2AT codigo=0x0050A170 paginas=1 bytes=E9_00_00_00_00_90_90_90")
+        r = reglas_de(usn)
+        ok("juego_automatico" in r and "manipulacion_correlacionada" in r,
+           "revés: el automático (ya no es de Ñ2Hock) sigue siendo juego_automatico, y con Candy correlaciona")
+        c.at_ultimo = None
+        ok(antitrampa.juzgar_cartel(c, 7300, 301, 90, 50, 92) is True, "revés: y con el automático no cobra")
+
+        usn, _m = basedatos.cuenta_crear("camarografo", "K" * 64)
+        c = jugador(usn)
+        antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+        antitrampa.al_ff59(c, "R2AT codigo=0x004FE3A0 paginas=1 bytes=C3_90_90_90_90_8B_0D_00")
+        u = ultima(usn)
+        ok(u.get("regla") == "n2hock_permitido" and "Cámara fija" in u.get("detalle", ""),
+           "cámara fija de Ñ2Hock: n2hock_permitido (sólo se registra)")
+        c.at_ultimo = None
+        ok(antitrampa.juzgar_cartel(c, 7200, 300, 90, 50, 91) is False, "y cobra")
+        antitrampa.al_ff59(c, "R2AT codigo=0x007532F6 paginas=1 bytes=D3_F2_00_00_E9_78_FE_FF")
+        ok(ultima(usn).get("regla") == "arranque_restaurado", "el punto de entrada ya de fábrica: arranque_restaurado")
+        antitrampa.al_ff59(c, "R2AT codigo=0x007532F6 paginas=1 bytes=11_22_33_44_E9_78_FE_FF")
+        ok(ultima(usn).get("regla") == "codigo_modificado", "revés: el punto de entrada distinto sigue siendo código tocado")
+        antitrampa.al_ff59(c, "R2AT codigo=0x00412000 paginas=1 bytes=90_90_90_90_90_90_90_90")
+        u = ultima(usn)
+        ok(u.get("regla") == "codigo_modificado" and "usa:" not in u.get("detalle", ""),
+           "una dirección que no está en el catálogo: codigo_modificado, sin inventar el programa")
+
+        usn, _m = basedatos.cuenta_crear("labnuevo", "L" * 64)
+        c = jugador(usn)
+        antitrampa.al_ff59(c, f"R2AT v=1 exe={EXE_BUENO} previo=0")
+        antitrampa.al_ff59(c, "R2AT gancho=resultado_b va=0x00501451 bytes=E9_AA_EB_55_00_90_90_8A")
+        u = ultima(usn)
+        ok(u.get("regla") == "resultado_alterado" and "R2AutoRouteLab" in u.get("detalle", ""),
+           "el resultado del lab «Release-next» (+0x101451): resultado_alterado, y dice que es R2AutoRouteLab")
+        usn, _m = basedatos.cuenta_crear("labviejo", "M" * 64)
+        c = jugador(usn)
+        antitrampa.al_ff59(c, "R2AT codigo=0x00501451 paginas=1 bytes=E9_AA_EB_55_00_90_90_8A")
+        ok(ultima(usn).get("regla") == "resultado_alterado", "con una dll sin «resultado_b», por la dirección también")
+    finally:
+        antitrampa.ANTITRAMPA_SILENCIOSO = False
+
+    ok(firmas.identificar(0x00501458).funcion.startswith("Resultado") and firmas.identificar(0x0050145A) is not None,
+       "el resultado viejo (+0x101458) y su margen")
+    ok(firmas.identificar(0x00400000) is None and firmas.identificar("x") is None, "revés: fuera del catálogo, nada")
+    solapadas = [hex(a.rva) for a, b in zip(sorted(firmas.FIRMAS), sorted(firmas.FIRMAS)[1:]) if a.rva + a.largo > b.rva]
+    ok(not solapadas, f"las firmas no se pisan entre sí {solapadas or ''}")
+    ok({f.clase for f in firmas.FIRMAS} <= {"trampa", "permitida", "arranque"}, "cada firma tiene una clase conocida")
+    ok(all((f.clase == "trampa") == (f.programa != firmas.N2HOCK) for f in firmas.FIRMAS if f.clase != "arranque"),
+       "lo de Ñ2Hock es permitido; lo de R2AutoRouteLab y el automático viejo, trampa")
 
 
 def probar_llegadas():
@@ -860,6 +938,7 @@ def main():
         probar_farmeo()
         probar_coordinador()
         probar_silencioso()
+        probar_firmas()
         probar_cartel()
         probar_llegadas()
         probar_mediana_envenenable()
