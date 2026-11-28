@@ -27,17 +27,69 @@
 #define BO_MAX_CUADROS 64
 
 typedef struct { int n, w, h, total; DWORD **px; int *ms; } BO_ANIM;     /* n = 0: no hay */
-typedef struct { void *tex; RECT r; DWORD *orig; LONG version; int c_img, c_marco; int malo; } BO_SLOT;
+typedef struct { void *tex; RECT r; DWORD *orig; LONG version; int c_img, c_marco, c_tinte; int malo; UINT fmt, nivel;
+                 int es_lleno; } BO_SLOT;
+
+/* ★ 28-nov (medido en el cliente de anonimo03): la hoja del botón es de 16 bits, A1R5G5B5 (formato 25), no de 32: el
+ *   booster se salteaba el botón sin decir nada. Se lee y se escribe en el formato de la hoja: 21/22 (32 bits), 25
+ *   A1R5G5B5, 26 A4R4G4B4, 23 R5G6B5 y 24 X1R5G5B5. */
+static int bo_fmt_ok(UINT f) { return f == 21 || f == 22 || (f >= 23 && f <= 26); }
+static int bo_fmt_bytes(UINT f) { return f == 21 || f == 22 ? 4 : 2; }
+static DWORD bo_leer_px(UINT f, const BYTE *p)
+{
+    if (f == 21) return *(const DWORD *)p;
+    if (f == 22) return *(const DWORD *)p | 0xFF000000u;
+    WORD w = *(const WORD *)p;
+    DWORD a, r, g, b;
+    if (f == 26) { a = (w >> 12) & 15; r = (w >> 8) & 15; g = (w >> 4) & 15; b = w & 15; a *= 17; r *= 17; g *= 17; b *= 17; }
+    else if (f == 23) { a = 255; r = (w >> 11) & 31; g = (w >> 5) & 63; b = w & 31; r = r * 255 / 31; g = g * 255 / 63; b = b * 255 / 31; }
+    else { a = f == 25 ? ((w & 0x8000) ? 255 : 0) : 255; r = (w >> 10) & 31; g = (w >> 5) & 31; b = w & 31;
+           r = r * 255 / 31; g = g * 255 / 31; b = b * 255 / 31; }
+    return (a << 24) | (r << 16) | (g << 8) | b;
+}
+static void bo_poner_px(UINT f, BYTE *p, DWORD c)
+{
+    DWORD a = c >> 24, r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+    if (f == 21) { *(DWORD *)p = c; return; }
+    if (f == 22) { *(DWORD *)p = c | 0xFF000000u; return; }
+    WORD w;
+    if (f == 26) w = (WORD)(((a >> 4) << 12) | ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4));
+    else if (f == 23) w = (WORD)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+    else w = (WORD)((f == 25 && a >= 128 ? 0x8000 : f == 24 ? 0x8000 : 0) | ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3));
+    *(WORD *)p = w;
+}
 
 static CRITICAL_SECTION g_bo_cs;
 static int     g_bo_cs_lista = 0, g_bo_activo = 0, g_bo_mover_activo = 0;
-static BO_ANIM g_bo_img[3];                     /* 0 = sin carga · 1 = lleno · 2 = marco */
+/* ★ 28-nov (anonimo03, con los ejemplos del AutoCtrl del ToolBit): + 3 = el 2.º cuadro del LLENO (parpadea con el 1.º)
+ *   · 4 = el AURA (alrededor del botón, afuera) · 5 = TEÑIR CON IMAGEN (multiplica, como el color). Un marco de más de
+ *   100 px es «grande»: va afuera del botón, como el aura (booster_dibujo.c). */
+#define BO_N 6
+static BO_ANIM g_bo_img[BO_N];                  /* 0 = sin carga · 1 = lleno · 2 = marco · 3 = lleno_2 · 4 = aura · 5 = tenir */
+static int g_bo_aura_pct = 190;                 /* el aura, en % del lado del botón ([herramienta] booster_aura) */
+/* ★ 28-nov (anonimo03: «el aura y el marco son muy rápidos, ponlo más lento»): la velocidad de TODAS las animaciones
+ *   del booster (GIF), en %: 100 = la del archivo. De fábrica, la mitad. [herramienta] booster_anim */
+static int g_bo_anim_pct = 50;
+/* ★ 28-nov (anonimo03: «¿no debería salir algo cuando está lleno, para darme cuenta?»): con el botón propio ya no se ve
+ *   el corredor amarillo, y el destello del juego se esconde si el botón está movido. Ñ2Hock pone su BRILLO: late
+ *   detrás del botón mientras el impulsor está lleno (dorado, o el color del teñido). [herramienta] booster_brillo */
+static int g_bo_brillo = 1;
+/* ★ 28-nov (anonimo03: «el aura sólo cuando esté completo el booster, y el teñido sólo cuando se llena»): de fábrica,
+ *   las dos cosas sólo con el impulsor LLENO. [herramienta] booster_aura_lleno · booster_tenir_lleno */
+static int g_bo_aura_lleno = 1, g_bo_tenir_lleno = 1;
+static volatile DWORD g_bo_lleno_t;             /* la última vez que el juego dibujó la carga entera o el «listo» */
+/* dónde quedó el botón en la pantalla (lo anota la cola 2D, abajo): x, y, lado y cuándo */
+static volatile float g_bo_bx, g_bo_by, g_bo_bw, g_bo_bh;
+static volatile DWORD g_bo_bt;
+static float g_bo_uv[2][4];                     /* u0 v0 u1 v1 del botón «sin carga» de cada c2DImage (para reconocerlo) */
+static float g_bo_uvc[2][4];                    /* ★ 28-nov: y los de la CARGA (cortes 10 / 12): lleno, el juego dibuja ésa */
+static volatile LONG g_bo_uv_ok;
 static COLORREF g_bo_tenir = CLR_INVALID;       /* CLR_INVALID = sin teñir */
 static volatile int g_bo_dx = 0, g_bo_dy = 0;   /* mover, en px del juego */
 static volatile BYTE g_bo_en_columna = 0;
 static volatile LONG g_bo_version = 1;
 static LONG    g_bo_revisada = 0;
-static BO_SLOT g_bo_slot[8];
+static BO_SLOT g_bo_slot[48];                  /* ★ 28-nov: + los niveles de mipmap (hasta 6 por cuadro) */
 static int     g_bo_nslot = 0;
 static DWORD   g_bo_cuadro = 0;
 static int     g_bo_cargar_ini = 1;
@@ -51,7 +103,7 @@ static void bo_carpeta(wchar_t *r)
 /* la ruta de sin_carga / lleno / marco que exista (png o tga); 0 si no hay */
 static int bo_ruta(int cual, wchar_t *r)
 {
-    static const wchar_t *N[3] = { L"sin_carga", L"lleno", L"marco" };
+    static const wchar_t *N[BO_N] = { L"sin_carga", L"lleno", L"marco", L"lleno_2", L"aura", L"tenir" };
     static const wchar_t *E[2] = { L".png", L".tga" };
     for (int e = 0; e < 2; e++) {
         bo_carpeta(r);
@@ -162,6 +214,7 @@ static int bo_anim_cargar(const wchar_t *ruta, BO_ANIM *a)
 static int bo_anim_cuadro(const BO_ANIM *a, DWORD t)
 {
     if (a->n <= 1 || a->total <= 0) return 0;
+    t = (DWORD)((unsigned long long)t * (unsigned)g_bo_anim_pct / 100u);   /* ★ 28-nov: más lento o más rápido */
     int m = (int)(t % (DWORD)a->total);
     for (int i = 0; i < a->n; i++) { if (m < a->ms[i]) return i; m -= a->ms[i]; }
     return a->n - 1;
@@ -200,6 +253,13 @@ static void bo_tenir_ini(void)
         }
         if (v != 0xFFFFFFFF) g_bo_tenir = RGB((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF);
     }
+    int au = (int)GetPrivateProfileIntA("herramienta", "booster_aura", 190, g_ht_ini);   /* ★ 28-nov */
+    g_bo_aura_pct = au < 100 ? 100 : au > 400 ? 400 : au;
+    g_bo_brillo = GetPrivateProfileIntA("herramienta", "booster_brillo", 1, g_ht_ini) != 0;
+    g_bo_aura_lleno = GetPrivateProfileIntA("herramienta", "booster_aura_lleno", 1, g_ht_ini) != 0;
+    g_bo_tenir_lleno = GetPrivateProfileIntA("herramienta", "booster_tenir_lleno", 1, g_ht_ini) != 0;
+    int an = (int)GetPrivateProfileIntA("herramienta", "booster_anim", 50, g_ht_ini);
+    g_bo_anim_pct = an < 10 ? 10 : an > 300 ? 300 : an;
     int x = (int)GetPrivateProfileIntA("herramienta", "booster_x", 0, g_ht_ini);
     int y = (int)GetPrivateProfileIntA("herramienta", "booster_y", 0, g_ht_ini);
     g_bo_dx = x < -2000 ? -2000 : x > 2000 ? 2000 : x;
@@ -209,7 +269,7 @@ static void bo_tenir_ini(void)
 /* las imágenes: en el 1.er cuadro del botón (no en DllMain: GDI+) */
 static void bo_cargar_ini(void)
 {
-    for (int k = 0; k < 3; k++) {
+    for (int k = 0; k < BO_N; k++) {
         wchar_t r[MAX_PATH * 2];
         BO_ANIM a;
         if (bo_ruta(k, r) && bo_anim_cargar(r, &a)) bo_poner(k, &a);
@@ -230,21 +290,23 @@ static int bo_rect_corte(BYTE *img, int n, UINT tw, UINT th, RECT *r)
     return r->right - r->left >= 16 && r->bottom - r->top >= 16;
 }
 
-static BO_SLOT *bo_slot(void *tex, const RECT *r)
+static BO_SLOT *bo_slot(void *tex, const RECT *r, UINT fmt, UINT nivel)
 {
     for (int i = 0; i < g_bo_nslot; i++)
-        if (g_bo_slot[i].tex == tex && EqualRect(&g_bo_slot[i].r, r)) return &g_bo_slot[i];
-    if (g_bo_nslot >= 8) return NULL;
+        if (g_bo_slot[i].tex == tex && g_bo_slot[i].nivel == nivel && EqualRect(&g_bo_slot[i].r, r)) return &g_bo_slot[i];
+    if (g_bo_nslot >= 48) return NULL;
     BO_SLOT *s = &g_bo_slot[g_bo_nslot++];
     ZeroMemory(s, sizeof(*s));
-    s->tex = tex; s->r = *r; s->c_img = s->c_marco = -1;
+    s->tex = tex; s->r = *r; s->c_img = s->c_marco = -1; s->fmt = fmt; s->nivel = nivel;
     int w = r->right - r->left, h = r->bottom - r->top;
     void **vt = *(void ***)tex;
     PDR_LOCK b;
     s->orig = (DWORD *)HeapAlloc(GetProcessHeap(), 0, (SIZE_T)w * h * 4);
-    if (!s->orig || ((PDR_T_LOCK)vt[19])(tex, 0, &b, r, 0x10 /* READONLY */) != 0) { s->malo = 1; return s; }
-    for (int y = 0; y < h; y++) CopyMemory(s->orig + y * w, (BYTE *)b.pBits + y * b.Pitch, (SIZE_T)w * 4);
-    ((PDR_T_UNLOCK)vt[20])(tex, 0);
+    if (!s->orig || ((PDR_T_LOCK)vt[19])(tex, nivel, &b, r, 0x10 /* READONLY */) != 0) { s->malo = 1; return s; }
+    int pb = bo_fmt_bytes(fmt);
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) s->orig[y * w + x] = bo_leer_px(fmt, (BYTE *)b.pBits + y * b.Pitch + x * pb);
+    ((PDR_T_UNLOCK)vt[20])(tex, nivel);
     return s;
 }
 
@@ -263,60 +325,130 @@ static DWORD bo_sobre(DWORD abajo, DWORD arriba)              /* «arriba» sobr
     return c | ((ra / 255) << 24);
 }
 
-static void bo_escribir(BO_SLOT *s, const BO_ANIM *img, int ci, const BO_ANIM *marco, int cm)
+/* ★ 28-nov: ¿el marco es «grande» (va afuera del botón)? */
+static int bo_marco_afuera(void) { return g_bo_img[2].n && (g_bo_img[2].w > 100 || g_bo_img[2].h > 100); }
+
+static void bo_escribir(BO_SLOT *s, const BO_ANIM *img, int ci, const BO_ANIM *marco, int cm, const BO_ANIM *tinte, int ct)
 {
     int w = s->r.right - s->r.left, h = s->r.bottom - s->r.top;
     void **vt = *(void ***)s->tex;
     PDR_LOCK b;
-    if (((PDR_T_LOCK)vt[19])(s->tex, 0, &b, &s->r, 0) != 0) { s->malo = 1; return; }
+    if (((PDR_T_LOCK)vt[19])(s->tex, s->nivel, &b, &s->r, 0) != 0) { s->malo = 1; return; }
+    int pb = bo_fmt_bytes(s->fmt);
     for (int y = 0; y < h; y++) {
-        DWORD *fila = (DWORD *)((BYTE *)b.pBits + y * b.Pitch);
+        BYTE *fila = (BYTE *)b.pBits + y * b.Pitch;
         for (int x = 0; x < w; x++) {
             float u = (x + 0.5f) / w, v = (y + 0.5f) / h;
             DWORD c = img->n ? pdr_muestra(img->px[ci], img->w, img->h, u, v) : s->orig[y * w + x];
-            if (marco->n) c = bo_sobre(c, pdr_muestra(marco->px[cm], marco->w, marco->h, u, v));
-            if (g_bo_tenir != CLR_INVALID) {                    /* teñir: multiplica los colores */
+            if (marco && marco->n) c = bo_sobre(c, pdr_muestra(marco->px[cm], marco->w, marco->h, u, v));
+            if (tinte && tinte->n && (!g_bo_tenir_lleno || s->es_lleno)) {   /* ★ 28-nov: teñir con una imagen */
+                DWORD q = pdr_muestra(tinte->px[ct], tinte->w, tinte->h, u, v), qa = q >> 24;
+                DWORD tr = 255 - (255 - ((q >> 16) & 0xFF)) * qa / 255, tg = 255 - (255 - ((q >> 8) & 0xFF)) * qa / 255,
+                      tb = 255 - (255 - (q & 0xFF)) * qa / 255;
+                c = (c & 0xFF000000u) | ((((c >> 16) & 0xFF) * tr / 255) << 16) | ((((c >> 8) & 0xFF) * tg / 255) << 8)
+                    | ((c & 0xFF) * tb / 255);
+            }
+            if (g_bo_tenir != CLR_INVALID && (!g_bo_tenir_lleno || s->es_lleno)) {   /* teñir: multiplica los colores */
                 DWORD r = ((c >> 16) & 0xFF) * GetRValue(g_bo_tenir) / 255, g = ((c >> 8) & 0xFF) * GetGValue(g_bo_tenir) / 255,
                       bb = (c & 0xFF) * GetBValue(g_bo_tenir) / 255;
                 c = (c & 0xFF000000u) | (r << 16) | (g << 8) | bb;
             }
-            fila[x] = c;
+            bo_poner_px(s->fmt, fila + x * pb, c);
         }
     }
-    ((PDR_T_UNLOCK)vt[20])(s->tex, 0);
+    ((PDR_T_UNLOCK)vt[20])(s->tex, s->nivel);
 }
 
 /* ── el hilo del juego: la entrada de 0x54FA70 ── */
 static void __cdecl bo_hud(BYTE *hud)
 {
-    if (g_bo_cargar_ini) { g_bo_cargar_ini = 0; bo_cargar_ini(); }
+    /* ★ 28-nov (el video de anonimo03: el aura y el marco salían un cuadro sí y otro no): se dibujan ACÁ, cuando el juego
+     *   dibuja el botón (antes de su cola 2D: quedan detrás del botón, como un aura), y no en el cuadro del HUD. */
+    bod_dibujar();
+    if (g_bo_cargar_ini) {
+        g_bo_cargar_ini = 0; bo_cargar_ini();
+    }
     LONG v = g_bo_version;
-    int animado = g_bo_img[0].n > 1 || g_bo_img[1].n > 1 || g_bo_img[2].n > 1;
+    int animado = g_bo_img[0].n > 1 || g_bo_img[1].n > 1 || g_bo_img[2].n > 1 || g_bo_img[3].n || g_bo_img[5].n > 1;
     if (!animado && (++g_bo_cuadro & 31) && v == g_bo_revisada) return;
     if (!hud || !ht_memoria_ok(hud, 0xD80, 0) || !TryEnterCriticalSection(&g_bo_cs)) return;
     DWORD t = GetTickCount();
-    int cm = bo_anim_cuadro(&g_bo_img[2], t);
+    const BO_ANIM *marco = bo_marco_afuera() ? NULL : &g_bo_img[2];
+    int cm = marco ? bo_anim_cuadro(marco, t) : -1;
+    int ct = bo_anim_cuadro(&g_bo_img[5], t);
+    int parpadeo = g_bo_img[3].n && ((t / 400) & 1);     /* ★ 28-nov: el lleno y su 2.º cuadro, de a 400 ms */
     static const struct { DWORD off; int corte; int lx, ly; } P[2] = { { 0xD50, 9, 335, 0 }, { 0x18, 11, 281, 248 } };
+    /* ★ 28-nov (anonimo03, después de varias carreras: el botón volvía al de fábrica): cada carrera el juego arma hojas
+     *   NUEVAS y los lugares de las viejas no se soltaban nunca; a los 48 no se escribía más. Se sueltan los de las hojas
+     *   que ya no son las del HUD. */
+    {
+        void *ahora0 = pdr_textura(hud + P[0].off), *ahora1 = pdr_textura(hud + P[1].off);
+        int j = 0;
+        for (int i = 0; i < g_bo_nslot; i++) {
+            if (g_bo_slot[i].tex == ahora0 || g_bo_slot[i].tex == ahora1) { g_bo_slot[j++] = g_bo_slot[i]; continue; }
+            if (g_bo_slot[i].orig) HeapFree(GetProcessHeap(), 0, g_bo_slot[i].orig);
+        }
+        g_bo_nslot = j;
+    }
     for (int k = 0; k < 2; k++) {
         BYTE *img = hud + P[k].off;
         void *tex = pdr_textura(img);
         if (!tex) continue;
         PDR_DESC d;
         void **vt = *(void ***)tex;
-        if (((PDR_T_DESC)vt[17])(tex, 0, &d) != 0 || (d.Format != 21 && d.Format != 22)) continue;
-        RECT r[2];
-        int hay[2];
+        if (((PDR_T_DESC)vt[17])(tex, 0, &d) != 0 || !bo_fmt_ok(d.Format)) {
+            static int dicho[2];
+            if (!dicho[k]++) apuntar("  [booster] ⚠ imagen %d: textura con formato %d (no sé escribirlo)", k, d.Format);
+            continue;
+        }
+        RECT r[10];
+        int hay[10], tipo[10] = { 0, 1 }, nr = 2;           /* tipo: 0 = sin carga · 1 = carga / lleno / listo */
         hay[0] = bo_rect_corte(img, P[k].corte, d.Width, d.Height, &r[0]);
+        if (hay[0] && !(g_bo_uv_ok & (2 << k))) {         /* ★ 28-nov: para reconocer el botón en la cola 2D */
+            BYTE *c0 = *(BYTE **)(img + 0x18) + P[k].corte * 0x50;
+            for (int i = 0; i < 4; i++) g_bo_uv[k][i] = *(float *)(c0 + 0x1C + 4 * i);
+            RECT rc;
+            if (bo_rect_corte(img, P[k].corte + 1, d.Width, d.Height, &rc)) {
+                BYTE *c1 = *(BYTE **)(img + 0x18) + (P[k].corte + 1) * 0x50;
+                for (int i = 0; i < 4; i++) g_bo_uvc[k][i] = *(float *)(c1 + 0x1C + 4 * i);
+                InterlockedOr(&g_bo_uv_ok, 8 << k);
+            }
+            InterlockedOr(&g_bo_uv_ok, 1 | (2 << k));
+        }
         SetRect(&r[1], P[k].lx, P[k].ly, P[k].lx + 81, P[k].ly + 81);
         hay[1] = (UINT)r[1].right <= d.Width && (UINT)r[1].bottom <= d.Height;
-        for (int q = 0; q < 2; q++) {
-            if (!hay[q]) continue;
-            BO_SLOT *s = bo_slot(tex, &r[q]);
+        /* ★ 28-nov (la hoja volcada del cliente de anonimo03): la hoja del botón normal trae OCHO variantes, en dos filas:
+         *     y=248: azul (equipo) · rojo (equipo) · amarillo (la carga, r[1]) · gris (sin carga, r[0])
+         *     y=334: azul · rosa · amarillo (el botón LISTO, con el impulsor lleno: lo medido en la cola) · gris
+         *   Las de color llevan la imagen del lleno; las grises, la del sin carga. Sólo si la hoja es ésa (r[0] en 368,248). */
+        if (hay[0] && r[0].left == 368 && r[0].top == 248) {
+            static const int EX[6][3] = { { 113, 248, 1 }, { 198, 248, 1 }, { 14, 334, 1 }, { 99, 334, 1 }, { 182, 334, 1 },
+                                          { 273, 334, 0 } };
+            for (int j = 0; j < 6 && nr < 10; j++, nr++) {
+                SetRect(&r[nr], EX[j][0], EX[j][1], EX[j][0] + 81, EX[j][1] + 81);
+                hay[nr] = (UINT)r[nr].right <= d.Width && (UINT)r[nr].bottom <= d.Height;
+                tipo[nr] = EX[j][2];
+            }
+        }
+        /* ★ 28-nov (medido: «escrito» y el botón seguía de fábrica): la hoja tiene MIPMAPS y la tarjeta puede dibujar
+         *   uno más chico. Se escribe el cuadro en CADA nivel (el rectángulo, dividido por 2 en cada uno). */
+        typedef UINT (__stdcall *T_NIVELES)(void *);
+        UINT niveles = ((T_NIVELES)vt[13])(tex);
+        if (niveles < 1 || niveles > 12) niveles = 1;
+        for (int qq = 0; qq < nr * (int)niveles; qq++) {
+            int cual = qq % nr, q = tipo[cual];             /* q: 0 = sin carga · 1 = la carga (el lleno) */
+            UINT nv = (UINT)(qq / nr);
+            if (!hay[cual]) continue;
+            RECT rn = { r[cual].left >> nv, r[cual].top >> nv, r[cual].right >> nv, r[cual].bottom >> nv };
+            if (rn.right - rn.left < 2 || rn.bottom - rn.top < 2) continue;
+            BO_SLOT *s = bo_slot(tex, &rn, d.Format, nv);
             if (!s || s->malo) continue;
-            int ci = bo_anim_cuadro(&g_bo_img[q], t);
-            if (s->version == v && s->c_img == ci && s->c_marco == cm) continue;
-            bo_escribir(s, &g_bo_img[q], ci, &g_bo_img[2], cm);
-            s->version = v; s->c_img = ci; s->c_marco = cm;
+            s->es_lleno = q == 1;
+            const BO_ANIM *im = q == 1 && parpadeo ? &g_bo_img[3] : &g_bo_img[q];
+            int ci = bo_anim_cuadro(im, t), clave = ci | (q == 1 && parpadeo ? 0x10000 : 0);
+            if (s->version == v && s->c_img == clave && s->c_marco == cm && s->c_tinte == ct) continue;
+            bo_escribir(s, im, ci, marco, cm, &g_bo_img[5], ct);
+            s->version = v; s->c_img = clave; s->c_marco = cm; s->c_tinte = ct;
         }
     }
     g_bo_revisada = v;
@@ -324,12 +456,59 @@ static void __cdecl bo_hud(BYTE *hud)
 }
 
 /* ── mover: 0x554CA0 con la bandera puesta corre la COPIA del corte ── */
-static void __cdecl bo_desplazar(BYTE *e)
+static LONG g_bo_visto_log;
+static void __cdecl bo_desplazar(BYTE *e, BYTE *cola)
 {
     if (!e) return;
+    /* ★ 28-nov (anonimo03: con el botón corrido 180 px, el destello amarillo del impulsor lleno quedaba ~360 más abajo,
+     *   en los videos): el juego YA pone el destello (la pieza grande, 205 x 205, con la textura entera: u0 v0 = 0, 0)
+     *   donde está el botón, que nosotros corrimos; si además se lo corre a él, queda al doble. Ése no se corre. */
+    /*   … y sin correrlo queda donde estaba el botón: el juego lo dibuja con zoom y su lugar no sigue un corrimiento
+     *   simple. Con el botón MOVIDO, el destello se esconde (tamaño 0); en su sitio de siempre, sale como siempre. */
+    if (*(float *)(e + 0x14) >= 120 && *(float *)(e + 0x1C) < 0.001f && *(float *)(e + 0x20) < 0.001f) {
+        if (g_bo_dx || g_bo_dy) { *(float *)(e + 0x14) = 0; *(float *)(e + 0x18) = 0; }
+        return;
+    }
+    {   /* ★ 28-nov: ¿está lleno? el «listo» (la fila de abajo de la hoja, v0 = 334/512) o la carga entera (81 de alto) */
+        float w0 = *(float *)(e + 0x14), h0 = *(float *)(e + 0x18), u0 = *(float *)(e + 0x1C), v0 = *(float *)(e + 0x20);
+        int listo = w0 > 76 && w0 < 86 && v0 > 0.650f && v0 < 0.655f;
+        int carga = w0 > 76 && w0 < 86 && h0 > 78 && u0 > 0.548f && u0 < 0.552f;
+        if (listo || carga) g_bo_lleno_t = GetTickCount() | 1;
+    }
     float dx = (float)g_bo_dx, dy = (float)g_bo_dy;
     *(float *)(e + 0x08) += dx; *(float *)(e + 0x0C) += dy;
     *(float *)(e + 0x38) += dx; *(float *)(e + 0x3C) += dy;
+    /* ★ 28-nov: ¿es el botón «sin carga»? (sus u/v) → su lugar en pantalla, para el aura y el marco grande. La cola le
+     *   suma después su propio desplazamiento ([cola+0x158/+0x15C]). */
+    if (!g_bo_uv_ok) return;
+    const float *u = (const float *)(e + 0x1C);
+#define BO_CERCA(a, b) ((a) - (b) < 0.002f && (b) - (a) < 0.002f)
+    for (int kk = 0; kk < 4; kk++) {
+        int k = kk & 1, carga = kk >> 1;
+        if (!(g_bo_uv_ok & ((carga ? 8 : 2) << k))) continue;
+        const float *w = carga ? g_bo_uvc[k] : g_bo_uv[k];
+        /* el botón: los 4 iguales · la carga (lleno o cargándose): mismas u y el mismo borde de abajo */
+        if (!BO_CERCA(u[0], w[0]) || !BO_CERCA(u[2], w[2]) || !BO_CERCA(u[3], w[3]) || (!carga && !BO_CERCA(u[1], w[1]))) continue;
+        if (carga && *(float *)(e + 0x18) < 2) continue;
+        /* ★ 28-nov (medido en las capturas de anonimo03): el HUD tiene OTRA pieza con el mismo recorte, a la izquierda
+         *   (debajo de la tarjeta), y el aura se iba ahí. El botón de verdad está en la mitad derecha (sin contar lo
+         *   que se lo movió) y mide más de 48 px. */
+        float px0 = *(float *)(e + 0x08) - (float)g_bo_dx, pw = *(float *)(e + 0x14), ph = *(float *)(e + 0x18);
+        if (pw < 48 || (!carga && ph < 48) || (g_ancho && px0 + pw / 2 < (float)g_ancho / 2)) continue;
+        /* ★ 28-nov: el juego pone otra copia del botón FUERA de la pantalla (x 1644 en 1600): ésa no */
+        if (g_ancho && *(float *)(e + 0x08) + pw > (float)g_ancho + 2) continue;
+        float ox = 0, oy = 0;
+        if (cola && ht_memoria_ok(cola + 0x158, 8, 0) && cola[0x160]) { ox = *(float *)(cola + 0x158); oy = *(float *)(cola + 0x15C); }
+        g_bo_bx = *(float *)(e + 0x08) + ox; g_bo_bw = *(float *)(e + 0x14);
+        /* la carga se recorta desde abajo: el botón entero es un cuadrado que termina donde termina ella */
+        g_bo_by = *(float *)(e + 0x0C) + oy + (carga ? *(float *)(e + 0x18) - pw : 0);
+        g_bo_bh = carga ? pw : *(float *)(e + 0x18);
+        g_bo_bt = GetTickCount() | 1;
+        if (!g_bo_visto_log++)
+            apuntar("  [booster] el botón en pantalla: (%d, %d) %dx%d · cola +(%d, %d)", (int)g_bo_bx, (int)g_bo_by,
+                    (int)g_bo_bw, (int)g_bo_bh, (int)ox, (int)oy);
+        return;
+    }
 }
 
 /* una cueva: pushad · pushfd · [push ecx] · call f · add esp,4 · popfd · popad · lo pisado · jmp sitio+n */
@@ -387,9 +566,10 @@ static int bo_enganchar_mover(void)
     c[k++] = 0x80; c[k++] = 0x3D; *(DWORD *)(c + k) = (DWORD)&g_bo_en_columna; k += 4; c[k++] = 0;   /* cmp byte [..],0 */
     c[k++] = 0x74; BYTE *salto = c + k; c[k++] = 0;                                                    /* je orig */
     c[k++] = 0x60; c[k++] = 0x9C;
-    c[k++] = 0xFF; c[k++] = 0x74; c[k++] = 0x24; c[k++] = 0x28;                                        /* push [esp+0x28] */
+    c[k++] = 0x51;                                                                                     /* push ecx (la cola) */
+    c[k++] = 0xFF; c[k++] = 0x74; c[k++] = 0x24; c[k++] = 0x2C;                                        /* push [esp+0x2C] */
     c[k] = 0xE8; *(DWORD *)(c + k + 1) = (DWORD)bo_desplazar - (DWORD)(c + k + 5); k += 5;
-    c[k++] = 0x83; c[k++] = 0xC4; c[k++] = 0x04;
+    c[k++] = 0x83; c[k++] = 0xC4; c[k++] = 0x08;
     c[k++] = 0x9D; c[k++] = 0x61;
     *salto = (BYTE)((c + k) - (salto + 1));
     CopyMemory(c + k, COLA, 5); k += 5;

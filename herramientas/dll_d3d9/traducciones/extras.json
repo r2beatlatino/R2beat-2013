@@ -153,5 +153,130 @@
  "Como espectador: a porcentagem (PD) de cada corredor no seu cartão, ao vivo.",
  "관전 중: 각 주자의 카드에 퍼센트(PD)를 실시간으로 표시합니다.",
  "观战时：在每位跑者的卡片上实时显示百分比（PD）。",
- "観戦中：各ランナーのカードにパーセント（PD）をライブで表示します。"]
+ "観戦中：各ランナーのカードにパーセント（PD）をライブで表示します。"],
+"Piedras": [
+ "Pedras",
+ "돌",
+ "石头",
+ "ストーン"],
+"Aura": [
+ "Aura",
+ "오라",
+ "光环",
+ "オーラ"],
+"Aura...": [
+ "Aura...",
+ "오라...",
+ "光环...",
+ "オーラ..."],
+"Aura %d %%": [
+ "Aura %d %%",
+ "오라 %d %%",
+ "光环 %d %%",
+ "オーラ %d %%"],
+"Botón": [
+ "Botão",
+ "버튼",
+ "按钮",
+ "ボタン"],
+"Teñido": [
+ "Tingido",
+ "염색",
+ "染色",
+ "染め"],
+"Teñir (color)...": [
+ "Tingir (cor)...",
+ "염색 (색)...",
+ "染色（颜色）...",
+ "染める（色）..."],
+"Teñir (imagen)...": [
+ "Tingir (imagem)...",
+ "염색 (이미지)...",
+ "染色（图片）...",
+ "染める（画像）..."],
+"(elige un ejemplo)": [
+ "(escolha um exemplo)",
+ "(예시 선택)",
+ "（选择一个示例）",
+ "（例を選ぶ）"],
+"(no hay ejemplos)": [
+ "(sem exemplos)",
+ "(예시 없음)",
+ "（没有示例）",
+ "（例がありません）"],
+"Botón «%s» puesto%s.": [
+ "Botão «%s» colocado%s.",
+ "버튼 «%s» 적용됨%s.",
+ "已应用按钮«%s»%s。",
+ "ボタン «%s» を設定%s。"],
+" (el lleno parpadea)": [
+ " (o cheio pisca)",
+ " (가득 찬 버튼이 깜빡임)",
+ "（满格时闪烁）",
+ "（満タンで点滅）"],
+" (grande)": [
+ " (grande)",
+ " (큼)",
+ "（大）",
+ "（大）"],
+"No se pudo poner ese botón.": [
+ "Não foi possível colocar esse botão.",
+ "그 버튼을 적용할 수 없습니다.",
+ "无法应用该按钮。",
+ "そのボタンを設定できませんでした。"],
+"Sin aura.": [
+ "Sem aura.",
+ "오라 없음.",
+ "无光环。",
+ "オーラなし。"],
+"Sin teñido con imagen.": [
+ "Sem tingido com imagem.",
+ "이미지 염색 없음.",
+ "不使用图片染色。",
+ "画像染めなし。"],
+"el 2.º cuadro del lleno": [
+ "o 2.º quadro do cheio",
+ "가득 찬 버튼의 2번째 프레임",
+ "满格的第 2 帧",
+ "満タンの2コマ目"],
+"el aura": [
+ "a aura",
+ "오라",
+ "光环",
+ "オーラ"],
+"el teñido con imagen": [
+ "o tingido com imagem",
+ "이미지 염색",
+ "图片染色",
+ "画像染め"],
+"sin\\naura": [
+ "sem\\naura",
+ "오라\\n없음",
+ "无\\n光环",
+ "オーラ\\nなし"],
+"El botón se ajusta a 81 x 81. Un marco de más de 100 px y el aura van por afuera del botón. Un «…_lleno» con su «…_lleno_2» parpadea. Mover lleva también el de equipo y el fuego (4 px; con Mayús, 20; «0» = centrar).": [
+ "O botão se ajusta a 81 x 81. Uma moldura de mais de 100 px e a aura ficam do lado de fora do botão. Um «…_lleno» com seu «…_lleno_2» pisca. Mover leva também o de equipe e o fogo (4 px; com Shift, 20; «0» = centralizar).",
+ "버튼은 81 x 81에 맞춰집니다. 100 px보다 큰 테두리와 오라는 버튼 바깥에 그려집니다. «…_lleno»와 «…_lleno_2»가 함께 있으면 깜빡입니다. 이동하면 팀 버튼과 불꽃도 함께 움직입니다 (4 px; Shift는 20; «0» = 가운데).",
+ "按钮会缩放到 81 x 81。超过 100 px 的边框和光环画在按钮外面。有«…_lleno»和«…_lleno_2»时会闪烁。移动时团队按钮和火焰也一起移动（4 px；按 Shift 为 20；«0» = 居中）。",
+ "ボタンは 81 x 81 に合わせられます。100 px を超える枠とオーラはボタンの外側に描かれます。«…_lleno» と «…_lleno_2» があると点滅します。移動するとチームのボタンと炎も一緒に動きます（4 px、Shift で 20、«0» = 中央）。"],
+"Animación %d %%": [
+ "Animação %d %%",
+ "애니메이션 %d %%",
+ "动画 %d %%",
+ "アニメーション %d %%"],
+"Brillo cuando el impulsor está lleno": [
+ "Brilho quando o impulso está cheio",
+ "부스터가 가득 차면 빛나기",
+ "加速器充满时发光",
+ "ブースター満タンで光る"],
+"Aura sólo lleno": [
+ "Aura só cheio",
+ "가득 찰 때만 오라",
+ "仅满时光环",
+ "満タン時のみオーラ"],
+"Teñir sólo el lleno": [
+ "Tingir só o cheio",
+ "가득 찬 버튼만 염색",
+ "仅染色满格",
+ "満タンのみ染める"]
 }

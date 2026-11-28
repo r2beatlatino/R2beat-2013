@@ -1,5 +1,5 @@
 /* traducciones.h — GENERADO por herramientas/dll_d3d9/traducciones/armar_tabla.py: no editar a mano */
-#define TR_N 603
+#define TR_N 628
 static const wchar_t *const TR_TABLA[TR_N][TR_N_IDIOMAS] = {
     { L"Not", L"Nenhuma", L"없음", L"无", L"なし" },
     { L"NUM%d", L"NUM%d", L"NUM%d", L"NUM%d", L"NUM%d" },
@@ -604,4 +604,29 @@ static const wchar_t *const TR_TABLA[TR_N][TR_N_IDIOMAS] = {
     { L"De espectador: el globo del combo de cada corredor, en vivo y con el BREAK cuando falla. Corriendo, el juego queda como siempre.", L"Como espectador: o balão de combo de cada corredor, ao vivo e com o BREAK quando erra. Correndo, o jogo fica como sempre.", L"관전 중: 각 주자의 콤보 말풍선을 실시간으로, 실수하면 BREAK와 함께 표시합니다. 직접 달릴 때는 게임이 그대로입니다.", L"观战时：每位跑者的连击气泡实时显示，失误时显示 BREAK。自己比赛时游戏保持原样。", L"観戦中：各ランナーのコンボ吹き出しをライブで、ミスすると BREAK 付きで表示します。自分が走るときはいつも通りです。" },
     { L"PD en vivo en las tarjetas (al mirar)", L"PD ao vivo nos cartões (ao assistir)", L"카드에 실시간 PD (관전 시)", L"卡片上的实时 PD（观战时）", L"カードにライブPD（観戦時）" },
     { L"De espectador: el porcentaje (PD) de cada corredor en su tarjeta, en vivo.", L"Como espectador: a porcentagem (PD) de cada corredor no seu cartão, ao vivo.", L"관전 중: 각 주자의 카드에 퍼센트(PD)를 실시간으로 표시합니다.", L"观战时：在每位跑者的卡片上实时显示百分比（PD）。", L"観戦中：各ランナーのカードにパーセント（PD）をライブで表示します。" },
+    { L"Piedras", L"Pedras", L"돌", L"石头", L"ストーン" },
+    { L"Aura", L"Aura", L"오라", L"光环", L"オーラ" },
+    { L"Aura...", L"Aura...", L"오라...", L"光环...", L"オーラ..." },
+    { L"Aura %d %%", L"Aura %d %%", L"오라 %d %%", L"光环 %d %%", L"オーラ %d %%" },
+    { L"Botón", L"Botão", L"버튼", L"按钮", L"ボタン" },
+    { L"Teñido", L"Tingido", L"염색", L"染色", L"染め" },
+    { L"Teñir (color)...", L"Tingir (cor)...", L"염색 (색)...", L"染色（颜色）...", L"染める（色）..." },
+    { L"Teñir (imagen)...", L"Tingir (imagem)...", L"염색 (이미지)...", L"染色（图片）...", L"染める（画像）..." },
+    { L"(elige un ejemplo)", L"(escolha um exemplo)", L"(예시 선택)", L"（选择一个示例）", L"（例を選ぶ）" },
+    { L"(no hay ejemplos)", L"(sem exemplos)", L"(예시 없음)", L"（没有示例）", L"（例がありません）" },
+    { L"Botón «%s» puesto%s.", L"Botão «%s» colocado%s.", L"버튼 «%s» 적용됨%s.", L"已应用按钮«%s»%s。", L"ボタン «%s» を設定%s。" },
+    { L" (el lleno parpadea)", L" (o cheio pisca)", L" (가득 찬 버튼이 깜빡임)", L"（满格时闪烁）", L"（満タンで点滅）" },
+    { L" (grande)", L" (grande)", L" (큼)", L"（大）", L"（大）" },
+    { L"No se pudo poner ese botón.", L"Não foi possível colocar esse botão.", L"그 버튼을 적용할 수 없습니다.", L"无法应用该按钮。", L"そのボタンを設定できませんでした。" },
+    { L"Sin aura.", L"Sem aura.", L"오라 없음.", L"无光环。", L"オーラなし。" },
+    { L"Sin teñido con imagen.", L"Sem tingido com imagem.", L"이미지 염색 없음.", L"不使用图片染色。", L"画像染めなし。" },
+    { L"el 2.º cuadro del lleno", L"o 2.º quadro do cheio", L"가득 찬 버튼의 2번째 프레임", L"满格的第 2 帧", L"満タンの2コマ目" },
+    { L"el aura", L"a aura", L"오라", L"光环", L"オーラ" },
+    { L"el teñido con imagen", L"o tingido com imagem", L"이미지 염색", L"图片染色", L"画像染め" },
+    { L"sin\naura", L"sem\naura", L"오라\n없음", L"无\n光环", L"オーラ\nなし" },
+    { L"El botón se ajusta a 81 x 81. Un marco de más de 100 px y el aura van por afuera del botón. Un «…_lleno» con su «…_lleno_2» parpadea. Mover lleva también el de equipo y el fuego (4 px; con Mayús, 20; «0» = centrar).", L"O botão se ajusta a 81 x 81. Uma moldura de mais de 100 px e a aura ficam do lado de fora do botão. Um «…_lleno» com seu «…_lleno_2» pisca. Mover leva também o de equipe e o fogo (4 px; com Shift, 20; «0» = centralizar).", L"버튼은 81 x 81에 맞춰집니다. 100 px보다 큰 테두리와 오라는 버튼 바깥에 그려집니다. «…_lleno»와 «…_lleno_2»가 함께 있으면 깜빡입니다. 이동하면 팀 버튼과 불꽃도 함께 움직입니다 (4 px; Shift는 20; «0» = 가운데).", L"按钮会缩放到 81 x 81。超过 100 px 的边框和光环画在按钮外面。有«…_lleno»和«…_lleno_2»时会闪烁。移动时团队按钮和火焰也一起移动（4 px；按 Shift 为 20；«0» = 居中）。", L"ボタンは 81 x 81 に合わせられます。100 px を超える枠とオーラはボタンの外側に描かれます。«…_lleno» と «…_lleno_2» があると点滅します。移動するとチームのボタンと炎も一緒に動きます（4 px、Shift で 20、«0» = 中央）。" },
+    { L"Animación %d %%", L"Animação %d %%", L"애니메이션 %d %%", L"动画 %d %%", L"アニメーション %d %%" },
+    { L"Brillo cuando el impulsor está lleno", L"Brilho quando o impulso está cheio", L"부스터가 가득 차면 빛나기", L"加速器充满时发光", L"ブースター満タンで光る" },
+    { L"Aura sólo lleno", L"Aura só cheio", L"가득 찰 때만 오라", L"仅满时光环", L"満タン時のみオーラ" },
+    { L"Teñir sólo el lleno", L"Tingir só o cheio", L"가득 찬 버튼만 염색", L"仅染色满格", L"満タンのみ染める" },
 };
